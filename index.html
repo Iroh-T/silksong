@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Мир Струн: Убежище</title>
+    <style>
+        body { margin: 0; background-color: #0a0a0a; color: white; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; user-select: none; -webkit-user-select: none; overflow-x: hidden; }
+        canvas { background-color: #1a1a24; border: 2px solid #444; margin-top: 10px; box-shadow: 0 0 30px rgba(0, 150, 255, 0.2); touch-action: none; width: 100%; max-width: 1000px; aspect-ratio: 2.5 / 1; object-fit: contain; image-rendering: auto; transform: translateZ(0); will-change: transform; }
+        #controls-container { width: 100%; max-width: 1000px; padding: 10px; box-sizing: border-box; }
+        #mobile-ui { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; margin-bottom: 10px; padding: 0 10px; }
+        .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-start; }
+        .btn { width: 55px; height: 55px; border-radius: 50%; background: rgba(0, 255, 255, 0.1); border: 2px solid cyan; color: white; font-size: 12px; font-weight: bold; text-align: center; display: flex; justify-content: center; align-items: center; line-height: 1.2; touch-action: none; cursor: pointer; transition: 0.1s; }
+        .btn:active, .btn.active { background: rgba(0, 255, 255, 0.5); transform: scale(0.95); }
+        .btn-heal { border-color: lime; background: rgba(0, 255, 0, 0.1); }
+        .btn-dagger { border-color: #3366ff; background: rgba(51, 102, 255, 0.1); }
+        #joystick-zone { width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.2); position: relative; touch-action: none; flex-shrink: 0; }
+        #joystick-knob { width: 45px; height: 45px; border-radius: 50%; background: rgba(255, 255, 255, 0.5); position: absolute; top: 32px; left: 32px; pointer-events: none; }
+        .color-desc { display: flex; gap: 15px; font-size: 13px; justify-content: center; flex-wrap: wrap; margin-top: 5px;} .box { width: 15px; height: 15px; display: inline-block; vertical-align: middle; border: 1px solid #fff;}
+        #overlay { position: absolute; top: 10%; left: 50%; transform: translate(-50%, 0); background: rgba(0,0,0,0.95); padding: 30px; border: 2px solid cyan; font-size: 20px; text-align: center; z-index: 10; width: 85%; max-width: 700px; max-height: 80vh; overflow-y: auto; }
+        .menu-btn { display: block; margin: 10px auto; padding: 12px 25px; background: #111; border: 2px solid cyan; color: cyan; cursor: pointer; transition: 0.2s; font-weight: bold; } .menu-btn:hover { background: cyan; color: #000; }
+        .badge-slot { display: inline-block; width: 150px; height: 40px; border: 1px dashed gray; margin: 5px; line-height: 40px; font-size: 11px; cursor: pointer; background: #222; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 5px;} .badge-slot:hover { border-color: white; }
+        #badge-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; border-top: 1px solid #444; padding-top: 20px;} .badge-item { border: 1px solid cyan; padding: 5px 10px; font-size: 12px; cursor: pointer; background: #111; width: 45%; } .badge-item:hover { background: #333; }
+        .keyboard-hint { text-align: center; color: gray; font-size: 11px; margin-top: 10px; line-height: 1.4; }
+    </style>
+</head>
+<body>
+    <h2>Убежище</h2>
+    <div id="overlay">
+        <div id="main-menu">
+            <div style="font-size: 24px; margin-bottom: 15px;">ВЫБЕРИТЕ РЕЖИМ</div>
+            <div class="menu-btn" onclick="selectMode(1)">1 ИГРОК</div>
+            <div class="menu-btn" onclick="selectMode(2)">2 ИГРОКА</div>
+            <div style="font-size: 12px; color: gray; margin-top: 15px;">(Подключите геймпад PS4/Xbox и нажмите любую кнопку)</div>
+        </div>
+        <div id="input-select" style="display: none;">
+            <div style="font-size: 24px; margin-bottom: 15px;">ВЫБОР УПРАВЛЕНИЯ</div>
+            <div id="input-1p" style="display: none;">
+                <div class="menu-btn" onclick="selectInput('KEYBOARD_SILK', null)">Клав. (Silksong)</div>
+                <div class="menu-btn" onclick="selectInput('KEYBOARD_SHOOTER', null)">Клав. (Шутер)</div>
+                <div class="menu-btn" onclick="selectInput('GAMEPAD', null)" style="border-color: yellow; color: yellow;">Джойстик (PS4/Xbox)</div>
+            </div>
+            <div id="input-2p" style="display: none;">
+                <div class="menu-btn" onclick="selectInput('KEYBOARD_SILK', 'KEYBOARD_SHOOTER')">1. Оба на Клав. (И1: Silksong / И2: Шутер)</div>
+                <div class="menu-btn" onclick="selectInput('KEYBOARD_SILK', 'GAMEPAD')" style="border-color: yellow; color: yellow;">2. Игрок 1 (Клав) / Игрок 2 (Джойстик)</div>
+                <div class="menu-btn" onclick="selectInput('GAMEPAD', 'KEYBOARD_SHOOTER')" style="border-color: yellow; color: yellow;">3. Игрок 1 (Джойстик) / Игрок 2 (Клав)</div>
+            </div>
+        </div>
+        <div id="hero-select" style="display: none;">
+            <div style="margin-bottom: 15px; font-size: 24px;">ВЫБОР ГЕРОЕВ</div>
+            <div id="p1-select-ui">
+                <div style="color: cyan;"><b>ИГРОК 1 (Мышь):</b></div>
+                <div class="menu-btn" onclick="selectHero1('WATER')" style="color: #3366ff; border-color: #3366ff;">1. Вода</div>
+                <div class="menu-btn" onclick="selectHero1('AIR')" style="color: #ffdd00; border-color: #ffdd00;">2. Воздух</div>
+                <div class="menu-btn" onclick="selectHero1('EARTH')" style="color: #33cc33; border-color: #33cc33;">3. Земля</div>
+                <div class="menu-btn" onclick="selectHero1('STAMINA')" style="color: #b35959; border-color: #b35959;">4. 4-й Герой</div>
+            </div>
+            <div id="p2-select-ui" style="display: none; margin-top: 20px; border-top: 1px solid #444; padding-top: 15px;">
+                <div style="color: yellow;"><b>ИГРОК 2 (Цифры на клав.):</b></div>
+                <div style="font-size: 14px; margin-top: 10px;"><b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой</div>
+                <div id="p2-status" style="margin-top: 10px; color: gray;">Ожидание выбора Игрока 2...</div>
+            </div>
+        </div>
+        <div id="badge-select" style="display: none;">
+            <div style="font-size: 24px; margin-bottom: 10px;">ВЫБОР ЗНАКОВ</div>
+            <div id="team-slot-title" style="color: cyan; margin-bottom: 5px;">Командный слот (Голубые предметы):</div>
+            <div class="badge-slot" id="slot-team" onclick="openBadgeList('team')" style="border-color: cyan; color: cyan;">[Пусто]</div>
+            <div id="p1-badge-area" style="margin-top: 15px;"><div style="color: #ccc;">Слоты Игрока 1:</div><div id="p1-slots-container"></div></div>
+            <div id="p2-badge-area" style="margin-top: 15px; display: none;"><div style="color: #ccc;">Слоты Игрока 2:</div><div id="p2-slots-container"></div></div>
+            <div id="badge-list" style="display: none;"></div>
+            <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 30px; background: #004400; border-color: lime; color: lime;">В БОЙ!</div>
+        </div>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="controls-container">
+        <div class="keyboard-hint">
+            <b>Silksong:</b> Стрелки-Бег, Z-Прыжок, X-Удар, F-Спец, A-Хил, C-Рывок<br>
+            <b>Шутер:</b> WASD-Бег, ЛКМ-Удар, ПКМ-Спец, Q-Хил, E-Рывок<br>
+            <b>Джойстик:</b> Стик-Бег, A-Прыжок, RT-Удар, RB-Спец, B-Хил, X-Рывок<br>
+            <b>*Секретный режим:</b> LBM+RMB / Shift / R3 - Кинжал Света (Зажать)
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById("gameCanvas"); const ctx = canvas.getContext("2d"); const keys = {};
+    let GAME_WIDTH = 1000; let GAME_HEIGHT = 400; let ARENA_W = 1000; let ARENA_H = 400; let FLOOR = 350;
+    let camX = 0, camY = 0; let secretMode = false; let gameState = "MENU"; const GRAVITY = 0.6;
+    let numPlayers = 1; let sharedHeals = 5; let maxSharedHeals = 5; let sharedHitCount = 0; 
+    let players = [], arenaLeaves = [], airBlades = [], blackDaggers = [], playerDaggers = [];
+    let p2Traps = [], phantoms = [], airTraps = [], airComboTraps = [], voidExplosions = [], voidPortals = [], looms = [];
+    let scarf = { active: false, x: 0, y: 0, width: 0, dir: 1, target: null }; let clashFlash = null; let activeCinematic = null;
+    let globalWindMode = "NONE", globalWindTimer = 0, globalWindCooldown = 0;
+
+    let phase2Hp = 18; let phase3Hp = 10;
+    let boss = { 
+        x: 750, y: 300, width: 30, height: 50, vx: 0, vy: 0, speed: 6.5, 
+        hp: 30, maxHp: 30, phase: 1, damageBonus: 0, state: "IDLE", stateTimer: 60, 
+        invuln: 0, color: "#e6c800", attackDir: "HORIZONTAL", targetY: 150, 
+        isHorizontal: false, facingRight: false, missCount: 0, directAttackActive: false, 
+        directAttackHit: false, comboCount: 0, heroBleedTimer: 0, heroBleedTicks: 0, 
+        superQueue: [], sa1Phantoms: [], infectedTimer: 0, voidWindDisabled: 0, sa4Triggered: false,
+        sa1Count: 0, saLines: null
+    };
+
+    let p1InputType = 'KEYBOARD_SILK'; let p2InputType = 'KEYBOARD_SHOOTER';
+    let p1HeroSelection = null; let p2HeroSelection = null;
+
+    const badgesDict = {
+        'accel': { id: 'accel', name: 'Ускоритель (+20% ск. хила)', teamAllowed: false },
+        'multi': { id: 'multi', name: 'Мультисвязыватель (Двойной хил)', teamAllowed: false },
+        'glass': { id: 'glass', name: 'Стеклянная нить (Урон х1.75, по вам х2)', teamAllowed: true }, 
+        'wings': { id: 'wings', name: 'Световые крылья (Двойной прыжок)', teamAllowed: true },
+        'sharp': { id: 'sharp', name: 'Заточка (Шанс кровотечения)', teamAllowed: false },
+        'generator': { id: 'generator', name: 'Генератор (1 заряд за 2 сек)', teamAllowed: false },
+        'none':  { id: 'none', name: '[Очистить слот]', teamAllowed: 'both' }
+    };
+    
+    let configBadges = { team: 'none', p1: ['none','none','none'], p2: ['none','none','none'] };
+    let currentEditingSlot = null; 
+
+    for(let i=0; i<50; i++) {
+        arenaLeaves.push({ 
+            x: Math.random() * 2500, y: Math.random() * 600, vx: 0, vy: Math.random() * 0.5 + 0.2, 
+            size: 4 + Math.random() * 4, angle: Math.random() * Math.PI * 2, spin: (Math.random() - 0.5) * 0.1, 
+            color: `rgba(${100+Math.random()*50}, ${150+Math.random()*100}, 50, 0.8)` 
+        });
+    }
+
+    function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1; 
+        canvas.width = GAME_WIDTH * dpr; canvas.height = GAME_HEIGHT * dpr;
+        canvas.style.width = "100%"; canvas.style.maxWidth = "1000px"; canvas.style.height = "auto";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0); 
+    }
+    window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+    let audioCtx = null;
+    function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination); let now = audioCtx.currentTime;
+        if (type === 'slash') { osc.type = 'triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.15); gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15); osc.start(now); osc.stop(now + 0.15); } 
+        else if (type === 'hitBoss') { osc.type = 'square'; osc.frequency.setValueAtTime(200, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.1); gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); osc.start(now); osc.stop(now + 0.1); } 
+        else if (type === 'hitPlayer') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.linearRampToValueAtTime(50, now + 0.3); gain.gain.setValueAtTime(0.7, now); gain.gain.linearRampToValueAtTime(0.001, now + 0.3); osc.start(now); osc.stop(now + 0.3); } 
+        else if (type === 'parry') { osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(2000, now + 0.15); gain.gain.setValueAtTime(0.5, now); gain.gain.linearRampToValueAtTime(0.001, now + 0.15); osc.start(now); osc.stop(now + 0.15); } 
+        else if (type === 'heal') { osc.type = 'sine'; osc.frequency.setValueAtTime(300, now); osc.frequency.linearRampToValueAtTime(600, now + 2.0); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.001, now + 2.0); osc.start(now); osc.stop(now + 2.0); } 
+        else if (type === 'throw') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(900, now); osc.frequency.exponentialRampToValueAtTime(300, now + 0.1); gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); osc.start(now); osc.stop(now + 0.1); } 
+        else if (type === 'teleport') { osc.type = 'sine'; osc.frequency.setValueAtTime(1500, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.4); gain.gain.setValueAtTime(0.5, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4); osc.start(now); osc.stop(now + 0.4); }
+    }
+
+    function isKeyPressed(codes) { for(let c of codes) { if (keys[c]) return true; } return false; }
+    function tryEscapeTie() { 
+        let escaped = false; 
+        for (let p of players) { 
+            if (p.tied && boss.state !== "SCARF_PULL" && !boss.state.startsWith("CINEMATIC")) { 
+                p.tieClicks++; 
+                if (p.tieClicks >= (secretMode ? 7 : 5)) { p.tied = false; p.tieClicks = 0; } 
+                escaped = true; 
+            } 
+        } 
+        return escaped; 
+    }
+
+    window.addEventListener("keydown", e => { 
+        keys[e.code] = true; initAudio(); tryEscapeTie(); 
+        
+        if (e.code === 'KeyL' && gameState === "MENU" && (document.getElementById("input-select").style.display === "block" || document.getElementById("hero-select").style.display === "block" || document.getElementById("main-menu").style.display === "block")) {
+            secretMode = true; playSound('heal'); document.body.style.backgroundColor = "#000";
+        }
+
+        if (gameState === "MENU" && document.getElementById("hero-select").style.display === "block") {
+            if (numPlayers === 2) {
+                if (e.key === "1") { p2HeroSelection = 'WATER'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: Вода"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
+                if (e.key === "2") { p2HeroSelection = 'AIR'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: Воздух"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
+                if (e.key === "3") { p2HeroSelection = 'EARTH'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: Земля"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
+                if (e.key === "4") { p2HeroSelection = 'STAMINA'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: 4-й Герой"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
+            }
+        }
+    });
+
+    window.addEventListener("keyup", e => keys[e.code] = false);
+    window.addEventListener("mousedown", e => { if (e.button === 0) keys['MouseLeft'] = true; if (e.button === 2) keys['MouseRight'] = true; initAudio(); tryEscapeTie(); });
+    window.addEventListener("mouseup", e => { if (e.button === 0) keys['MouseLeft'] = false; if (e.button === 2) keys['MouseRight'] = false; });
+    window.addEventListener("contextmenu", e => e.preventDefault());
+
+    function getGamepadInput(targetIndex) {
+        let gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+        let gp = gamepads[targetIndex] || Array.from(gamepads).find(g => g !== null);
+        if (!gp) return null;
+        return {
+            left: gp.axes[0] < -0.3 || gp.buttons[14]?.pressed, right: gp.axes[0] > 0.3 || gp.buttons[15]?.pressed,
+            up: gp.axes[1] < -0.3 || gp.buttons[12]?.pressed, down: gp.axes[1] > 0.3 || gp.buttons[13]?.pressed,
+            jump: gp.buttons[0]?.pressed, heal: gp.buttons[1]?.pressed, dash: gp.buttons[2]?.pressed, 
+            special: gp.buttons[5]?.pressed, light: gp.buttons[11]?.pressed,
+            attack: gp.buttons[7]?.pressed || gp.buttons[7]?.value > 0.1 || gp.buttons[6]?.pressed
+        };
+    }
+
+    function selectMode(mode) {
+        numPlayers = mode; document.getElementById("main-menu").style.display = "none"; document.getElementById("input-select").style.display = "block";
+        document.getElementById("input-1p").style.display = (mode === 1) ? "block" : "none"; document.getElementById("input-2p").style.display = (mode === 2) ? "block" : "none";
+    }
+
+    function selectInput(in1, in2) {
+        p1InputType = in1; if (numPlayers === 2) p2InputType = in2;
+        document.getElementById("input-select").style.display = "none"; document.getElementById("hero-select").style.display = "block";
+        document.getElementById('p1-status').innerText = ""; document.getElementById('p2-status').innerText = "Ожидание Игрока 2...";
+        document.getElementById("p2-select-ui").style.display = (numPlayers === 2) ? "block" : "none";
+    }
+
+    function selectHero1(type) { p1HeroSelection = type; if (numPlayers === 1) { prepBadgeMenu(); } else { document.getElementById('p1-status').innerText = "Игрок 1 Готов!"; checkDuoStart(); } }
+    function checkDuoStart() { if (p1HeroSelection && p2HeroSelection) prepBadgeMenu(); }
+    function getSlotsForHero(type) { return (type === 'WATER' || type === 'AIR') ? 2 : 3; }
+
+    function prepBadgeMenu() {
+        document.getElementById("hero-select").style.display = "none";
+        document.getElementById("badge-select").style.display = "block";
+
+        let titleTeam = document.getElementById("team-slot-title");
+        let slotTeam = document.getElementById("slot-team");
+        slotTeam.style.display = "inline-block"; titleTeam.style.display = "block";
+
+        let p1html = '';
+        for(let i=0; i<getSlotsForHero(p1HeroSelection); i++) p1html += `<div class="badge-slot" id="slot-p1_${i}" onclick="openBadgeList('p1_${i}')">[Пусто]</div>`;
+        document.getElementById("p1-slots-container").innerHTML = p1html;
+
+        if (numPlayers === 2) {
+            document.getElementById("p2-badge-area").style.display = "block";
+            let p2html = '';
+            for(let i=0; i<getSlotsForHero(p2HeroSelection); i++) p2html += `<div class="badge-slot" id="slot-p2_${i}" onclick="openBadgeList('p2_${i}')">[Пусто]</div>`;
+            document.getElementById("p2-slots-container").innerHTML = p2html;
+        }
+    }
+
+    function openBadgeList(slotId) {
+        currentEditingSlot = slotId;
+        let listDiv = document.getElementById("badge-list");
+        listDiv.style.display = "flex"; listDiv.innerHTML = '';
+        let isTopSlot = (slotId === 'team');
+        
+        for (let key in badgesDict) {
+            let b = badgesDict[key];
+            if (key === 'none') { listDiv.innerHTML += `<div class="badge-item" style="color: white; border-color: #aaa;" onclick="assignBadge('${key}')">${b.name}</div>`; continue; }
+            if (isTopSlot && b.teamAllowed !== true) continue; 
+            if (!isTopSlot && b.teamAllowed === true) continue; 
+            let colorStyle = (b.teamAllowed === true) ? 'color: cyan; border-color: cyan;' : 'color: white; border-color: #aaa;';
+            listDiv.innerHTML += `<div class="badge-item" style="${colorStyle}" onclick="assignBadge('${key}')">${b.name}</div>`;
+        }
+    }
+
+    function assignBadge(badgeKey) {
+        let name = (badgesDict[badgeKey].id === 'none') ? '[Пусто]' : badgesDict[badgeKey].name.split(' (')[0];
+        if (currentEditingSlot === 'team') { configBadges.team = badgeKey; document.getElementById('slot-team').innerText = name; } 
+        else {
+            let parts = currentEditingSlot.split('_'); 
+            configBadges[parts[0]][parseInt(parts[1])] = badgeKey;
+            document.getElementById('slot-' + currentEditingSlot).innerText = name;
+        }
+        document.getElementById("badge-list").style.display = "none";
+    }
+
+    function applyBadgesToPlayer(p, isP1) {
+        p.badges = [];
+        let slots = isP1 ? configBadges.p1 : configBadges.p2;
+        p.badges.push(...slots);
+        p.badges.push(configBadges.team); 
+        if (p.badges.includes('accel')) p.healFramesTotal = 96;
+        if (p.badges.includes('multi')) { p.isMultiHeal = true; p.healFramesTotal = 120; } 
+        if (p.badges.includes('glass')) { p.dmgDealtMod = 1.75; p.glassDebuff = true; } else { p.dmgDealtMod = 1; }
+        if (p.badges.includes('wings')) p.maxJumps = 2;
+        if (p.badges.includes('sharp')) p.hasSharpening = true;
+    }
+
+    function buildAndStartGame() {
+        initAudio(); document.getElementById("overlay").style.display = "none"; players = [];
+        
+        if (secretMode) { ARENA_W = 2500; ARENA_H = 600; FLOOR = 550; } 
+        else { ARENA_W = 1000; ARENA_H = 400; FLOOR = 350; }
+
+        let silkSolo = { left: ["ArrowLeft"], right: ["ArrowRight"], down: ["ArrowDown"], jump: ["KeyZ"], attack: ["KeyX"], heal: ["KeyA"], special: ["KeyF"], up: ["ArrowUp"], dash: ["KeyC"] };
+        let shooterSolo = { left: ["KeyA"], right: ["KeyD"], down: ["KeyS"], jump: ["KeyW"], attack: ["MouseLeft"], heal: ["KeyQ"], special: ["MouseRight"], up: ["KeyW"], dash: ["KeyE"] };
+        
+        let p1Keys = p1InputType === 'KEYBOARD_SHOOTER' ? shooterSolo : silkSolo; 
+        let p2Keys = shooterSolo; 
+        if (numPlayers === 2 && p1InputType === 'KEYBOARD_SILK' && p2InputType === 'KEYBOARD_SHOOTER') {
+            p1Keys = { left: ["ArrowLeft"], right: ["ArrowRight"], down: ["ArrowDown"], jump: ["Comma"], attack: ["Period"], heal: ["KeyK"], special: ["Quote"], up: ["ArrowUp"], dash: ["Slash"] };
+        }
+
+        let startX1 = secretMode ? ARENA_W/2 - 50 : 150;
+        let p1 = createPlayer(1, p1HeroSelection, p1Keys, p1InputType, startX1);
+        applyBadgesToPlayer(p1, true); players.push(p1);
+
+        if (numPlayers === 1) {
+            boss.maxHp = secretMode ? 60 : 25; phase2Hp = secretMode ? 39 : 18; phase3Hp = secretMode ? 20 : 10; maxSharedHeals = 5;
+        } else {
+            let startX2 = secretMode ? ARENA_W/2 + 50 : 200;
+            let p2 = createPlayer(2, p2HeroSelection, p2Keys, p2InputType, startX2);
+            applyBadgesToPlayer(p2, false); players.push(p2);
+
+            let isLoreDuo = (p1HeroSelection === 'WATER' && p2HeroSelection === 'EARTH') || (p1HeroSelection === 'EARTH' && p2HeroSelection === 'WATER');
+            if (isLoreDuo) { players[0].maxHp = 7; players[0].hp = 7; players[1].maxHp = 7; players[1].hp = 7; }
+            boss.maxHp = secretMode ? 100 : 50; phase2Hp = secretMode ? 66 : 36; phase3Hp = secretMode ? 33 : 20; maxSharedHeals = 7;
+        }
+
+        if (secretMode) {
+            for (let p of players) { p.maxHp += 2; p.hp += 2; }
+        }
+
+        resetGameParams(); gameState = "PLAYING";
+    }
+
+    function createPlayer(id, type, keysObj, inputType, startX) {
+        let p = { 
+            id: id, x: startX, y: FLOOR - 50, width: 30, height: 50, vx: 0, vy: 0, facingRight: true, attackTimer: 0, attackCooldown: 0, attackType: "NORMAL", 
+            invuln: 0, healTimer: 0, isHealing: false, isAoEHealing: false, prevHealKey: false, prevDaggerKey: false, prevAttackKey: false, prevComboKey: false, prevJumpKey: false, 
+            wallJumpCooldown: 0, bleedTimer: 0, tied: false, tieClicks: 0, hasPressedTie: false, keys: keysObj, inputType: inputType, isDowned: false, downedTimer: 0, 
+            isDashing: false, purpleHp: 0, tpCooldown: 0, tpDebuffTimer: 0, jumps: 0, maxJumps: 1, healFramesTotal: 120, isMultiHeal: false, glassDebuff: false, hasSharpening: false, dmgDealtMod: 1, genTimer: 0, lightCharge: 0, saHit: false
+        };
+        if (type === 'WATER') { Object.assign(p, { speed: 5, hp: 6, maxHp: 6, color: "#3366ff", atkCdBase: 24, atkRange: 75, jumpPowerBase: -12, type: 'WATER', dmgMulti: 1 }); } 
+        else if (type === 'EARTH') { Object.assign(p, { speed: 5.5, hp: 6, maxHp: 6, color: "#33cc33", atkCdBase: 12, atkRange: 40, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.75 }); } 
+        else if (type === 'AIR') { Object.assign(p, { speed: 5.5, hp: 6, maxHp: 6, color: "#ffdd00", atkCdBase: 20, atkRange: 60, jumpPowerBase: -13, type: 'AIR', dmgMulti: 0.8 }); } 
+        else if (type === 'STAMINA') { Object.assign(p, { speed: 5, hp: 6, maxHp: 6, color: "#b35959", atkCdBase: 24, atkRange: 75, jumpPowerBase: -12, type: 'STAMINA', dmgMulti: 1.5, stamina: 5, maxStamina: 9, isCharging: false, chargeTimer: 0, chargeProjectiles: [] }); }
+        return p;
+    }
+
+    function resetGameParams() {
+        for(let p of players) { 
+            p.hp = p.maxHp; p.y = FLOOR - 50; p.vx = 0; p.vy = 0; p.invuln = 0; p.healTimer = 0; p.isHealing = false; p.isAoEHealing = false; p.bleedTimer = 0; p.tied = false; p.tieClicks = 0; p.hasPressedTie = false; p.isDowned = false; p.purpleHp = 0; p.tpCooldown = 0; p.tpDebuffTimer = 0; p.genTimer = 0; p.lightCharge = 0; p.saHit = false;
+            if(p.type === 'STAMINA') { p.stamina = 5; p.isCharging = false; p.chargeTimer = 0; p.chargeProjectiles = []; } 
+        }
+        if(players.length > 0) players[0].x = ARENA_W/2 - 50; if(players.length > 1) players[1].x = ARENA_W/2 + 50;
+        sharedHeals = maxSharedHeals; sharedHitCount = 0; windStreams = []; airBlades = []; playerDaggers = []; blackDaggers = []; p2Traps = []; phantoms = []; airTraps = []; airComboTraps = []; scarf.active = false; clashFlash = null; activeCinematic = null; globalWindMode = "NONE"; globalWindTimer = 0; globalWindCooldown = 0; voidExplosions = []; voidPortals = []; looms = [];
+        boss.hp = boss.maxHp; boss.phase = 1; boss.damageBonus = 0; boss.x = ARENA_W/2; boss.y = FLOOR - 50; boss.state = "IDLE"; boss.stateTimer = 60; boss.vx = 0; boss.speed = 6.5; boss.missCount = 0; boss.directAttackActive = false; boss.directAttackHit = false; boss.comboCount = 0; boss.heroBleedTimer = 0; boss.heroBleedTicks = 0; boss.superQueue = []; boss.voidWindDisabled = 0; boss.sa1Phantoms = []; boss.sa4Triggered = false; boss.sa1Count = 0; boss.color = "#e6c800"; boss.saLines = null;
+    }
+
+    function getBossColor(c) {
+        if (!secretMode) return c;
+        if (boss.infectedTimer > 0) return "#00ffff"; 
+        if (boss.state === "VULN_STANCE" || boss.state === "SA1_ACTIVE") return "#ff8800"; 
+        if (c === '#e6c800') return '#665500'; if (c === '#ff3333') return '#660000'; if (c === '#00ffff') return '#006666'; if (c === '#ff8800') return '#884400'; if (c === '#aaaaaa') return '#444444'; 
+        return c;
+    }
+
+    function distToSegment(p, line) {
+        let l2 = Math.pow(line.x1 - line.x2, 2) + Math.pow(line.y1 - line.y2, 2);
+        let cx = p.x + p.width/2; let cy = p.y + p.height/2;
+        if (l2 === 0) return Math.hypot(cx - line.x1, cy - line.y1);
+        let t = ((cx - line.x1) * (line.x2 - line.x1) + (cy - line.y1) * (line.y2 - line.y1)) / l2;
+        t = Math.max(0, Math.min(1, t));
+        let projX = line.x1 + t * (line.x2 - line.x1); let projY = line.y1 + t * (line.y2 - line.y1);
+        return Math.hypot(cx - projX, cy - projY);
+    }
+
+    function takeDamage(p, amount, isBleed = false, isStaminaBleed = false) {
+        if (!isBleed && !boss.state.startsWith("CINEMATIC") && !activeCinematic) { boss.directAttackHit = true; boss.missCount = 0; }
+        if (p.invuln <= 0 || isBleed) {
+            if (p.glassDebuff && !isStaminaBleed) amount *= 2; 
+            if (p.purpleHp > 0 && !isBleed) { let absorb = Math.min(p.purpleHp, amount); p.purpleHp -= absorb; amount -= absorb; }
+            if (p.lightCharge > 0 && !isBleed) { amount = Math.max(0, amount - 1); p.lightCharge = 0; }
+            if (secretMode && !isBleed) sharedHitCount = Math.max(0, sharedHitCount - 1);
+            if (amount > 0) p.hp -= amount; 
+            if (!isBleed) p.invuln = 60; 
+            p.isHealing = false; p.isAoEHealing = false; p.healTimer = 0; 
+            if (p.type === 'STAMINA') p.isCharging = false; 
+            playSound('hitPlayer'); 
+            if (p.hp <= 0) {
+                if (numPlayers === 2 && p.type === 'STAMINA' && isStaminaBleed && !p.isDowned) {
+                    p.isDowned = true; p.hp = 0.1; p.downedTimer = 600; 
+                } else { p.hp = 0; }
+            }
+        }
+    }
+
+    function recordHit(p) { 
+        sharedHitCount++; 
+        if (sharedHitCount >= 8) { 
+            sharedHitCount = 0; sharedHeals = Math.min(maxSharedHeals, sharedHeals + 1); 
+            for (let pl of players) { if (pl.type === 'STAMINA' && !pl.isDowned) pl.stamina = Math.min(pl.maxStamina, pl.stamina + 1); }
+            playSound('leaf'); 
+        }
+        if (p && p.hasSharpening && Math.random() < 0.08 && boss.heroBleedTimer <= 0) { boss.heroBleedTimer = 60; boss.heroBleedTicks = 2; }
+    }
+    
+    function applyBleed(p) { if (boss.phase >= 2 && p.bleedTimer <= 0 && !p.isHealing && !p.tied && !p.isDowned) { p.bleedTimer = 120; } }
+    function rectIntersect(r1, r2) { return !(r2.x > r1.x + r1.width || r2.x + r2.width < r1.x || r2.y > r1.y + r1.height || r2.y + r2.height < r1.y); }
+
+    function getNearestPlayer(srcX) { 
+        let activePlayers = players.filter(p => !p.isDowned && p.hp > 0);
+        if (activePlayers.length === 0) return players[0];
+        if (activePlayers.length === 1) return activePlayers[0];
+        let d1 = Math.abs(srcX - (activePlayers[0].x + activePlayers[0].width/2)); 
+        let d2 = Math.abs(srcX - (activePlayers[1].x + activePlayers[1].width/2)); 
+        return d1 < d2 ? activePlayers[0] : activePlayers[1]; 
+    }
+
+    function triggerCinematic(type, targetPlayer, isRealHit = true) {
+        if (type === "SA1") activeCinematic = { type: 'SA1', p: targetPlayer, timer: 90, tick: 0, isReal: isRealHit };
+        else if (type === "SA2") activeCinematic = { type: 'SA2', p: targetPlayer, timer: 90, tick: 0 };
+        else if (type === "SA3") activeCinematic = { type: 'SA3', p: targetPlayer, timer: 120, tick: 0 };
+    }
+
+    function triggerChaos(saCount) {
+        boss.y = -1000; boss.vx = 0; boss.vy = 0;
+        if (saCount === 3) {
+            boss.superQueue = [
+                { s: "SA2_WINDUP", t: 24 }, { s: "SA2_WINDUP", t: 24 }, { s: "SA2_WINDUP", t: 24 },
+                { s: "SA2_DOUBLE", t: 24 }, { s: "SA2_TRIPLE", t: 24 }, { s: "SA3_WINDUP", t: 24 }
+            ];
+        } else if (saCount === 4) {
+            boss.superQueue = [
+                { s: "SA2_WINDUP", t: 24 }, { s: "SA2_WINDUP", t: 24 }, { s: "SA2_WINDUP", t: 24 },
+                { s: "SA2_DOUBLE", t: 24 }, { s: "SA3_WINDUP", t: 24 }
+            ];
+        }
+        boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 1; boss.phase = (saCount === 3 ? 2.5 : 3.5); 
+    }
+
+    function spawnPhantom(targetP, duration, isTransitional = false) { 
+        phantoms.push({ x: ARENA_W/2 - 15, y: FLOOR - 50, width: 30, height: 50, vx: 0, vy: 0, state: "LUNGE_WINDUP", stateTimer: 30, timer: duration, target: targetP, attackDir: (Math.random() < 0.5 ? "HORIZONTAL_R" : "HORIZONTAL_L"), isTransitional: isTransitional, facingRight: false }); 
+    }
+
+    function checkMissPhaseTransition() {
+        if (secretMode) return; 
+        if (boss.missCount >= 3) {
+            boss.missCount = 0;
+            if (boss.phase === 1) { boss.hp = phase2Hp; boss.phase = 2; startTransition("ЯРОСТЬ! Промахи раздражают. Фаза 2!"); } 
+            else if (boss.phase === 2) { boss.phase = 3; boss.damageBonus = 0.5; startTransition("СЛИШКОМ БЫСТРО! Фаза 3!"); globalWindCooldown = 0; if (Math.random() < 0.5) spawnPhantom(getNearestPlayer(ARENA_W/2), 420, true); }
+        }
+    }
+
+    function checkPhaseTransition() {
+        if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") {
+            if (secretMode) { 
+                boss.state = "FREE_ROAM"; boss.hp = 0; 
+                for(let i=0; i<40; i++) voidExplosions.push({x: boss.x + 15, y: boss.y + 25, vx: (Math.random()-0.5)*20, vy: (Math.random()-0.5)*20, timer: 60, isWhite: Math.random()>0.5});
+            } 
+            else {
+                boss.state = "CINEMATIC_TIE_WAIT"; boss.hp = 0; boss.invuln = 9999; boss.missCount = 0; boss.stateTimer = 600; boss.x = ARENA_W/2 - 15; boss.y = FLOOR - boss.height; boss.vx = 0; boss.vy = 0; boss.color = "white";
+                for(let p of players) { p.bleedTimer = 0; p.hasPressedTie = false; p.tied = false; if(p.type === 'STAMINA'){ p.isCharging = false; p.chargeTimer = 0; } }
+                windStreams = []; airBlades = []; playerDaggers = []; blackDaggers = []; p2Traps = []; phantoms = []; airTraps = []; airComboTraps = []; scarf.active = false; globalWindMode = "NONE"; boss.width = 30; boss.height = 50; boss.isHorizontal = false; looms = [];
+                players[0].x = boss.x - 50; players[0].y = FLOOR - players[0].height; players[0].vx = 0; players[0].facingRight = true;
+                if (numPlayers === 2) { players[1].x = boss.x + boss.width + 20; players[1].y = FLOOR - players[1].height; players[1].vx = 0; players[1].facingRight = false; }
+            }
+            return;
+        }
+
+        if (secretMode) {
+            if (boss.hp <= phase2Hp && boss.phase === 1) { 
+                boss.phase = 2; 
+                boss.superQueue = [ { s: "VOID_PORTALS", t: 90 }, { s: "VOID_PORTALS", t: 90 }, { s: "SHARPEN_WINDUP", t: 120 } ];
+                boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 1;
+            } else if (boss.hp <= phase3Hp && boss.phase === 2) {
+                boss.phase = 2.5; triggerChaos(3);
+            } else if (boss.hp <= 10 && boss.phase === 3 && !boss.sa4Triggered) {
+                boss.sa4Triggered = true; triggerChaos(4);
+            }
+        } else {
+            if (boss.hp <= phase2Hp && boss.phase === 1) { 
+                boss.phase = 2; startTransition("Фаза 2: Кинжалы и Телепорты!"); 
+            } 
+            else if (boss.hp <= phase3Hp && boss.phase === 2) { 
+                boss.phase = 3; boss.damageBonus = 0.5; startTransition("Фаза 3: ВЕТРА И ОБМАНКИ!"); globalWindCooldown = 0; if (Math.random() < 0.5) spawnPhantom(getNearestPlayer(ARENA_W/2), 420, true); 
+            } 
+        }
+    }
+
+    function startTransition(msg) { boss.state = "TRANSITION"; boss.color = "#e6c800"; boss.msg = msg; boss.stateTimer = 420; boss.invuln = 420; boss.comboCount = 0; boss.x = ARENA_W/2 - 15; boss.y = FLOOR - boss.height; boss.vx = 0; boss.vy = 0; boss.missCount = 0; windStreams = []; airBlades = []; playerDaggers = []; blackDaggers = []; p2Traps = []; scarf.active = false; globalWindMode = "NONE"; boss.width = 30; boss.height = 50; boss.isHorizontal = false; }
+    
+    function spawnThread(targetPlayer) { 
+        let dx = (targetPlayer.x + targetPlayer.width/2) - (boss.x + boss.width/2); 
+        let dy = (targetPlayer.y + targetPlayer.height/2) - (boss.y + boss.height/2); 
+        let dist = Math.hypot(dx, dy); 
+        blackDaggers.push({ 
+            x: boss.x + boss.width/2, y: boss.y + boss.height/2, 
+            vx: (dx/dist) * 11, vy: (dy/dist) * 11, 
+            isShuriken: false, isSecret: false, dmg: 0 
+        }); 
+        playSound('throw'); 
+    }
+    
+    function applyPhysicsPushToLeaves(srcX, srcY, strength) { for(let l of arenaLeaves) { let dx = l.x - srcX; let dy = l.y - srcY; let dist = Math.hypot(dx, dy); if (dist < 80) { l.vx += (dx/dist) * strength; l.vy += (dy/dist) * strength; } } }
+    function fireCharge(p) { let ticks = Math.floor(p.chargeTimer / 30); let damage = 0.5 + ticks * 1.0; p.chargeProjectiles.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (p.facingRight ? 1 : -1) * 12, dmg: damage, pId: p.id }); p.isCharging = false; playSound('wind'); p.attackCooldown = 15; p.chargeTimer = 0; }
+
+    function update() {
+        if (gameState !== "PLAYING") { if (isKeyPressed(["KeyR"]) && gameState === "GAMEOVER") { location.reload(); } return; }
+
+        if (players.some(p => p.hp <= 0 && (!p.isDowned || p.downedTimer <= 0))) { gameState = "GAMEOVER"; }
+
+        if (secretMode && !activeCinematic) {
+            let ax = 0, ay = 0, c = 0;
+            for (let p of players) { if (p.hp > 0 && !p.isDowned) { ax += p.x; ay += p.y; c++; } }
+            if (c > 0) { ax /= c; ay /= c; }
+            camX += (ax - GAME_WIDTH/2 - camX) * 0.1; camY += (ay - GAME_HEIGHT/2 - camY) * 0.1;
+            if (camX < 0) camX = 0; if (camX > ARENA_W - GAME_WIDTH) camX = ARENA_W - GAME_WIDTH;
+            if (camY < 0) camY = 0; if (camY > ARENA_H - GAME_HEIGHT) camY = ARENA_H - GAME_HEIGHT;
+        } else { camX = 0; camY = 0; }
+
+        if (activeCinematic) {
+            activeCinematic.tick++;
+            activeCinematic.timer--;
+
+            if (activeCinematic.type === 'SA1' && activeCinematic.isReal) { if (activeCinematic.tick % 30 === 0 && activeCinematic.tick <= 90) { activeCinematic.p.invuln = 0; takeDamage(activeCinematic.p, 1); } }
+            if (activeCinematic.type === 'SA2') { if (activeCinematic.tick % 30 === 0 && activeCinematic.tick <= 90) { activeCinematic.p.invuln = 0; takeDamage(activeCinematic.p, 1); } }
+            if (activeCinematic.type === 'SA3') { if (activeCinematic.tick === 90) { activeCinematic.p.hp = 0; activeCinematic.p.isDowned = false; } }
+
+            if (activeCinematic.timer <= 0) {
+                activeCinematic = null;
+                if (boss.superQueue && boss.superQueue.length > 0) {
+                    boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 30; 
+                } else {
+                    boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30;
+                    if (boss.phase === 2.5) { boss.phase = 3; boss.damageBonus = 0.5; }
+                    if (boss.phase === 3.5) { boss.phase = 3; }
+                }
+            }
+            return; 
+        }
+
+        // --- Порталы (L Режим) ---
+        for (let i = voidPortals.length - 1; i >= 0; i--) {
+            let pt = voidPortals[i]; pt.timer--;
+            if (pt.timer <= 0) {
+                let nearest = getNearestPlayer(pt.x);
+                let dx = (nearest.x + nearest.width/2) - pt.x; let dy = (nearest.y + nearest.height/2) - pt.y; let dist = Math.hypot(dx, dy);
+                blackDaggers.push({ x: pt.x, y: pt.y, vx: (dx/dist) * 14, vy: (dy/dist) * 14, isShuriken: pt.type === "SHURIKEN", isSecret: true, dmg: pt.type === "SHURIKEN" ? 2 : 0.5 });
+                playSound('throw'); voidPortals.splice(i, 1);
+            }
+        }
+
+        // --- Станок (Обычный Режим) ---
+        for (let i = looms.length - 1; i >= 0; i--) {
+            let lm = looms[i]; lm.timer--;
+            if (lm.timer > 0 && lm.timer % 90 === 0) { 
+                let target = getNearestPlayer(lm.x);
+                let dx = (target.x + target.width/2) - lm.x; let dy = (target.y + target.height/2) - lm.y; let dist = Math.hypot(dx, dy);
+                blackDaggers.push({ x: lm.x, y: lm.y, vx: (dx/dist) * 11, vy: (dy/dist) * 11, isShuriken: false, isSecret: false, dmg: 0 });
+                playSound('throw');
+            }
+            if (lm.timer <= 0) looms.splice(i, 1);
+        }
+
+        if (globalWindMode !== "NONE") { globalWindTimer--; if (globalWindTimer <= 0) { globalWindMode = "NONE"; globalWindCooldown = 900; } } else if (globalWindCooldown > 0) globalWindCooldown--;
+        let currentGravity = globalWindMode === "UP" ? 0.3 : (globalWindMode === "DOWN" ? 0.9 : GRAVITY);
+        let jumpMod = globalWindMode === "UP" ? 1.3 : (globalWindMode === "DOWN" ? 0.6 : 1);
+
+        for (let p of players) {
+            if (p.badges.includes('generator') && !p.isDowned && p.hp > 0 && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") { p.genTimer++; if (p.genTimer >= 120) { p.genTimer = 0; recordHit(p); } }
+            if (p.isDowned) { p.vx = 0; p.vy = 0; p.isHealing = false; p.isAoEHealing = false; p.downedTimer--; if (p.downedTimer <= 0) p.hp = 0; continue; }
+            if (p.hp <= 0) continue; 
+
+            let kLeft=false, kRight=false, kDown=false, kUp=false, kJump=false, kAttack=false, kHeal=false, kSpec=false, kDash=false, kLight=false;
+
+            if (p.inputType === 'GAMEPAD') {
+                let targetIndex = p.id === 1 ? 0 : 1;
+                if (numPlayers === 2 && p1InputType.startsWith('KEYBOARD') && p.id === 2) targetIndex = 0;
+                if (numPlayers === 2 && p2InputType.startsWith('KEYBOARD') && p.id === 1) targetIndex = 0;
+                let gpIn = getGamepadInput(targetIndex);
+                if (gpIn) {
+                    kLeft=gpIn.left; kRight=gpIn.right; kUp=gpIn.up; kDown=gpIn.down;
+                    kJump=gpIn.jump; kHeal=gpIn.heal; kDash=gpIn.dash; kSpec=gpIn.special; kAttack=gpIn.attack; kLight=gpIn.light;
+                }
+            } else {
+                kLeft = isKeyPressed(p.keys.left); kRight = isKeyPressed(p.keys.right); kDown = isKeyPressed(p.keys.down); kUp = isKeyPressed(p.keys.up);
+                kJump = isKeyPressed(p.keys.jump); kAttack = isKeyPressed(p.keys.attack); kHeal = isKeyPressed(p.keys.heal); kSpec = isKeyPressed(p.keys.special);
+                kDash = p.keys.dash ? isKeyPressed(p.keys.dash) : false;
+                kLight = (p.inputType === 'KEYBOARD_SHOOTER') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : (isKeyPressed(['ShiftLeft', 'ShiftRight']));
+            }
+
+            if (p.tpDebuffTimer > 0) { p.tpDebuffTimer--; kSpec = false; kHeal = false; if (p.tpDebuffTimer <= 0) p.purpleHp = 0; }
+            if (p.tpCooldown > 0) p.tpCooldown--;
+            p.isDashing = false;
+
+            if (boss.state.startsWith("CINEMATIC") || boss.state === "DEFEATED" || boss.state === "FREE_ROAM" || boss.state === "SA_EXECUTE") {
+                if (boss.state === "CINEMATIC_TIE_WAIT") { if (kSpec && !p.prevDaggerKey && !p.hasPressedTie && sharedHeals >= 0.5) { sharedHeals -= 0.5; p.hasPressedTie = true; playSound('throw'); } }
+                p.prevDaggerKey = kSpec; p.vx = 0; p.vy = 0; p.isHealing = false; p.isAoEHealing = false; if(p.type === 'STAMINA'){ p.isCharging = false; p.chargeTimer = 0; }
+                
+                if (boss.state === "FREE_ROAM") {
+                    if (kLeft) { p.vx = -p.speed; p.facingRight = false; } else if (kRight) { p.vx = p.speed; p.facingRight = true; }
+                    if (kJump && !p.prevJumpKey && p.y + p.height >= FLOOR) { p.vy = p.jumpPowerBase; }
+                    p.prevJumpKey = kJump; p.vy += GRAVITY;
+                }
+            } else if (p.tied) {
+                if (boss.state !== "SCARF_PULL") { p.vx = 0; p.vy = 0; } p.isHealing = false; p.isAoEHealing = false; p.healTimer = 0; if(p.type === 'STAMINA'){ p.isCharging = false; p.chargeTimer = 0; }
+            } else {
+                if (kHeal && !p.prevHealKey && !p.isHealing && sharedHeals >= 1) {
+                    let isAoE = (p.type === 'WATER' && numPlayers === 2 && kUp); let needsHeal = p.hp < p.maxHp;
+                    let hasDownedAlly = players.some(pl => pl.isDowned);
+                    if (isAoE) needsHeal = players.some(pl => pl.hp < pl.maxHp) || hasDownedAlly;
+                    if (needsHeal || (p.type === 'STAMINA' && p.stamina < p.maxStamina) || hasDownedAlly) {
+                        p.isHealing = true; p.healTimer = 0; p.bleedTimer = 0; p.isAoEHealing = isAoE; playSound('heal');
+                        if (numPlayers === 2 && !secretMode && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED" && boss.phase !== 4) {
+                            if (Math.random() < 0.75 && (boss.state === "IDLE" || boss.state === "WALK" || boss.state === "CHASE" || boss.state === "VULN_STANCE")) {
+                                boss.state = "HEAL_PUNISH_DASH"; boss.stateTimer = 6; boss.vx = boss.x < p.x ? 80 : -80; playSound('parry'); boss.directAttackActive = true; boss.directAttackHit = false; boss.comboCount = 0;
+                            }
+                        }
+                    }
+                }
+                p.prevHealKey = kHeal;
+
+                if (secretMode && kLight && sharedHeals >= 0.5 && p.attackCooldown <= 0 && !p.isHealing) {
+                    if (p.lightCharge === 0) sharedHeals -= 0.5; p.lightCharge++;
+                } else if (p.lightCharge >= 60 && !kLight) {
+                    p.lightCharge = 0; p.attackCooldown = 30; playSound('slash');
+                    let sHit = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 };
+                    if (rectIntersect(sHit, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION") {
+                        if (boss.state === "SA1_ACTIVE" || boss.state === "VULN_STANCE") { boss.infectedTimer = 12 * 45; boss.state = "IDLE"; boss.color = "#e6c800"; boss.sa1Phantoms = []; playSound('hitBoss'); } 
+                        else { let d = 3 * p.dmgDealtMod; boss.hp -= d; boss.invuln = 10; recordHit(p); checkPhaseTransition(); }
+                    }
+                } else if (!kLight) { p.lightCharge = 0; }
+
+                if ((numPlayers === 1 || secretMode) && p.type === 'WATER') {
+                    if (kDash) {
+                        p.speed = 8; p.isDashing = true;
+                        if (kUp && p.tpCooldown <= 0 && sharedHeals >= 0.5) {
+                            sharedHeals -= 0.5; p.tpCooldown = 420; p.tpDebuffTimer = 180; p.purpleHp = 2; p.x = Math.random() * (ARENA_W - p.width); playSound('teleport'); applyPhysicsPushToLeaves(p.x, p.y, 20);
+                        }
+                    } else { p.speed = 5; }
+                }
+
+                if (p.type === 'AIR') {
+                    p.speed = kDash ? 8 : 5.5; 
+                    if (kAttack && kSpec && !p.prevComboKey && sharedHeals >= 1 && p.attackCooldown <= 0) {
+                        sharedHeals -= 1; p.attackCooldown = 45; playSound('throw');
+                        let dx = (boss.x + boss.width/2) - (p.x + p.width/2); let dy = (boss.y + boss.height/2) - (p.y + p.height/2); let dist = Math.hypot(dx, dy);
+                        airComboTraps.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (dx/dist)*16, vy: (dy/dist)*16, pId: p.id });
+                        p.prevComboKey = true; p.prevAttackKey = true; p.prevDaggerKey = true;
+                    } else {
+                        p.prevComboKey = false;
+                        if (kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && (!kSpec)) {
+                            p.attackCooldown = 105; playSound('throw');
+                            let dx = (boss.x + boss.width/2) - (p.x + p.width/2); let dy = (boss.y + boss.height/2) - (p.y + p.height/2); let dist = Math.hypot(dx, dy);
+                            airTraps.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (dx/dist)*14, vy: (dy/dist)*14, pId: p.id });
+                        }
+                        if (kSpec && !p.prevDaggerKey && sharedHeals >= 0.5 && p.attackCooldown <= 0 && (!kAttack)) {
+                            sharedHeals -= 0.5; p.attackCooldown = 30; playSound('wind'); applyPhysicsPushToLeaves(p.x, p.y, 15);
+                            boss.voidWindDisabled = 1200;
+                            let windBox = {x: p.facingRight ? p.x+p.width : p.x - 150, y: p.y - 20, width: 150, height: 100};
+                            if (rectIntersect(windBox, boss)) {
+                                let dmg = 1 * p.dmgDealtMod; if(boss.phase === 4) dmg *= 0.25; boss.hp -= dmg; boss.invuln = 10; boss.vx = p.facingRight ? 15 : -15;
+                                if (["CAST_WIND", "WIND_FLY", "CAST_VERTICAL_WIND", "CAST_ANGLED_WIND"].includes(boss.state)) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; }
+                                playSound('hitBoss'); checkPhaseTransition(); recordHit(p);
+                            }
+                        }
+                    }
+                    if (p.isHealing && Math.abs((boss.x + boss.width/2) - (p.x + p.width/2)) < 150 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC")) { boss.vx = (boss.x > p.x) ? 3 : -3; }
+                } 
+                else if (p.type === 'STAMINA') {
+                    if (kSpec && !p.prevDaggerKey && !p.isHealing && p.attackCooldown <= 0) {
+                        if (kUp && sharedHeals >= 0.5) { 
+                            sharedHeals -= 0.5; p.attackCooldown = 15; playSound('throw'); 
+                            let dx = (boss.x + boss.width/2) - (p.x + p.width/2); let dy = (boss.y + boss.height/2) - (p.y + p.height/2); let dist = Math.hypot(dx, dy); 
+                            playerDaggers.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (dx/dist) * 14, vy: (dy/dist) * 14, active: true, pId: p.id }); 
+                        } 
+                        else if (!kUp && !p.isCharging) {
+                            if (sharedHeals >= 0.5) { p.isCharging = true; p.chargeTimer = 0; }
+                        }
+                    }
+                    if (p.isCharging) {
+                        if (!kSpec) { fireCharge(p); } 
+                        else {
+                            if (p.chargeTimer === 0 && sharedHeals >= 0.5) sharedHeals -= 0.5; 
+                            p.chargeTimer++;
+                            if (p.chargeTimer % 60 === 0) { if (sharedHeals >= 0.5) sharedHeals -= 0.5; else fireCharge(p); }
+                        }
+                    }
+                    for (let i = p.chargeProjectiles.length - 1; i >= 0; i--) {
+                        let cp = p.chargeProjectiles[i]; cp.x += cp.vx;
+                        if (cp.x < 0 || cp.x > ARENA_W) { p.chargeProjectiles.splice(i, 1); continue; }
+                        if (boss.invuln <= 0 && rectIntersect({x: cp.x-10, y: cp.y-10, width: 20, height: 20}, boss)) {
+                            let finalDmg = cp.dmg * p.dmgDealtMod; if (boss.phase === 4) finalDmg *= 0.25;
+                            boss.hp -= finalDmg; boss.invuln = 10; playSound('hitBoss'); checkPhaseTransition(); p.chargeProjectiles.splice(i, 1); recordHit(p);
+                        }
+                    }
+                } else if (p.type === 'EARTH' || (p.type === 'WATER' && !secretMode)) {
+                    if (kSpec && !p.prevDaggerKey && !p.isHealing && p.attackCooldown <= 0 && sharedHeals >= 0.5) {
+                        sharedHeals -= 0.5; p.attackCooldown = 15; playSound('throw');
+                        if (p.type === 'WATER') { let dx = (boss.x + boss.width/2) - (p.x + p.width/2); let dy = (boss.y + boss.height/2) - (p.y + p.height/2); let dist = Math.hypot(dx, dy); playerDaggers.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (dx/dist) * 14, vy: (dy/dist) * 14, active: true, pId: p.id }); } 
+                        else if (p.type === 'EARTH') { playSound('trap'); p2Traps.push({ x: p.x, y: FLOOR - 5, width: 35, height: 10, timer: 300, hits: 2, cd: 0, pId: p.id }); }
+                    }
+                }
+                p.prevDaggerKey = kSpec;
+
+                let onFloor = p.y + p.height >= FLOOR;
+                let onWall = false; let wallDir = 0; let topWallLimit = FLOOR / 2;
+                if (secretMode) topWallLimit -= 100;
+                
+                if (p.x <= 5 && kLeft && p.y >= topWallLimit) { onWall = true; wallDir = -1; p.facingRight = true; } 
+                else if (p.x >= ARENA_W - p.width - 5 && kRight && p.y >= topWallLimit) { onWall = true; wallDir = 1; p.facingRight = false; }
+                
+                if (onFloor || onWall) p.jumps = 0;
+
+                if (p.isHealing) {
+                    p.vx = 0; p.vy = 0; p.healTimer++; 
+                    
+                    if (p.isMultiHeal && !p.isAoEHealing) {
+                        let half = Math.floor(120 / 2);
+                        let baseAmt = p.type === 'EARTH' ? 2 : (p.type === 'AIR' || p.type === 'STAMINA' ? 2.5 : 3);
+                        let amt = baseAmt - 0.75;
+                        if (p.healTimer === half) {
+                            p.hp = Math.min(p.maxHp, p.hp + amt); playSound('heal');
+                            if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2);
+                        }
+                        if (p.healTimer >= 120) {
+                            p.hp = Math.min(p.maxHp, p.hp + amt);
+                            if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2);
+                            sharedHeals--; p.isHealing = false; p.healTimer = 0;
+                        }
+                    } else {
+                        let targetTime = p.isAoEHealing ? 240 : p.healFramesTotal;
+                        if (p.healTimer >= targetTime) { 
+                            let downedAlly = players.find(pl => pl.isDowned);
+                            if (p.isAoEHealing) { 
+                                for(let pl of players) { 
+                                    if (pl.isDowned) { pl.isDowned = false; pl.hp = 3; pl.stamina = 3; pl.downedTimer=0;}
+                                    else { pl.hp = Math.min(pl.maxHp, pl.hp + 2); }
+                                } 
+                            } else { 
+                                let amt = p.type === 'EARTH' ? 2 : (p.type === 'AIR' || p.type === 'STAMINA' ? 2.5 : 3); 
+                                p.hp = Math.min(p.maxHp, p.hp + amt); 
+                                if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2); 
+                                if (downedAlly) { downedAlly.isDowned = false; downedAlly.hp = 1.5; downedAlly.stamina = 2; downedAlly.downedTimer=0; }
+                            }
+                            sharedHeals--; p.isHealing = false; p.isAoEHealing = false; p.healTimer = 0;
+                        }
+                    }
+                } else {
+                    if (p.wallJumpCooldown > 0) p.wallJumpCooldown--;
+                    else { if (kLeft) { p.vx = -p.speed; p.facingRight = false; } else if (kRight) { p.vx = p.speed; p.facingRight = true; } else p.vx = 0; }
+
+                    if (kJump) {
+                        if (!p.prevJumpKey) {
+                            if (onFloor) { p.vy = p.jumpPowerBase * jumpMod; p.jumps = 1; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); }
+                            else if (onWall) { p.vy = p.jumpPowerBase * jumpMod; p.vx = (wallDir === -1 ? 1 : -1) * (globalWindMode === "DOWN" ? 2 : 5); p.wallJumpCooldown = globalWindMode === "DOWN" ? 2 : 6; applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 4); }
+                            else if (p.jumps < p.maxJumps) { p.vy = p.jumpPowerBase * jumpMod; p.jumps++; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); }
+                        }
+                        p.prevJumpKey = true;
+                    } else p.prevJumpKey = false;
+
+                    if (p.attackCooldown > 0) p.attackCooldown--; if (p.attackTimer > 0) p.attackTimer--;
+
+                    let swordHitbox = null;
+                    if (kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && p.type !== 'AIR' && p.lightCharge === 0) {
+                        p.attackTimer = 12; p.attackCooldown = p.atkCdBase; playSound('slash');
+                        if (kDown && p.y + p.height < FLOOR - 5) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 45 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); } 
+                        else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + p.atkRange/2, swordHitbox.y + 10, 4); }
+
+                        for(let i=airBlades.length-1; i>=0; i--) { if (airBlades[i].state === "SHOOT" && rectIntersect(swordHitbox, {x: airBlades[i].x-10, y: airBlades[i].y-10, width: 20, height: 20})) { airBlades.splice(i, 1); playSound('parry'); } }
+
+                        let clashHappened = false;
+                        if (boss.state === "LUNGE" && rectIntersect(swordHitbox, boss)) {
+                            playSound('parry'); boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; boss.vx = boss.x < p.x ? -15 : 15; p.vx = boss.x < p.x ? 15 : -15; p.vy = -5; p.invuln = 30; boss.invuln = 10; clashFlash = {x: p.x + 15, y: p.y + 25, timer: 15}; clashHappened = true; applyPhysicsPushToLeaves(clashFlash.x, clashFlash.y, 20);
+                        }
+
+                        if (!clashHappened && rectIntersect(swordHitbox, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && boss.state !== "DEFEATED" && !boss.state.startsWith("TELEPORT")) {
+                            if (boss.state === "PARRY_STANCE") {
+                                boss.state = "PARRY_DASH"; boss.stateTimer = 10; boss.vx = boss.x < p.x ? 28 : -28; playSound('parry');
+                            } else if (boss.state === "SA1_ACTIVE" || boss.state === "VULN_STANCE") {
+                                boss.hp -= 3 * p.dmgDealtMod; boss.state = "IDLE"; boss.color = "#e6c800"; boss.sa1Phantoms = [];
+                            } else {
+                                let finalBossDmg = p.dmgMulti * p.dmgDealtMod; 
+                                boss.hp -= finalBossDmg; boss.invuln = 10; recordHit(p);
+                                if (p.type === 'STAMINA') { if (p.stamina >= 1) p.stamina -= 1; else takeDamage(p, 0.5, true, true); }
+                                if (p.attackType === "DOWN") { p.vy = -14; p.jumps = 1; }
+                                checkPhaseTransition(); 
+                            }
+                        }
+
+                        for (let ph of phantoms) {
+                            if (p.attackType === "DOWN" && rectIntersect(swordHitbox, ph)) { p.vy = -14; p.jumps = 1; }
+                        }
+                    }
+                    p.prevAttackKey = kAttack;
+                    p.vy += currentGravity; let maxWallSlide = globalWindMode === "DOWN" ? 8 : 2; if (onWall && p.vy > maxWallSlide) p.vy = maxWallSlide; 
+                }
+            }
+
+            if (p.bleedTimer > 0) { p.bleedTimer--; if (p.bleedTimer <= 0) takeDamage(p, 0.5, true); }
+            p.x += p.vx; p.y += p.vy;
+            if (p.y + p.height > FLOOR) { p.y = FLOOR - p.height; p.vy = 0; }
+            if (p.y < 0) { p.y = 0; if (p.vy < 0) p.vy = 0; } 
+            if (p.x < 0) p.x = 0; if (p.x > ARENA_W - p.width) p.x = ARENA_W - p.width;
+            if (Math.abs(p.vx) > 0 && p.y + p.height >= FLOOR && !boss.state.startsWith("CINEMATIC")) applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 1);
+            if (p.invuln > 0) p.invuln--;
+        }
+
+        if (boss.state === "FREE_ROAM") {
+            for (let i = voidExplosions.length - 1; i >= 0; i--) {
+                let e = voidExplosions[i]; e.x += e.vx; e.y += e.vy; e.timer--;
+                if (e.timer <= 0) voidExplosions.splice(i, 1);
+            }
+        }
+
+        if (Math.abs(boss.vx) > 0 && boss.y + boss.height >= FLOOR && boss.state !== "DEFEATED" && !boss.state.startsWith("TELEPORT") && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") applyPhysicsPushToLeaves(boss.x + 15, boss.y + 25, 1);
+
+        if (!boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED" && boss.state !== "FREE_ROAM") {
+            
+            if (boss.voidWindDisabled > 0) boss.voidWindDisabled--;
+
+            if (boss.state === "VOID_FLOOR_WARN" || boss.state === "VOID_FLOOR_ACTIVE") {
+                boss.stateTimer--; 
+                if (boss.state === "VOID_FLOOR_ACTIVE") { 
+                    for (let p of players) if (!p.isDowned && p.y + p.height >= FLOOR - 5) takeDamage(p, 2); 
+                }
+                if (boss.stateTimer <= 0) { 
+                    if (boss.state === "VOID_FLOOR_WARN") { boss.state = "VOID_FLOOR_ACTIVE"; boss.stateTimer = 180; } else { boss.state = "IDLE"; boss.color = "#e6c800"; } 
+                }
+            }
+
+            for (let i = airTraps.length - 1; i >= 0; i--) {
+                let t = airTraps[i]; t.x += t.vx; t.y += t.vy;
+                if (t.x < 0 || t.x > ARENA_W || t.y < 0 || t.y > ARENA_H) { airTraps.splice(i, 1); continue; }
+                if (rectIntersect({x: t.x-8, y: t.y-8, width: 16, height: 16}, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION") {
+                    let caster = players.find(pl => pl.id === t.pId);
+                    let dmg = 1 * (caster ? caster.dmgDealtMod : 1); boss.hp -= dmg; boss.invuln = 10;
+                    boss.state = "TIED"; boss.stateTimer = 60; boss.vx = 0; playSound('hitBoss'); checkPhaseTransition();
+                    if (caster) recordHit(caster); airTraps.splice(i, 1);
+                }
+            }
+
+            for (let i = airComboTraps.length - 1; i >= 0; i--) {
+                let t = airComboTraps[i]; t.x += t.vx; t.y += t.vy;
+                if (t.x < 0 || t.x > ARENA_W || t.y < 0 || t.y > ARENA_H) { airComboTraps.splice(i, 1); continue; }
+                
+                let hitAlly = false;
+                for(let p of players) {
+                    if (p.id !== t.pId && !p.isDowned && p.hp > 0 && rectIntersect(p, {x: t.x-10, y: t.y-10, width: 20, height: 20})) {
+                        p.hp = Math.min(p.maxHp, p.hp + 1.5);
+                        if (p.type === 'STAMINA') p.stamina = Math.min(p.maxStamina, p.stamina + 1);
+                        playSound('heal'); hitAlly = true; airComboTraps.splice(i, 1); break;
+                    }
+                }
+                if (hitAlly) continue;
+
+                if (rectIntersect({x: t.x-10, y: t.y-10, width: 20, height: 20}, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION") {
+                    let caster = players.find(pl => pl.id === t.pId);
+                    let dmg = 1.5 * (caster ? caster.dmgDealtMod : 1); boss.hp -= dmg; boss.invuln = 10;
+                    boss.state = "TIED_BLEED"; boss.stateTimer = 120; boss.vx = 0; playSound('hitBoss'); checkPhaseTransition();
+                    if (caster) recordHit(caster); airComboTraps.splice(i, 1);
+                }
+            }
+
+            for (let i = p2Traps.length - 1; i >= 0; i--) {
+                let t = p2Traps[i]; t.timer--; if (t.cd > 0) t.cd--;
+                if (t.cd <= 0 && t.hits > 0 && boss.invuln <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("TELEPORT")) {
+                    if (rectIntersect({x: t.x, y: t.y, width: t.width, height: t.height}, boss)) {
+                        if (boss.state === "PARRY_STANCE") { boss.state = "PARRY_DASH"; boss.stateTimer = 10; boss.vx = boss.x < t.x ? 35 : -35; playSound('parry'); } 
+                        else { 
+                            let caster = players.find(pl => pl.id === t.pId);
+                            let dmg = 0.75 * (caster ? caster.dmgDealtMod : 1); boss.hp -= dmg; boss.invuln = 10; playSound('hitBoss'); checkPhaseTransition(); 
+                        }
+                        t.hits--; t.cd = 30; 
+                    }
+                }
+                if (t.timer <= 0 || t.hits <= 0) p2Traps.splice(i, 1);
+            }
+
+            for(let i=playerDaggers.length-1; i>=0; i--) {
+                let d = playerDaggers[i];
+                if (d.active) {
+                    d.x += d.vx; d.y += d.vy;
+                    if (d.x < 0 || d.x > ARENA_W || d.y < 0 || d.y > ARENA_H) { playerDaggers.splice(i, 1); continue; }
+                    
+                    if (!d.dodgeChecked && Math.abs(d.x - boss.x) < 100 && ["IDLE","WALK","CHASE"].includes(boss.state)) { 
+                        d.dodgeChecked = true;
+                        if (Math.random() < 0.30) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 10; playSound('wind'); } 
+                    }
+
+                    if (rectIntersect({x: d.x-5, y: d.y-5, width: 10, height: 10}, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && boss.state !== "DEFEATED" && !boss.state.startsWith("TELEPORT")) {
+                        if (boss.state === "PARRY_STANCE") { boss.state = "PARRY_DASH"; boss.stateTimer = 10; boss.vx = boss.x < d.x ? 35 : -35; playSound('parry'); } 
+                        else { 
+                            let caster = players.find(pl => pl.id === d.pId);
+                            let dmg = 1 * (caster ? caster.dmgDealtMod : 1); boss.hp -= dmg; boss.invuln = 10; playSound('hitBoss'); checkPhaseTransition(); 
+                        }
+                        playerDaggers.splice(i, 1); 
+                    }
+                }
+            }
+            
+            // --- Снаряды босса ---
+            for(let i=blackDaggers.length-1; i>=0; i--) {
+                let d = blackDaggers[i]; d.x += d.vx; d.y += d.vy;
+                if (d.x < 0 || d.x > ARENA_W || d.y > FLOOR) { blackDaggers.splice(i, 1); continue; }
+                for (let p of players) {
+                    if (!p.tied && !p.isDowned && p.hp > 0 && rectIntersect(p, {x: d.x-5, y: d.y-5, width: 10, height: 10}) && p.invuln <= 0) {
+                        if (d.isShuriken) {
+                            takeDamage(p, d.dmg !== undefined ? d.dmg : 2); 
+                            applyBleed(p);
+                            blackDaggers.splice(i, 1); break;
+                        } else {
+                            p.tied = true; p.tieClicks = 0; 
+                            if (secretMode) sharedHitCount = Math.max(0, sharedHitCount - 1); else sharedHeals = Math.max(0, sharedHeals - 1); 
+                            if (d.dmg > 0) takeDamage(p, d.dmg); 
+                            blackDaggers.splice(i, 1); break;
+                        }
+                    }
+                }
+            }
+
+            for(let i=airBlades.length-1; i>=0; i--) {
+                let b = airBlades[i];
+                if (b.state === "HOVER") {
+                    b.timer--;
+                    if (b.timer <= 0) { 
+                        b.state = "SHOOT"; let t = getNearestPlayer(b.x); let dx = (t.x + 15) - b.x; let dy = (t.y + 25) - b.y; let dist = Math.hypot(dx, dy); 
+                        b.vx = (dx/dist) * 14; b.vy = (dy/dist) * 14; playSound('throw'); 
+                    }
+                } else if (b.state === "SHOOT") {
+                    b.x += b.vx; b.y += b.vy; let hitP = false;
+                    for (let p of players) { 
+                        if (!p.isDowned && p.hp > 0 && rectIntersect(p, {x: b.x-8, y: b.y-8, width: 16, height: 16}) && p.invuln <= 0 && boss.state !== "DEFEATED") { 
+                            takeDamage(p, secretMode ? 2 : 1.5); 
+                            applyBleed(p); airBlades.splice(i, 1); hitP = true; break; 
+                        } 
+                    }
+                    if (hitP) continue;
+                    if (b.y >= FLOOR || b.x <= 0 || b.x >= ARENA_W) airBlades.splice(i, 1);
+                } else if (b.state === "STUCK") { b.timer--; if (b.timer <= 0) airBlades.splice(i, 1); }
+            }
+
+            for (let i = phantoms.length - 1; i >= 0; i--) {
+                let ph = phantoms[i]; ph.timer--; ph.stateTimer--;
+                if (ph.state === "LUNGE_WINDUP" && ph.stateTimer <= 0) { ph.state = "LUNGE"; ph.stateTimer = 15; ph.vx = ph.x < ph.target.x ? 18 : -18; } 
+                else if (ph.state === "LUNGE" && ph.stateTimer <= 0) { ph.state = "IDLE"; ph.stateTimer = 30; ph.vx = 0; } 
+                else if (ph.state === "IDLE" && ph.stateTimer <= 0) { ph.state = "LUNGE_WINDUP"; ph.stateTimer = 20; ph.target = getNearestPlayer(ph.x); }
+                ph.x += ph.vx; ph.facingRight = ph.x < ph.target.x;
+                if (ph.x < 0) ph.x = 0; if (ph.x > ARENA_W - ph.width) ph.x = ARENA_W - ph.width;
+                if (ph.state === "LUNGE") {
+                    for (let p of players) {
+                        if (!p.isDowned && p.hp > 0 && rectIntersect(p, ph) && p.invuln <= 0 && !p.isPhantomHit) { takeDamage(p, getPhantomDmg(2.5 + boss.damageBonus)); p.isPhantomHit = true; }
+                    }
+                } else { for (let p of players) p.isPhantomHit = false; }
+                if (ph.timer <= 0 || boss.state === "DEFEATED") phantoms.splice(i, 1);
+            }
+        }
+
+        for (let l of arenaLeaves) {
+            l.x += Math.sin(Date.now()/1000 + l.spin*100) * 0.5 + l.vx; 
+            if (globalWindMode === "DOWN") { l.vy = 8 + Math.random() * 4; l.vx = (Math.random() - 0.5) * 2; } 
+            else if (globalWindMode === "UP") { l.vy = -8 - Math.random() * 4; l.vx = (Math.random() - 0.5) * 2; } 
+            else { l.vy += 0.05; if (l.vy > 2) l.vy *= 0.95; }
+            l.y += l.vy; l.angle += l.spin; l.vx *= 0.9; 
+            if (l.y > FLOOR + 10) { l.y = -10; l.x = Math.random() * ARENA_W; l.vx = 0; if(globalWindMode==="NONE") l.vy = Math.random() * 0.5 + 0.2; }
+            if (l.y < -20) { l.y = FLOOR + 10; l.x = Math.random() * ARENA_W; l.vx = 0; } 
+            if (l.x > ARENA_W+10) l.x = -10; if (l.x < -10) l.x = ARENA_W+10;
+        }
+
+        // --- ИИ БОССА ---
+        if (boss.state !== "DEFEATED" && boss.state !== "FREE_ROAM") {
+            if (boss.invuln > 0) boss.invuln--; boss.stateTimer--; let phaseMultiplier = boss.phase === 1 ? 1 : (boss.phase === 2 ? 0.8 : 0.6);
+            let nearestP = getNearestPlayer(boss.x); boss.facingRight = boss.x < nearestP.x; let prevState = boss.state;
+
+            if (boss.state === "CINEMATIC_TIE_WAIT") {
+                boss.color = "white"; boss.vx = 0; boss.vy = 0;
+                if (boss.stateTimer <= 0) { boss.state = "CINEMATIC_FAIL"; boss.stateTimer = 45; playSound('slash'); } 
+                else { let allPressed = players.every(p => p.hasPressedTie || p.isDowned || p.hp <= 0); if (allPressed) { boss.state = "CINEMATIC_TYING"; boss.stateTimer = 90; playSound('wind'); } }
+            } else if (boss.state === "CINEMATIC_FAIL") {
+                boss.color = "red"; boss.vx = 0; boss.vy = 0;
+                if (boss.stateTimer <= 0) { boss.hp = numPlayers === 1 ? 5 : 10; boss.invuln = 60; boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; for(let p of players) p.hasPressedTie = false; }
+            } else if (boss.state === "CINEMATIC_TYING") {
+                boss.color = "white"; boss.vx = 0; boss.vy = 0; if (boss.stateTimer <= 0) { boss.state = "CINEMATIC_BREAK"; boss.color = "#e6c800"; boss.stateTimer = 40; playSound('slash'); }
+            } else if (boss.state === "CINEMATIC_BREAK") {
+                boss.color = "white"; boss.vx = 0; boss.vy = 0; if (boss.stateTimer <= 0) { boss.state = "DEFEATED"; boss.color = "#e6c800"; }
+            } else if (boss.state === "TIED" || boss.state === "TIED_BLEED") {
+                boss.color = "blue"; boss.vx = 0;
+                if (boss.state === "TIED_BLEED" && boss.stateTimer % 30 === 0) { let dmg = 0.5; boss.hp -= dmg; playSound('hitBoss'); checkPhaseTransition(); }
+                if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; }
+            }
+            else if (boss.state === "EXECUTE_QUEUE") {
+                if (boss.stateTimer <= 0) {
+                    if (boss.superQueue && boss.superQueue.length > 0) { let n = boss.superQueue.shift(); boss.state = n.s; boss.stateTimer = n.t; }
+                    else { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; if (boss.phase === 2.5) { boss.phase = 3; boss.damageBonus = 0.5; } if (boss.phase === 3.5) boss.phase = 3;}
+                }
+            }
+            else if (boss.state === "SA1_WINDUP") {
+                if (boss.stateTimer <= 0) { 
+                    boss.sa1Phantoms = []; 
+                    for(let i=0; i<4; i++) boss.sa1Phantoms.push({x: Math.random()*(ARENA_W-30), y: FLOOR-50}); 
+                    boss.state = "SA1_ACTIVE"; boss.stateTimer = 60; boss.x = Math.random()*(ARENA_W-30); 
+                }
+            }
+            else if (boss.state === "SA1_ACTIVE") {
+                if (boss.stateTimer <= 0) { triggerCinematic("SA1", nearestP, true); boss.sa1Phantoms = []; }
+                for (let p of players) {
+                    if (p.attackTimer === 12 && !p.isDowned) {
+                        let pS = {x: p.facingRight ? p.x+p.width : p.x-p.atkRange, y: p.y+10, width: p.atkRange, height: 20};
+                        let hitFake = false; 
+                        for (let ph of boss.sa1Phantoms) if (rectIntersect(pS, {x: ph.x, y: ph.y, width: 30, height: 50})) hitFake = true;
+                        if (hitFake) { triggerCinematic("SA1", p, false); boss.sa1Phantoms = []; break; }
+                    }
+                }
+            }
+            else if (boss.state === "SA2_WINDUP" || boss.state === "SA3_WINDUP") {
+                if (boss.stateTimer === 23) { 
+                    boss.y = -1000;
+                    let ex1 = Math.random()<0.5 ? 0 : ARENA_W; let ex2 = ex1===0 ? ARENA_W : 0;
+                    boss.saLines = [{x1: ex1, y1: Math.random()*(FLOOR-100), x2: ex2, y2: FLOOR, type: boss.state === "SA3_WINDUP" ? "SA3" : "SA2"}];
+                }
+                if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
+            }
+            else if (boss.state === "SA2_DOUBLE") {
+                if (boss.stateTimer === 23) { 
+                    boss.y = -1000;
+                    boss.saLines = [
+                        {x1: 0, y1: Math.random()*(FLOOR-100), x2: ARENA_W, y2: FLOOR, type: "SA2"},
+                        {x1: ARENA_W, y1: Math.random()*(FLOOR-100), x2: 0, y2: FLOOR, type: "SA2"}
+                    ]; 
+                }
+                if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
+            }
+            else if (boss.state === "SA2_TRIPLE") {
+                if (boss.stateTimer === 23) { 
+                    boss.y = -1000;
+                    boss.saLines = [
+                        {x1: 0, y1: Math.random()*(FLOOR-100), x2: ARENA_W, y2: FLOOR, type: "SA2"},
+                        {x1: ARENA_W, y1: Math.random()*(FLOOR-100), x2: 0, y2: FLOOR, type: "SA2"},
+                        {x1: ARENA_W/2, y1: 0, x2: ARENA_W/2, y2: FLOOR, type: "SA2"}
+                    ]; 
+                }
+                if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
+            }
+            else if (boss.state === "SA_EXECUTE") {
+                if (boss.stateTimer > 0) {
+                    let progress = 1 - (boss.stateTimer / 6);
+                    for (let l of boss.saLines) {
+                        let curX2 = l.x1 + (l.x2 - l.x1) * progress;
+                        let curY2 = l.y1 + (l.y2 - l.y1) * progress;
+                        let curLine = {x1: l.x1, y1: l.y1, x2: curX2, y2: curY2};
+                        for (let p of players) {
+                            if (!p.isDowned && !p.saHit && distToSegment(p, curLine) < 25 + p.width/2) {
+                                triggerCinematic(l.type, p); p.saHit = true;
+                            }
+                        }
+                    }
+                } else {
+                    boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 30; 
+                    for (let p of players) p.saHit = false; boss.saLines = null;
+                }
+            }
+            else if (boss.state === "SHARPEN_WINDUP") { 
+                boss.vx = 0; boss.y = FLOOR - 150; 
+                if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.phase = 2; boss.damageBonus = secretMode ? 0.5 : 0; } 
+            }
+            else if (boss.state === "VOID_PORTALS") {
+                if (boss.stateTimer === 89) {
+                    let numPortals = boss.phase >= 3 ? 4 : 3;
+                    for(let i=0; i<numPortals; i++) {
+                        voidPortals.push({ x: Math.random() * (ARENA_W - 100) + 50, y: Math.random() * (FLOOR - 150) + 50, timer: 24 + i * 9, type: Math.random() < 0.5 ? "TIE" : "SHURIKEN" });
+                    }
+                }
+                boss.vx = 0;
+                if (boss.stateTimer <= 0) { 
+                    if (boss.superQueue && boss.superQueue.length > 0) { boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 1; } 
+                    else { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; }
+                }
+            }
+            else if (boss.state === "PLACE_LOOM") {
+                if (boss.stateTimer <= 0) {
+                    looms.push({x: boss.x + 15, y: FLOOR, timer: 600});
+                    boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20;
+                }
+            }
+            else {
+                switch(boss.state) {
+                    case "IDLE":
+                        boss.vx = 0; boss.comboCount = 0;
+                        if (boss.stateTimer <= 0) { if (Math.random() < 0.25) { boss.state = "WALK"; boss.stateTimer = 60 + Math.random() * 60; } else { boss.state = "CHASE"; boss.stateTimer = (30 + Math.random() * 40) * phaseMultiplier; } }
+                        break;
+                    case "WALK": 
+                        if (boss.stateTimer % 30 === 0) boss.vx = (Math.random() < 0.5 ? -1 : 1) * (boss.speed * 0.8); if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 15; boss.vx = 0; }
+                        break;
+                    case "CHASE":
+                        boss.vx = boss.x > nearestP.x + 40 ? -boss.speed : (boss.x < nearestP.x - 40 ? boss.speed : 0);
+                        
+                        if (Math.abs(boss.x - nearestP.x) > 400 && boss.phase >= 2 && Math.random() < 0.5) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 10; playSound('wind'); }
+                        else if (boss.stateTimer <= 0) {
+                            let rand = Math.random(); let teleChance = numPlayers === 2 ? 0.35 : 0.25; 
+                            
+                            if (secretMode) {
+                                if (boss.phase >= 2 && rand < 0.25) { boss.state = "VOID_PORTALS"; boss.stateTimer = 90; }
+                                else if (boss.phase === 3 && boss.sa1Count < 4 && rand < 0.25) { boss.sa1Count++; boss.state = "SA1_WINDUP"; boss.stateTimer = 1; }
+                                else if (boss.phase >= 2 && rand < 0.4) { boss.state = "VOID_FLOOR_WARN"; boss.stateTimer = 180; }
+                                else if (boss.phase >= 2 && globalWindCooldown <= 0 && globalWindMode === "NONE" && rand < 0.15) { boss.state = "CAST_VERTICAL_WIND"; boss.stateTimer = 40; playSound('wind'); boss.directAttackActive = true; boss.directAttackHit = false; }
+                                else if (boss.phase >= 2 && rand < teleChance + 0.1) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 15; playSound('wind'); }
+                                else if (rand < 0.50) { boss.state = "WIND_FLY"; boss.stateTimer = 15; playSound('wind'); applyPhysicsPushToLeaves(boss.x + 15, boss.y + 50, 10); boss.directAttackActive = true; boss.directAttackHit = false; }
+                                else if (rand < 0.60) { boss.state = "CAST_WIND"; boss.stateTimer = 30 * phaseMultiplier; boss.vx = 0; boss.directAttackActive = true; boss.directAttackHit = false; }
+                                else if (rand < 0.70) { boss.state = "VULN_STANCE"; boss.stateTimer = 45 * phaseMultiplier; }
+                                else if (rand < 0.80) { boss.state = "PARRY_STANCE"; boss.stateTimer = 50 * phaseMultiplier; }
+                                else if (rand < 0.90) { boss.state = "FEINT_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; boss.directAttackActive = true; boss.directAttackHit = false; }
+                                else { boss.state = "LUNGE_WINDUP"; boss.stateTimer = 15 * phaseMultiplier; boss.comboCount = 0; boss.attackDir = (Math.random() < 0.3 && boss.y > FLOOR - 50) ? "UP" : (boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"); boss.directAttackActive = true; boss.directAttackHit = false; }
+                            } else {
+                                if (boss.phase >= 2 && looms.length === 0 && rand < 0.15) { boss.state = "PLACE_LOOM"; boss.stateTimer = 30; boss.vx = 0; boss.directAttackActive = false; }
+                                else if (boss.phase >= 2 && globalWindCooldown <= 0 && globalWindMode === "NONE" && rand < 0.15) { boss.state = "CAST_VERTICAL_WIND"; boss.stateTimer = 40; playSound('wind'); boss.directAttackActive = true; boss.directAttackHit = false; }
+                                else if (boss.phase >= 2 && rand < teleChance + 0.1) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 15; playSound('wind'); }
+                                else if (rand < 0.40) { boss.state = "SCARF_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; scarf.target = nearestP; boss.directAttackActive = true; boss.directAttackHit = false; } 
+                                else if (rand < 0.50) { boss.state = "WIND_FLY"; boss.stateTimer = 15; playSound('wind'); applyPhysicsPushToLeaves(boss.x + 15, boss.y + 50, 10); boss.directAttackActive = true; boss.directAttackHit = false; }
+                                else if (rand < 0.60) { boss.state = "CAST_WIND"; boss.stateTimer = 30 * phaseMultiplier; boss.vx = 0; boss.directAttackActive = true; boss.directAttackHit = false; }
+                                else if (rand < 0.70) { boss.state = "VULN_STANCE"; boss.stateTimer = 45 * phaseMultiplier; }
+                                else if (rand < 0.80) { boss.state = "PARRY_STANCE"; boss.stateTimer = 50 * phaseMultiplier; }
+                                else if (rand < 0.90) { boss.state = "FEINT_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; boss.directAttackActive = true; boss.directAttackHit = false; }
+                                else { boss.state = "LUNGE_WINDUP"; boss.stateTimer = 15 * phaseMultiplier; boss.comboCount = 0; boss.attackDir = (Math.random() < 0.3 && boss.y > FLOOR - 50) ? "UP" : (boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"); boss.directAttackActive = true; boss.directAttackHit = false; }
+                            }
+                        }
+                        break;
+                    case "TELEPORT_OUT": boss.vx = 0; boss.vy = 0; if (boss.stateTimer <= 0) { boss.x = nearestP.x + (Math.random() < 0.5 ? -100 : 100); if (boss.x < 0) boss.x = 100; if (boss.x > ARENA_W-30) boss.x = ARENA_W-130; boss.y = FLOOR - boss.height; boss.state = "TELEPORT_IN"; boss.stateTimer = 10; applyPhysicsPushToLeaves(boss.x + 15, boss.y + 25, 15); playSound('wind'); } break;
+                    case "TELEPORT_IN": boss.vx = 0; boss.vy = 0; if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 10; } break;
+                    case "SCARF_WINDUP": boss.vx = 0; if (boss.stateTimer <= 0) { boss.state = "SCARF_SHOOT"; scarf.active = true; scarf.width = 0; scarf.dir = boss.attackDir; } break;
+                    case "SCARF_SHOOT": scarf.width += 45; let sHit = {x: scarf.dir===1 ? boss.x+30 : boss.x-scarf.width, y: boss.y+20, width: scarf.width, height: 10}; for(let p of players) { if (!p.isDowned && p.hp > 0 && rectIntersect(p, sHit) && p.invuln <= 0) { boss.state = "SCARF_PULL"; p.tied = true; p.tieClicks = 0; scarf.target = p; boss.directAttackHit = true; boss.missCount = 0; break; } } if (scarf.width > ARENA_W) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 15; scarf.active = false; boss.comboCount = 0;} break;
+                    case "SCARF_PULL": if (scarf.target) { let pdx = boss.x - scarf.target.x; scarf.target.x += pdx * 0.15; scarf.target.y += (boss.y - scarf.target.y) * 0.15; if (Math.abs(pdx) < 50) { takeDamage(scarf.target, secretMode ? 2 : 0.5); scarf.target.tied = false; scarf.target = null; boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; scarf.active = false; boss.comboCount=0;} } else { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; scarf.active = false; boss.comboCount=0;} break;
+                    case "CAST_VERTICAL_WIND": boss.vx = 0; boss.vy = 0; if (boss.stateTimer === 1) { globalWindMode = Math.random() < 0.5 ? "UP" : "DOWN"; globalWindTimer = 300; playSound('wind'); boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; } break;
+                    case "FEINT_WINDUP": boss.vx = 0; if (boss.stateTimer <= 0) { boss.state = "FEINT_DASH_FWD"; boss.stateTimer = 8; boss.vx = boss.attackDir * 12; } break;
+                    case "FEINT_DASH_FWD": if (boss.stateTimer <= 0) { boss.state = "FEINT_DASH_BACK"; boss.stateTimer = 12; boss.vx = -boss.attackDir * 20; applyPhysicsPushToLeaves(boss.x+15, boss.y+25, 12); } break;
+                    case "FEINT_DASH_BACK": if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; boss.vx = 0; } break;
+                    case "CAST_WIND": 
+                        if (boss.stateTimer === Math.floor(30 * phaseMultiplier)) { 
+                            if (boss.voidWindDisabled > 0) break;
+                            playSound('wind'); let t = nearestP; 
+                        } 
+                        if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; } 
+                        break;
+                    case "WIND_FLY": 
+                        boss.vy = -14; 
+                        if (boss.y <= 100 || boss.stateTimer <= 0) { 
+                            if (boss.phase >= 2 && !secretMode) { 
+                                airBlades.push({x: boss.x-15, y: boss.y+15, vx: 0, vy: 0, state: "HOVER", timer: 30}); 
+                                airBlades.push({x: boss.x+15, y: boss.y-10, vx: 0, vy: 0, state: "HOVER", timer: 30}); 
+                                airBlades.push({x: boss.x+45, y: boss.y+15, vx: 0, vy: 0, state: "HOVER", timer: 30}); 
+                            } 
+                            boss.state = Math.random() < 0.5 ? "VULN_STANCE" : "PARRY_STANCE"; boss.stateTimer = 50 * phaseMultiplier; 
+                        } 
+                        break;
+                    case "LUNGE_WINDUP": boss.vx = 0; if (boss.stateTimer <= 0) { boss.state = "LUNGE"; boss.stateTimer = 10; if (boss.attackDir === "UP") { boss.vy = -20; boss.vx = 0; applyPhysicsPushToLeaves(boss.x+15, boss.y, 10); } else { boss.vx = boss.attackDir==="HORIZONTAL_R" ? 25 : -25; } } break;
+                    case "LUNGE": 
+                        if (boss.stateTimer <= 0) { 
+                            if (boss.comboCount === 0 && Math.random() < 0.85) { boss.comboCount = 1; boss.state = "LUNGE_WINDUP"; boss.stateTimer = 10; boss.attackDir = boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"; } 
+                            else if (boss.comboCount === 1) { 
+                                let r = Math.random(); 
+                                if (r < 0.25) { boss.comboCount = 2; boss.state = "LUNGE_WINDUP"; boss.stateTimer = 10; boss.attackDir = boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"; } 
+                                else if (r < 0.50) { 
+                                    boss.comboCount = 0; 
+                                    if (!secretMode) { boss.state = "SCARF_WINDUP"; boss.stateTimer = 15; boss.attackDir = boss.x < nearestP.x ? 1 : -1; scarf.target = nearestP; }
+                                    else { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 15; boss.vx = 0; }
+                                } 
+                                else { boss.comboCount = 0; boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 15; boss.vx = 0; } 
+                            } else { boss.comboCount = 0; boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 15; boss.vx = 0; } 
+                        } 
+                        break;
+                    case "VULN_STANCE": boss.vx = 0; if (boss.stateTimer <= 0) { boss.state = "AOE"; boss.stateTimer = 15; applyPhysicsPushToLeaves(boss.x+15, boss.y+25, 25); } break;
+                    case "AOE": let aoeBox = {x: boss.x - 300, y: boss.y - 150, width: 630, height: 200}; for(let p of players) { if (!p.isDowned && p.hp > 0 && rectIntersect(p, aoeBox) && p.invuln <= 0) { takeDamage(p, (secretMode ? 2 : 1) + 1.5 + boss.damageBonus); applyBleed(p); } } if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; } break;
+                    case "PARRY_STANCE": boss.vx = 0; if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 15; } break;
+                    case "PARRY_DASH": case "HEAL_PUNISH_DASH": if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 25; boss.vx = 0; } break;
+                    case "TRANSITION": 
+                        if (!secretMode && boss.stateTimer % 45 === 0 && boss.stateTimer < 380) { 
+                            let aliveP = players.filter(p=>!p.isDowned && p.hp>0); 
+                            if(aliveP.length>0) spawnThread(aliveP[Math.floor(Math.random() * aliveP.length)]); 
+                        } 
+                        if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 15; } 
+                        break;
+                }
+                if (prevState !== "IDLE" && boss.state === "IDLE") { if (boss.directAttackActive) { boss.directAttackActive = false; if (!boss.directAttackHit) { boss.missCount++; checkMissPhaseTransition(); } } }
+            }
+
+            let applyBossGravity = true;
+            if (["WIND_FLY", "VULN_STANCE", "PARRY_STANCE", "TRANSITION", "PARRY_DASH", "HEAL_PUNISH_DASH", "CAST_WIND", "CAST_VERTICAL_WIND", "SCARF_SHOOT", "SCARF_PULL", "SCARF_WINDUP", "TELEPORT_OUT", "TELEPORT_IN", "TIED", "TIED_BLEED", "SHARPEN_WINDUP", "EXECUTE_QUEUE", "SA1_WINDUP", "SA1_ACTIVE", "SA2_WINDUP", "SA3_WINDUP", "SA2_DOUBLE", "SA2_TRIPLE", "SA_EXECUTE", "VOID_PORTALS", "PLACE_LOOM"].includes(boss.state) || (boss.state === "LUNGE" && boss.attackDir === "UP") || boss.state.startsWith("CINEMATIC")) {
+                applyBossGravity = false; if (["VULN_STANCE", "PARRY_STANCE", "PARRY_DASH", "HEAL_PUNISH_DASH", "CAST_WIND", "CAST_VERTICAL_WIND", "SCARF_SHOOT", "SCARF_PULL", "SCARF_WINDUP", "TELEPORT_OUT", "TELEPORT_IN", "CINEMATIC_TIE_WAIT", "CINEMATIC_TYING", "CINEMATIC_BREAK", "CINEMATIC_FAIL", "TIED", "TIED_BLEED", "SHARPEN_WINDUP", "SA1_ACTIVE", "SA2_WINDUP", "SA3_WINDUP", "SA2_DOUBLE", "SA2_TRIPLE", "SA_EXECUTE", "VOID_PORTALS", "PLACE_LOOM"].includes(boss.state)) boss.vy = 0; 
+            }
+            if (globalWindMode === "UP" && !["TRANSITION", "DEFEATED", "WIND_FLY", "LUNGE", "TELEPORT_OUT", "TELEPORT_IN", "TIED", "TIED_BLEED"].includes(boss.state) && !boss.state.startsWith("CINEMATIC")) {
+                applyBossGravity = false; if (boss.stateTimer % 30 === 0) boss.targetY = 50 + Math.random() * 200; 
+                if (["IDLE", "WALK", "CHASE", "FEINT_WINDUP"].includes(boss.state)) { boss.vy += (boss.targetY - boss.y) * 0.05; boss.vy *= 0.8; } else if (["VULN_STANCE", "PARRY_STANCE", "PARRY_DASH", "HEAL_PUNISH_DASH", "CAST_WIND"].includes(boss.state)) boss.vy = 0; 
+            }
+
+            if (applyBossGravity) boss.vy += currentGravity; 
+            boss.x += boss.vx; boss.y += boss.vy;
+            if (boss.y + boss.height > FLOOR) { boss.y = FLOOR - boss.height; boss.vy = 0; }
+            if (boss.y < 0) boss.y = 0; if (boss.x < 0) { boss.x = 0; boss.vx *= -1; } if (boss.x > ARENA_W - 30) { boss.x = ARENA_W - 30; boss.vx *= -1; }
+
+            let bossDmgHitbox = {x: boss.x, y: boss.y, width: 30, height: 50};
+            if (boss.phase === 3 && (boss.state === "PARRY_DASH" || boss.state === "HEAL_PUNISH_DASH")) { bossDmgHitbox.y -= 60; bossDmgHitbox.height += 60; }
+
+            for (let p of players) {
+                if (!p.isDowned && p.hp > 0 && rectIntersect(p, bossDmgHitbox) && boss.state !== "TRANSITION" && p.invuln <= 0 && !boss.state.startsWith("TELEPORT") && !boss.state.startsWith("CINEMATIC") && boss.state !== "SA_EXECUTE") {
+                    let dmg = (secretMode ? 2 : 1) + boss.damageBonus; 
+                    if (boss.state === "LUNGE" || boss.state === "LUNGE_WINDUP" || boss.state.startsWith("FEINT_DASH") || boss.state === "PARRY_DASH" || boss.state === "HEAL_PUNISH_DASH" || boss.state === "SCARF_SHOOT") { dmg = (secretMode ? 2 : 1.5) + boss.damageBonus; applyBleed(p); } 
+                    takeDamage(p, dmg); 
+                }
+            }
+        } else { 
+            boss.vy += currentGravity; boss.y += boss.vy; if (boss.y + boss.height > FLOOR) { boss.y = FLOOR - boss.height; boss.vy = 0; } 
+        }
+    }
+
+    function drawMasks() {
+        for (let idx = 0; idx < players.length; idx++) {
+            let p = players[idx]; let yOffset = 25 + (idx * 35); 
+            for (let i = 0; i < p.maxHp; i++) {
+                let cx = 30 + i * 30; let cy = yOffset;
+                ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fill(); ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"; ctx.lineWidth = 2; ctx.stroke();
+                
+                let hpColor = p.color; 
+                if (secretMode && i >= p.maxHp - 2) hpColor = "rgba(255,255,255,0.8)";
+                
+                if (p.hp > i) {
+                    let fraction = p.hp - i;
+                    if (fraction >= 1) {
+                        ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); ctx.fillStyle = hpColor; ctx.fill();
+                    } else {
+                        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, 10, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * fraction)); ctx.closePath(); ctx.fillStyle = hpColor; ctx.fill();
+                    }
+                }
+            }
+            if (p.purpleHp > 0) {
+                for (let i = 0; i < p.purpleHp; i++) {
+                    let cx = 30 + (p.maxHp + i) * 30; let cy = yOffset;
+                    ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); 
+                    ctx.fillStyle = "#9900ff"; ctx.fill(); ctx.strokeStyle = "#ff55ff"; ctx.lineWidth = 2; ctx.stroke();
+                }
+            }
+            if (p.type === 'STAMINA') {
+                for (let i = 0; i < p.maxStamina; i++) {
+                    let cx = 30 + i * 16; let cy = yOffset + 18;
+                    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI*2);
+                    ctx.fillStyle = i < Math.floor(p.stamina) ? "#ffcc00" : (i < p.stamina ? "rgba(255, 204, 0, 0.5)" : "rgba(0,0,0,0.5)");
+                    ctx.fill(); ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1; ctx.stroke();
+                }
+            }
+            if (p.bleedTimer > 0 && !p.isDowned) { ctx.fillStyle = "red"; ctx.font = "12px Arial"; ctx.fillText("Кровотечение!", 230, yOffset + 4); ctx.fillRect(320, yOffset - 2, (p.bleedTimer / 120) * 60, 6); }
+        }
+
+        let healY = numPlayers === 2 ? 105 : 75;
+        ctx.fillStyle = "lime"; ctx.font = "14px Arial"; ctx.fillText("Заряды исцеления:", 20, healY);
+        for(let j = 0; j < maxSharedHeals; j++) {
+            let hx = 150 + j * 15; let hy = healY - 5;
+            if (j < Math.floor(sharedHeals)) { ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); ctx.fillStyle = "lime"; ctx.fill(); } 
+            else if (j < sharedHeals) { ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); ctx.fillStyle = "lime"; ctx.fill(); ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); ctx.strokeStyle = "rgba(0, 255, 0, 0.5)"; ctx.stroke(); } 
+            else { ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); ctx.strokeStyle = "rgba(0, 255, 0, 0.3)"; ctx.stroke(); }
+        }
+        ctx.fillStyle = "cyan"; ctx.font = "14px Arial"; ctx.fillText(`Удары для хила: ${sharedHitCount}/8`, 20, healY + 25);
+    }
+
+    function drawBackground() {
+        ctx.fillStyle = secretMode ? "#111" : (globalWindMode === "DOWN" ? "#05050a" : "#1a1a24"); 
+        ctx.fillRect(0, 0, ARENA_W, FLOOR);
+        
+        for (let i = 0; i < ARENA_W; i += 600) {
+            if (!secretMode) { 
+                ctx.fillStyle = "#2a2a3a"; ctx.fillRect(i + 150, 100, 80, 120); 
+                ctx.fillStyle = "rgba(100, 150, 255, 0.1)"; ctx.fillRect(i + 150, 100, 80, 120); 
+            }
+        }
+
+        ctx.fillStyle = secretMode ? "#000" : "#222"; 
+        ctx.fillRect(0, FLOOR, ARENA_W, ARENA_H - FLOOR);
+        ctx.strokeStyle = secretMode ? "#555" : "#111"; 
+        ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, FLOOR); ctx.lineTo(ARENA_W, FLOOR); ctx.stroke();
+        
+        let topWallLimit = FLOOR/2;
+        if (secretMode) topWallLimit -= 100;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(0, topWallLimit); ctx.lineTo(15, topWallLimit); ctx.moveTo(ARENA_W-15, topWallLimit); ctx.lineTo(ARENA_W, topWallLimit); ctx.stroke(); ctx.setLineDash([]);
+        
+        if (globalWindMode === "UP") { ctx.fillStyle = "rgba(0, 255, 255, 0.05)"; ctx.fillRect(0, 0, ARENA_W, GAME_HEIGHT); }
+    }
+
+    function drawRapier(b, isPhantom = false) {
+        if (b.state.startsWith("CINEMATIC") || b.state === "DEFEATED" || b.state === "FREE_ROAM") return;
+        ctx.save(); let flip = b.facingRight ? 1 : -1; ctx.translate(b.x + b.width/2, b.y + b.height/2 - 5); ctx.scale(flip, 1);
+        let angle = 0; let time = Date.now(); 
+        if (b.state === "IDLE") { angle = -Math.PI / 6 + Math.sin(time / 300) * 0.05; } else if (b.state === "WALK" || b.state === "CHASE") { angle = Math.sin(time / 150) * 0.15; } else if (b.state === "LUNGE_WINDUP") { angle = -Math.PI / 4 + Math.sin(time / 50) * 0.03; } else if (b.state === "LUNGE") { angle = Math.PI / 16; } else if (b.state === "PARRY_STANCE" || b.state === "PARRY_DASH" || b.state === "HEAL_PUNISH_DASH") { angle = -Math.PI / 2; } else if (b.state === "CAST_WIND" || b.state === "WIND_FLY" || b.state === "CAST_VERTICAL_WIND") { angle = -Math.PI / 3 + Math.sin(time / 200) * 0.08; } else if (b.state === "AOE") { angle = Math.PI / 2; } else if (b.state.startsWith("FEINT")) { angle = b.state === "FEINT_DASH_BACK" ? Math.PI/4 : -Math.PI/6 + Math.sin(time / 100) * 0.1; }
+        ctx.rotate(angle);
+        
+        if (boss.state === "SHARPEN_WINDUP" && !isPhantom) {
+            ctx.fillStyle = "purple"; ctx.fillRect(10, -5, 50, 10);
+        } else {
+            ctx.fillStyle = isPhantom ? "rgba(160, 160, 160, 0.5)" : "#a0a0a0"; ctx.fillRect(10, -2, 50, 4);
+            ctx.fillStyle = isPhantom ? "rgba(255, 255, 255, 0.5)" : "#fff"; ctx.fillRect(10, -1, 50, 1);
+            ctx.fillStyle = isPhantom ? "rgba(255, 136, 0, 0.5)" : getBossColor("#ff8800"); ctx.fillRect(5, -6, 8, 12); ctx.fillRect(13, -3, 5, 6);
+        }
+        ctx.restore();
+        
+        if (!isPhantom && b.phase === 3 && (b.state === "PARRY_DASH" || b.state === "HEAL_PUNISH_DASH")) { ctx.save(); ctx.translate(b.x + b.width/2, b.y + b.height/2); ctx.scale(flip, 1); ctx.beginPath(); ctx.arc(0, 0, 60, -Math.PI/2, Math.PI/4); ctx.strokeStyle = "rgba(255, 255, 255, 0.8)"; ctx.lineWidth = 15; ctx.stroke(); ctx.restore(); }
+    }
+
+    function draw() {
+        if (gameState === "MENU") return;
+        ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT); 
+        ctx.save();
+        
+        if (secretMode) ctx.translate(-camX, -camY);
+
+        if (activeCinematic) {
+            ctx.fillStyle = "#000"; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            ctx.fillStyle = "#fff"; ctx.fillRect(GAME_WIDTH/2 - 15, GAME_HEIGHT/2, 30, 50); 
+            ctx.fillStyle = "#555"; ctx.fillRect(GAME_WIDTH/2 + Math.sin(activeCinematic.tick)*100, GAME_HEIGHT/2, 30, 50); 
+            ctx.fillStyle = "red"; ctx.font = "30px Arial"; ctx.textAlign = "center"; ctx.fillText("КРИТИЧЕСКИЙ УДАР!", GAME_WIDTH/2, 100); ctx.textAlign = "left";
+        } else {
+            drawBackground();
+
+            if (boss.state === "VOID_FLOOR_WARN") { ctx.fillStyle = "rgba(150,0,255,0.2)"; ctx.fillRect(0, FLOOR-10, ARENA_W, 10); }
+            if (boss.state === "VOID_FLOOR_ACTIVE") { ctx.fillStyle = "rgba(150,0,255,0.6)"; ctx.fillRect(0, FLOOR-15, ARENA_W, 15); }
+
+            if (secretMode && boss.saLines) { 
+                for(let l of boss.saLines) {
+                    ctx.beginPath(); ctx.moveTo(l.x1, l.y1);
+                    let drawX2 = l.x2; let drawY2 = l.y2;
+                    if (boss.state === "SA_EXECUTE") {
+                        let progress = 1 - (boss.stateTimer / 6);
+                        drawX2 = l.x1 + (l.x2 - l.x1) * progress;
+                        drawY2 = l.y1 + (l.y2 - l.y1) * progress;
+                    }
+                    ctx.lineTo(drawX2, drawY2); 
+                    ctx.strokeStyle = (l.type === "SA3") ? "purple" : "white"; ctx.lineWidth = 45; ctx.stroke(); 
+                }
+            }
+
+            for (let l of arenaLeaves) { ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(l.angle); ctx.fillStyle = secretMode ? "rgba(150,0,255,0.5)" : l.color; ctx.fillRect(-l.size/2, -l.size/2, l.size, l.size/2); ctx.restore(); }
+            
+            for (let lm of looms) {
+                ctx.fillStyle = "#5c4033"; ctx.fillRect(lm.x - 15, lm.y - 40, 30, 40); 
+                ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(lm.x, lm.y - 20, 12, 0, Math.PI*2); ctx.fill(); 
+                ctx.strokeStyle = "#555"; ctx.lineWidth = 2; ctx.stroke();
+            }
+
+            for (let b of airBlades) { 
+                ctx.save(); ctx.translate(b.x, b.y); 
+                ctx.rotate(Date.now() / 50); 
+                ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(10, 0); ctx.lineTo(0, 10); ctx.lineTo(-10, 0); ctx.closePath(); 
+                ctx.fillStyle = "cyan"; ctx.fill(); 
+                ctx.strokeStyle = "white"; ctx.lineWidth = 1; ctx.stroke();
+                ctx.restore(); 
+            }
+            
+            for (let d of blackDaggers) { 
+                ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(Math.atan2(d.vy, d.vx)); 
+                if (d.isShuriken) { 
+                    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(12, 0); ctx.lineTo(0, 12); ctx.lineTo(-12, 0); ctx.closePath();
+                    ctx.fillStyle = "#1a001a"; ctx.fill(); 
+                    ctx.strokeStyle = "#9900ff"; ctx.lineWidth = 2; ctx.stroke();
+                } else { 
+                    ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-8, 5); ctx.lineTo(-8, -5); ctx.closePath(); 
+                    ctx.fillStyle = d.isSecret ? "#1a001a" : "#111"; 
+                    ctx.fill(); 
+                    ctx.strokeStyle = d.isSecret ? "#9900ff" : "#555"; 
+                    ctx.lineWidth = 2; ctx.stroke(); 
+                    ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(-18, 0); 
+                    ctx.strokeStyle = d.isSecret ? "rgba(153, 0, 255, 0.6)" : "rgba(100, 100, 100, 0.6)"; 
+                    ctx.lineWidth = 1; ctx.stroke(); 
+                }
+                ctx.restore(); 
+            }
+            
+            for (let pt of voidPortals) {
+                ctx.beginPath(); ctx.arc(pt.x, pt.y, 25, 0, Math.PI*2);
+                let grad = ctx.createRadialGradient(pt.x, pt.y, 5, pt.x, pt.y, 25);
+                grad.addColorStop(0, "black");
+                grad.addColorStop(1, "white");
+                ctx.fillStyle = grad; ctx.fill();
+                ctx.strokeStyle = "#9900ff"; ctx.lineWidth = 3; ctx.stroke();
+                ctx.beginPath(); ctx.arc(pt.x, pt.y, 10 + Math.sin(Date.now()/100)*5, 0, Math.PI*2);
+                ctx.fillStyle = "rgba(153, 0, 255, 0.5)"; ctx.fill();
+            }
+
+            for (let d of playerDaggers) { ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(Math.atan2(d.vy, d.vx)); ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-10, 5); ctx.lineTo(-10, -5); ctx.closePath(); ctx.fillStyle = "#00ffff"; ctx.fill(); ctx.strokeStyle = "white"; ctx.stroke(); ctx.restore(); }
+
+            for (let t of airTraps) { ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(Date.now()/50); ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, 6); ctx.lineTo(-6, 6); ctx.closePath(); ctx.fillStyle = "#ffdd00"; ctx.fill(); ctx.strokeStyle = "white"; ctx.stroke(); ctx.restore(); }
+            for (let t of airComboTraps) { ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(-Date.now()/50); ctx.beginPath(); ctx.arc(0,0, 10, 0, Math.PI*2); ctx.fillStyle = "rgba(255, 255, 100, 0.9)"; ctx.fill(); ctx.strokeStyle = "yellow"; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
+            for (let e of voidExplosions) { ctx.beginPath(); ctx.arc(e.x, e.y, e.timer, 0, Math.PI*2); ctx.fillStyle = e.isWhite ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.8)"; ctx.fill(); }
+
+            for (let p of players) { 
+                if (p.type === 'STAMINA') { 
+                    for (let cp of p.chargeProjectiles) { 
+                        ctx.beginPath(); ctx.arc(cp.x, cp.y, 8 + cp.dmg*2, 0, Math.PI*2); 
+                        ctx.fillStyle = "rgba(0, 255, 255, 0.8)"; ctx.fill(); ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.stroke(); 
+                    } 
+                } 
+            }
+            for (let t of p2Traps) { ctx.fillStyle = "lime"; ctx.beginPath(); ctx.moveTo(t.x + 15, t.y - 10); ctx.lineTo(t.x, t.y); ctx.lineTo(t.x + 35, t.y); ctx.closePath(); ctx.fill(); }
+
+            if (gameState === "PLAYING") {
+
+                for (let ph of phantoms) { ctx.globalAlpha = 0.4; ctx.fillStyle = "rgba(150, 150, 150, 0.8)"; ctx.fillRect(ph.x, ph.y, 30, 50); drawRapier(ph, true); ctx.globalAlpha = 1.0; }
+
+                if (boss.state !== "FREE_ROAM") {
+                    if (boss.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0 && boss.state !== "TRANSITION" && boss.state !== "DEFEATED" && !boss.state.startsWith("TELEPORT")) ctx.fillStyle = "white"; else ctx.fillStyle = getBossColor(boss.color);
+                    ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+                    drawRapier(boss);
+                }
+
+                for (let ph of boss.sa1Phantoms || []) { ctx.fillStyle = "rgba(150,150,150,0.5)"; ctx.fillRect(ph.x, ph.y, 30, 50); }
+
+                if (boss.state === "CINEMATIC_TIE_WAIT") { ctx.fillStyle = "cyan"; ctx.font = "16px Arial"; ctx.textAlign = "center"; ctx.fillText(`Связывайте!`, boss.x + boss.width/2, boss.y - 40); for (let i=0; i<players.length; i++) { let p = players[i]; if (!p.hasPressedTie && !p.isDowned && p.hp > 0) { let key = p.type === 'WATER' ? (numPlayers === 1 ? "F" : "'") : "F"; ctx.fillStyle = p.color; ctx.fillText(`Нажми ${key}`, p.x + p.width/2, p.y - 15); } } ctx.textAlign = "left"; }
+                if (boss.state === "CINEMATIC_FAIL") { ctx.fillStyle = "red"; ctx.font = "16px Arial"; ctx.textAlign = "center"; ctx.fillText("Провал!", boss.x + boss.width/2, boss.y - 40); ctx.textAlign = "left"; ctx.lineWidth = 2; ctx.strokeStyle = "red"; for(let i=0; i<10; i++) { ctx.beginPath(); let sx = boss.x + boss.width/2; let sy = boss.y + boss.height/2; ctx.moveTo(sx, sy); ctx.lineTo(sx + (Math.random()-0.5)*150, sy + (Math.random()-0.5)*150); ctx.stroke(); } }
+                if (boss.state === "CINEMATIC_TYING" || boss.state === "CINEMATIC_BREAK") { ctx.lineWidth = 2; for(let i=0; i<20; i++) { ctx.strokeStyle = (i % 2 === 0) ? "cyan" : (numPlayers === 2 ? "lime" : "cyan"); ctx.beginPath(); ctx.moveTo(boss.x - 5 + Math.random()*10, boss.y + i*2.5 + Math.random()*5); ctx.lineTo(boss.x + boss.width + 5 + Math.random()*10, boss.y + i*2.5 + Math.random()*5); ctx.stroke(); } }
+                if (boss.state === "CINEMATIC_BREAK") { ctx.strokeStyle = "white"; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(boss.x + boss.width/2, boss.y + boss.height/2, 50, -Math.PI/4, Math.PI + Math.PI/4); ctx.stroke(); }
+                if (boss.state === "WIND_FLY") { ctx.fillStyle = secretMode ? "rgba(150,0,255,0.5)" : "rgba(0, 255, 255, 0.5)"; ctx.fillRect(boss.x, boss.y + boss.height, boss.width, 20 + Math.random() * 20); }
+                
+                if (scarf.active) { ctx.fillStyle = "#111"; ctx.strokeStyle = "#444"; ctx.lineWidth = 2; let sx = scarf.dir === 1 ? boss.x + boss.width : boss.x - scarf.width; ctx.fillRect(sx, boss.y + 20, scarf.width, 10); ctx.strokeRect(sx, boss.y + 20, scarf.width, 10); }
+                if (boss.state === "TRANSITION") { ctx.fillStyle = "cyan"; ctx.font = "14px Arial"; ctx.textAlign = "center"; ctx.fillText(boss.msg, boss.x + boss.width/2, boss.y - 15); ctx.textAlign = "left"; }
+                if (boss.state === "DEFEATED") { 
+                    if (secretMode) {
+                        ctx.fillStyle = "white"; ctx.font = "40px Arial"; ctx.textAlign = "center"; ctx.fillText("ПОБЕДА", ARENA_W/2, 150); ctx.textAlign = "left"; 
+                    } else {
+                        ctx.fillStyle = "white"; ctx.font = "16px Arial"; ctx.textAlign = "center"; ctx.fillText("Хах... неплохо.", boss.x + boss.width/2, boss.y - 45); ctx.fillText("Считай это дружеским спаррингом!", boss.x + boss.width/2, boss.y - 25); ctx.textAlign = "left"; ctx.fillStyle = "lime"; ctx.font = "20px Arial"; ctx.fillText("Вы победили! (Нажмите R для рестарта)", ARENA_W/2 - 150, 150); 
+                    }
+                }
+                if (boss.state === "AOE") { let aX = boss.x - 300, aY = boss.y - 150, aW = 630, aH = 200; ctx.fillStyle = "rgba(255, 136, 0, 0.1)"; ctx.fillRect(aX, aY, aW, aH); ctx.strokeStyle = "rgba(255, 255, 255, 0.9)"; ctx.lineWidth = 2; for(let i=0; i<20; i++) { ctx.beginPath(); let sx = aX + Math.random() * aW; let sy = aY + Math.random() * aH; ctx.moveTo(sx, sy); ctx.lineTo(sx + (Math.random()-0.5)*250, sy + (Math.random()-0.5)*250); ctx.stroke(); } }
+
+                if (clashFlash && clashFlash.timer > 0) { ctx.beginPath(); ctx.arc(clashFlash.x, clashFlash.y, (15 - clashFlash.timer) * 8, 0, Math.PI*2); ctx.fillStyle = "rgba(255, 255, 255, 0.8)"; ctx.fill(); ctx.strokeStyle = "cyan"; ctx.lineWidth = 4; ctx.stroke(); clashFlash.timer--; }
+
+                for (let p of players) {
+                    if (p.isDowned) {
+                        ctx.save(); ctx.translate(p.x + 15, p.y + 50); ctx.rotate(Math.PI / 2); ctx.fillStyle = "rgba(179, 89, 89, 0.6)"; ctx.fillRect(-15, -50, 30, 50); ctx.restore();
+                        ctx.fillStyle = "red"; ctx.font = "16px Arial"; ctx.textAlign = "center"; ctx.fillText(Math.ceil(p.downedTimer/60) + " сек", p.x + 15, p.y - 10); ctx.textAlign = "left";
+                        continue; 
+                    }
+                    if (p.hp <= 0) continue;
+
+                    if (p.lightCharge > 0) { ctx.beginPath(); ctx.arc(p.x + 15, p.y + 25, 30, 0, Math.PI*2); ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.fill(); }
+
+                    if (p.type === 'WATER' && p.isDashing) { ctx.shadowColor = "#9900ff"; ctx.shadowBlur = 20; }
+
+                    if (p.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0) ctx.fillStyle = "lightblue"; else ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, p.width, p.height);
+                    
+                    ctx.shadowBlur = 0; 
+
+                    if (p.isAoEHealing) { ctx.beginPath(); ctx.arc(p.x + 15, p.y + 25, 50, 0, Math.PI*2); ctx.fillStyle = "rgba(0, 150, 255, 0.3)"; ctx.fill(); }
+                    if (p.tied && boss.state !== "SCARF_PULL" && !boss.state.startsWith("CINEMATIC")) { ctx.strokeStyle = "cyan"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x, p.y + 10); ctx.lineTo(p.x + 30, p.y + 20); ctx.moveTo(p.x, p.y + 30); ctx.lineTo(p.x + 30, p.y + 40); ctx.stroke(); ctx.fillStyle = "cyan"; ctx.font = "12px Arial"; ctx.fillText((secretMode ? 7 : 5) - p.tieClicks, p.x - 10, p.y - 10); }
+
+                    if (p.isHealing && !p.isAoEHealing) { 
+                        ctx.fillStyle = "rgba(0, 255, 100, 0.3)"; ctx.beginPath(); 
+                        let target = p.isMultiHeal ? (p.healFramesTotal/2) : p.healFramesTotal;
+                        let progress = (p.healTimer % target) / target;
+                        ctx.arc(p.x + 15, p.y + 25, 40, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * progress)); ctx.lineTo(p.x + 15, p.y + 25); ctx.fill(); 
+                    }
+
+                    if (p.attackTimer > 0 && p.type !== 'AIR' && p.lightCharge === 0) {
+                        ctx.fillStyle = p.color;
+                        if (p.attackType === "DOWN") { ctx.beginPath(); ctx.arc(p.x + 15, p.y + 50, 35, 0, Math.PI); ctx.fill(); } 
+                        else { let sx = p.facingRight ? p.x + 30 : p.x - p.atkRange; ctx.fillRect(sx, p.y + 10, p.atkRange, 20); }
+                    }
+                }
+            }
+        }
+        
+        ctx.restore(); 
+
+        if (boss.state === "FREE_ROAM") {
+            ctx.fillStyle = "white"; ctx.font = "60px Arial"; ctx.textAlign = "center"; 
+            ctx.fillText("ПОБЕДА", GAME_WIDTH/2, 150); ctx.textAlign = "left"; 
+        }
+
+        if (gameState === "PLAYING") {
+            drawMasks(); 
+            if (!activeCinematic && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") { 
+                ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(GAME_WIDTH/2 - 200, 375, 400, 10); 
+                ctx.fillStyle = boss.heroBleedTimer > 0 ? "#ff00aa" : "red"; 
+                ctx.fillRect(GAME_WIDTH/2 - 200, 375, (boss.hp / boss.maxHp) * 400, 10); 
+                ctx.fillStyle = "white"; ctx.font = "12px Arial"; 
+                ctx.fillText(`Фаза: ${boss.phase}`, GAME_WIDTH/2 - 20, 385); 
+            }
+        } else if (gameState === "GAMEOVER") { 
+            ctx.fillStyle = "red"; ctx.font = "40px Arial"; ctx.textAlign = "center"; ctx.fillText("ВЫ ПОГИБЛИ", GAME_WIDTH/2, 180); 
+            ctx.font = "20px Arial"; ctx.fillText("Нажмите 'R' для рестарта", GAME_WIDTH/2, 220); ctx.textAlign = "left";
+        }
+    }
+
+    function loop() { update(); draw(); requestAnimationFrame(loop); }
+    loop(); 
+</script>
+</body>
+</html>
