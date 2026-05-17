@@ -1699,8 +1699,25 @@
         }
     }
 
-    function loop() { update(); draw(); requestAnimationFrame(loop); }
-    loop(); 
+    let lastTime = performance.now();
+    let accumulator = 0;
+    const FIXED_TIME_STEP = 1000 / 60; 
+
+    function loop(time) {
+        let dt = time - lastTime;
+        lastTime = time;
+        if (dt > 250) dt = 250; 
+
+        accumulator += dt;
+        while (accumulator >= FIXED_TIME_STEP) {
+            update();
+            accumulator -= FIXED_TIME_STEP;
+        }
+
+        draw();
+        requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
 </script>
 </body>
 </html>
