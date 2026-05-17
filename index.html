@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Убежище</title>
     <style>
-        body { margin: 0; background-color: #0a0a0a; color: white; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; user-select: none; -webkit-user-select: none; overflow-x: hidden; }
+        body { margin: 0; background-color: #0a0a0a; color: white; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; user-select: none; -webkit-user-select: none; overflow-x: hidden; transition: background-color 0.5s; }
         canvas { background-color: #1a1a24; border: 2px solid #444; margin-top: 10px; box-shadow: 0 0 30px rgba(0, 150, 255, 0.2); touch-action: none; width: 100%; max-width: 1000px; aspect-ratio: 2.5 / 1; object-fit: contain; image-rendering: auto; transform: translateZ(0); will-change: transform; }
         #controls-container { width: 100%; max-width: 1000px; padding: 10px; box-sizing: border-box; }
         #mobile-ui { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; margin-bottom: 10px; padding: 0 10px; }
@@ -57,7 +57,7 @@
             </div>
             <div id="p2-select-ui" style="display: none; margin-top: 20px; border-top: 1px solid #444; padding-top: 15px;">
                 <div style="color: yellow;"><b>ИГРОК 2 (Цифры на клав.):</b></div>
-                <div style="font-size: 14px; margin-top: 10px;"><b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой</div>
+                <div id="p2-options-text" style="font-size: 14px; margin-top: 10px;"><b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой</div>
                 <div id="p2-status" style="margin-top: 10px; color: gray;">Ожидание выбора Игрока 2...</div>
             </div>
         </div>
@@ -94,6 +94,7 @@
     let globalWindMode = "NONE", globalWindTimer = 0, globalWindCooldown = 0;
 
     let screenShake = { timer: 0, mag: 0, dirX: 0, dirY: 0 };
+    window.fireHeroUnlocked = false;
 
     let phase2Hp = 18; let phase3Hp = 10;
     let boss = { 
@@ -191,11 +192,23 @@
         if (e.code === 'KeyL' && gameState === "MENU" && (document.getElementById("input-select").style.display === "block" || document.getElementById("hero-select").style.display === "block" || document.getElementById("main-menu").style.display === "block")) {
             secretMode = true; playSound('heal'); document.body.style.backgroundColor = "#000";
         }
+        
+        // СЕКРЕТНЫЙ 5 ГЕРОЙ
+        if (e.key === '4' && gameState === "MENU" && (document.getElementById("input-select").style.display === "block" || document.getElementById("main-menu").style.display === "block")) {
+            if (!window.fireHeroUnlocked) {
+                window.fireHeroUnlocked = true; playSound('slash');
+                document.body.style.backgroundColor = "#2a0a0a";
+                document.getElementById("p1-select-ui").innerHTML += `<div class="menu-btn" onclick="selectHero1('FIRE')" style="color: #ff5500; border-color: #ff5500;">5. Огонь</div>`;
+                document.getElementById("p2-options-text").innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff5500;'>5</b>-Огонь";
+            }
+        }
+
         if (gameState === "MENU" && document.getElementById("hero-select").style.display === "block" && numPlayers === 2) {
             if (e.key === "1") { p2HeroSelection = 'WATER'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: Вода"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
             if (e.key === "2") { p2HeroSelection = 'AIR'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: Воздух"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
             if (e.key === "3") { p2HeroSelection = 'EARTH'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: Земля"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
             if (e.key === "4") { p2HeroSelection = 'STAMINA'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: 4-й Герой"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
+            if (e.key === "5" && window.fireHeroUnlocked) { p2HeroSelection = 'FIRE'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: Огонь"; document.getElementById('p2-status').style.color = "#ff5500"; checkDuoStart(); }
         }
     });
 
@@ -333,14 +346,15 @@
     function createPlayer(id, type, keysObj, inputType, startX) {
         let p = { 
             id: id, x: startX, y: FLOOR - 50, width: 30, height: 50, vx: 0, vy: 0, facingRight: true, attackTimer: 0, attackCooldown: 0, attackType: "NORMAL", 
-            invuln: 0, healTimer: 0, isHealing: false, isAoEHealing: false, prevHealKey: false, prevDaggerKey: false, prevAttackKey: false, prevComboKey: false, prevJumpKey: false, 
+            invuln: 0, healTimer: 0, isHealing: false, isAoEHealing: false, prevHealKey: false, prevDaggerKey: false, prevAttackKey: false, prevComboKey: false, prevJumpKey: false, prevDashKey: false,
             wallJumpCooldown: 0, bleedTimer: 0, tied: false, tieClicks: 0, hasPressedTie: false, keys: keysObj, inputType: inputType, isDowned: false, downedTimer: 0, 
-            isDashing: false, purpleHp: 0, tpCooldown: 0, tpDebuffTimer: 0, jumps: 0, maxJumps: 1, healFramesTotal: 120, isMultiHeal: false, glassDebuff: false, hasSharpening: false, dmgDealtMod: 1, genTimer: 0, lightCharge: 0, saHit: false, pendingDmgTimer: 0, pendingDmg: 0
+            isDashing: false, purpleHp: 0, tpCooldown: 0, tpDebuffTimer: 0, jumps: 0, maxJumps: 1, healFramesTotal: 120, isMultiHeal: false, glassDebuff: false, hasSharpening: false, dmgDealtMod: 1, genTimer: 0, lightCharge: 0, saHit: false, pendingDmgTimer: 0, pendingDmg: 0, healCost: 1
         };
         if (type === 'WATER') { Object.assign(p, { speed: 5, hp: 6, maxHp: 6, color: "#3366ff", atkCdBase: 24, atkRange: 75, jumpPowerBase: -12, type: 'WATER', dmgMulti: 1 }); } 
         else if (type === 'EARTH') { Object.assign(p, { speed: 5.5, hp: 6, maxHp: 6, color: "#33cc33", atkCdBase: 12, atkRange: 40, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.75 }); } 
         else if (type === 'AIR') { Object.assign(p, { speed: 5.5, hp: 6, maxHp: 6, color: "#ffdd00", atkCdBase: 20, atkRange: 60, jumpPowerBase: -13, type: 'AIR', dmgMulti: 0.8 }); } 
         else if (type === 'STAMINA') { Object.assign(p, { speed: 5, hp: 6, maxHp: 6, color: "#b35959", atkCdBase: 24, atkRange: 75, jumpPowerBase: -12, type: 'STAMINA', dmgMulti: 1.5, stamina: 5, maxStamina: 9, isCharging: false, chargeTimer: 0, chargeProjectiles: [] }); }
+        else if (type === 'FIRE') { Object.assign(p, { speed: 5.25, hp: 6, maxHp: 6, color: "#ff5500", atkCdBase: 18, atkRange: 57.5, jumpPowerBase: -12.5, type: 'FIRE', dmgMulti: 1.25, isParrying: false, parryTimer: 0, orangeHp: 0, orangeHpTimer: 0, isFieryHealing: false, fireDashTimer: 0 }); }
         return p;
     }
 
@@ -348,6 +362,7 @@
         for(let p of players) { 
             p.hp = p.maxHp; p.y = FLOOR - 50; p.vx = 0; p.vy = 0; p.invuln = 0; p.healTimer = 0; p.isHealing = false; p.isAoEHealing = false; p.bleedTimer = 0; p.tied = false; p.tieClicks = 0; p.hasPressedTie = false; p.isDowned = false; p.purpleHp = 0; p.tpCooldown = 0; p.tpDebuffTimer = 0; p.genTimer = 0; p.lightCharge = 0; p.saHit = false; p.pendingDmgTimer = 0; p.pendingDmg = 0;
             if(p.type === 'STAMINA') { p.stamina = 5; p.isCharging = false; p.chargeTimer = 0; p.chargeProjectiles = []; } 
+            if(p.type === 'FIRE') { p.isParrying = false; p.parryTimer = 0; p.orangeHp = 0; p.orangeHpTimer = 0; p.isFieryHealing = false; p.fireDashTimer = 0; }
         }
         if(players.length > 0) players[0].x = ARENA_W/2 - 50; if(players.length > 1) players[1].x = ARENA_W/2 + 50;
         sharedHeals = maxSharedHeals; sharedHitCount = 0; windStreams = []; airBlades = []; playerDaggers = []; blackDaggers = []; p2Traps = []; phantoms = []; airTraps = []; airComboTraps = []; scarf.active = false; clashFlash = null; activeCinematic = null; globalWindMode = "NONE"; globalWindTimer = 0; globalWindCooldown = 0; voidExplosions = []; voidPortals = []; looms = []; chaosBalls = [];
@@ -376,18 +391,28 @@
     function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassInvuln = false) {
         if (!isBleed && !boss.state.startsWith("CINEMATIC") && !activeCinematic && !bypassInvuln) { boss.directAttackHit = true; boss.missCount = 0; }
         
-        if (boss.hunterInfected > 0 && !isBleed && !isStaminaBleed && amount > 0) {
-            amount = Math.max(0.5, amount - 1.5);
+        if (boss.hunterInfected > 0 && !isBleed && !isStaminaBleed && amount > 0) amount = Math.max(0.5, amount - 1.5);
+
+        if (p.isParrying && !isBleed && !isStaminaBleed && !bypassInvuln) {
+            p.isParrying = false; p.parryTimer = 0;
+            triggerVibration('clash'); triggerShake(5, 10); playSound('parry');
+            let dist = Math.hypot((boss.x+15)-(p.x+15), (boss.y+25)-(p.y+25));
+            if (dist < 150) { boss.hp -= 2.5 * p.dmgDealtMod; boss.invuln = 10; recordHit(p); checkPhaseTransition(); }
+            voidExplosions.push({x: p.x+15, y: p.y+25, timer: 15, isWhite: false, isOrange: true, r: 80});
+            return; 
         }
 
         if (p.invuln <= 0 || isBleed || bypassInvuln) {
             if (p.glassDebuff && !isStaminaBleed) amount *= 2; 
+            
+            if (p.orangeHp > 0 && !isBleed && !isStaminaBleed) { let absorb = Math.min(p.orangeHp, amount); p.orangeHp -= absorb; amount -= absorb; }
             if (p.purpleHp > 0 && !isBleed) { let absorb = Math.min(p.purpleHp, amount); p.purpleHp -= absorb; amount -= absorb; }
             if (p.lightCharge > 0 && !isBleed) { amount = Math.max(0, amount - 1); p.lightCharge = 0; }
             if (secretMode && !isBleed) sharedHitCount = Math.max(0, sharedHitCount - 1);
+            
             if (amount > 0) p.hp -= amount; 
             if (!isBleed && !bypassInvuln) p.invuln = 60; 
-            p.isHealing = false; p.isAoEHealing = false; p.healTimer = 0; 
+            p.isHealing = false; p.isAoEHealing = false; p.isFieryHealing = false; p.healTimer = 0; 
             if (p.type === 'STAMINA') p.isCharging = false; 
             playSound('hitPlayer'); 
             if (p.hp <= 0) {
@@ -666,12 +691,15 @@
             } else if (p.tied) {
                 if (boss.state !== "SCARF_PULL") { p.vx = 0; p.vy = 0; } p.isHealing = false; p.isAoEHealing = false; p.healTimer = 0; if(p.type === 'STAMINA'){ p.isCharging = false; p.chargeTimer = 0; }
             } else {
-                if (kHeal && !p.prevHealKey && !p.isHealing && sharedHeals >= 1) {
-                    let isAoE = (p.type === 'WATER' && numPlayers === 2 && kUp); let needsHeal = p.hp < p.maxHp;
-                    let hasDownedAlly = players.some(pl => pl.isDowned);
+                
+                let healCost = (p.type === 'FIRE' && kUp) ? 1.5 : (p.isAoEHealing ? 1 : 1);
+                if (kHeal && !p.prevHealKey && !p.isHealing && !p.isParrying && sharedHeals >= healCost) {
+                    let isAoE = (p.type === 'WATER' && numPlayers === 2 && kUp); let isFiery = (p.type === 'FIRE' && kUp);
+                    let needsHeal = p.hp < p.maxHp || isFiery; let hasDownedAlly = players.some(pl => pl.isDowned);
                     if (isAoE) needsHeal = players.some(pl => pl.hp < pl.maxHp) || hasDownedAlly;
                     if (needsHeal || (p.type === 'STAMINA' && p.stamina < p.maxStamina) || hasDownedAlly) {
-                        p.isHealing = true; p.healTimer = 0; p.bleedTimer = 0; p.isAoEHealing = isAoE; playSound('heal');
+                        p.isHealing = true; p.healTimer = 0; p.bleedTimer = 0; p.isAoEHealing = isAoE; p.isFieryHealing = isFiery; p.healCost = healCost; playSound('heal');
+                        if (p.type === 'FIRE') sharedHeals -= healCost; // У огня снимается сразу
                         if (numPlayers === 2 && !secretMode && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED" && boss.phase !== 4) {
                             if (Math.random() < 0.75 && (boss.state === "IDLE" || boss.state === "WALK" || boss.state === "CHASE" || boss.state === "VULN_STANCE")) {
                                 boss.state = "HEAL_PUNISH_DASH"; boss.stateTimer = 6; boss.vx = boss.x < p.x ? 80 : -80; playSound('parry'); boss.directAttackActive = true; boss.directAttackHit = false; boss.comboCount = 0;
@@ -681,7 +709,7 @@
                 }
                 p.prevHealKey = kHeal;
 
-                if (secretMode && kLight && sharedHeals >= 0.5 && p.attackCooldown <= 0 && !p.isHealing) {
+                if (secretMode && kLight && p.type !== 'FIRE' && sharedHeals >= 0.5 && p.attackCooldown <= 0 && !p.isHealing) {
                     if (p.lightCharge === 0) sharedHeals -= 0.5; p.lightCharge++;
                 } else if (p.lightCharge >= 60 && !kLight) {
                     p.lightCharge = 0; p.attackCooldown = 30; playSound('slash');
@@ -778,7 +806,19 @@
                         if (p.type === 'WATER') { let dx = (boss.x + boss.width/2) - (p.x + p.width/2); let dy = (boss.y + boss.height/2) - (p.y + p.height/2); let dist = Math.hypot(dx, dy); playerDaggers.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (dx/dist) * 14, vy: (dy/dist) * 14, active: true, pId: p.id }); } 
                         else if (p.type === 'EARTH') { playSound('trap'); p2Traps.push({ x: p.x, y: FLOOR - 5, width: 35, height: 10, timer: 300, hits: 2, cd: 0, pId: p.id }); }
                     }
+                } else if (p.type === 'FIRE') {
+                    if (kDash) { if (!p.prevDashKey) { p.fireDashTimer = 10; applyPhysicsPushToLeaves(p.x+15, p.y+25, 10); } p.speed = 7.0; } else { p.speed = 5.25; }
+                    
+                    if (kSpec && !p.prevDaggerKey && !p.isHealing && p.attackCooldown <= 0 && !p.isParrying) {
+                        if (kUp && sharedHeals >= 0.5) {
+                            sharedHeals -= 0.5; p.attackCooldown = 15; playSound('throw');
+                            let dx = (boss.x + boss.width/2) - (p.x + p.width/2); let dy = (boss.y + boss.height/2) - (p.y + p.height/2); let dist = Math.hypot(dx, dy); 
+                            playerDaggers.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (dx/dist) * 14, vy: (dy/dist) * 14, active: true, pId: p.id, isFire: true, dmg: 1.25 }); 
+                        } else if (!kUp) { p.isParrying = true; p.parryTimer = 45; p.attackCooldown = 45; }
+                    }
+                    if (p.orangeHpTimer > 0) { p.orangeHpTimer--; if (p.orangeHpTimer <= 0) p.orangeHp = 0; }
                 }
+                
                 p.prevDaggerKey = kSpec;
 
                 let onFloor = p.y + p.height >= FLOOR;
@@ -790,43 +830,50 @@
                 
                 if (onFloor || onWall) p.jumps = 0;
 
-                if (p.isHealing) {
+                if (p.isParrying) {
+                    p.vx = 0; p.vy = 0; p.parryTimer--;
+                    if (p.parryTimer <= 0) p.isParrying = false;
+                } else if (p.isHealing) {
                     p.vx = 0; p.vy = 0; p.healTimer++; 
                     
                     if (p.isMultiHeal && !p.isAoEHealing) {
                         let half = Math.floor(120 / 2);
                         let baseAmt = p.type === 'EARTH' ? 2 : (p.type === 'AIR' || p.type === 'STAMINA' ? 2.5 : 3);
                         let amt = baseAmt - 0.75;
-                        if (p.healTimer === half) {
-                            p.hp = Math.min(p.maxHp, p.hp + amt); playSound('heal');
-                            if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2);
-                        }
-                        if (p.healTimer >= 120) {
-                            p.hp = Math.min(p.maxHp, p.hp + amt);
-                            if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2);
-                            sharedHeals--; p.isHealing = false; p.healTimer = 0;
-                        }
+                        if (p.healTimer === half) { p.hp = Math.min(p.maxHp, p.hp + amt); playSound('heal'); if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2); }
+                        if (p.healTimer >= 120) { p.hp = Math.min(p.maxHp, p.hp + amt); if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2); if(p.type!=='FIRE') sharedHeals--; p.isHealing = false; p.healTimer = 0; }
                     } else {
                         let targetTime = p.isAoEHealing ? 240 : p.healFramesTotal;
                         if (p.healTimer >= targetTime) { 
                             let downedAlly = players.find(pl => pl.isDowned);
-                            if (p.isAoEHealing) { 
-                                for(let pl of players) { 
-                                    if (pl.isDowned) { pl.isDowned = false; pl.hp = 3; pl.stamina = 3; pl.downedTimer=0;}
-                                    else { pl.hp = Math.min(pl.maxHp, pl.hp + 2); }
-                                } 
-                            } else { 
-                                let amt = p.type === 'EARTH' ? 2 : (p.type === 'AIR' || p.type === 'STAMINA' ? 2.5 : 3); 
-                                p.hp = Math.min(p.maxHp, p.hp + amt); 
+                            if (p.isAoEHealing) { for(let pl of players) { if (pl.isDowned) { pl.isDowned = false; pl.hp = 3; pl.stamina = 3; pl.downedTimer=0;} else { pl.hp = Math.min(pl.maxHp, pl.hp + 2); } } } 
+                            else if (p.type === 'FIRE') {
+                                p.hp = Math.min(p.maxHp, p.hp + 2.5);
+                                if (p.isFieryHealing) {
+                                    let dist = Math.hypot((boss.x+15)-(p.x+15), (boss.y+25)-(p.y+25));
+                                    if (dist < 150) { boss.hp -= 1.25 * p.dmgDealtMod; boss.invuln = 10; recordHit(p); checkPhaseTransition(); }
+                                    p.orangeHp = 1; p.orangeHpTimer = 180;
+                                    voidExplosions.push({x: p.x+15, y: p.y+25, timer: 15, isWhite: false, isOrange: true, r: 80});
+                                }
+                            }
+                            else { 
+                                let amt = p.type === 'EARTH' ? 2 : (p.type === 'AIR' || p.type === 'STAMINA' ? 2.5 : 3); p.hp = Math.min(p.maxHp, p.hp + amt); 
                                 if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2); 
                                 if (downedAlly) { downedAlly.isDowned = false; downedAlly.hp = 1.5; downedAlly.stamina = 2; downedAlly.downedTimer=0; }
                             }
-                            sharedHeals--; p.isHealing = false; p.isAoEHealing = false; p.healTimer = 0;
+                            if (p.type !== 'FIRE') sharedHeals--; 
+                            p.isHealing = false; p.isAoEHealing = false; p.isFieryHealing = false; p.healTimer = 0;
                         }
                     }
                 } else {
                     if (p.wallJumpCooldown > 0) p.wallJumpCooldown--;
-                    else { if (kLeft) { p.vx = -p.speed; p.facingRight = false; } else if (kRight) { p.vx = p.speed; p.facingRight = true; } else p.vx = 0; }
+                    else { 
+                        if (p.type === 'FIRE' && p.fireDashTimer > 0) {
+                            p.vx = (p.facingRight ? 1 : -1) * 12; p.fireDashTimer--;
+                        } else {
+                            if (kLeft) { p.vx = -p.speed; p.facingRight = false; } else if (kRight) { p.vx = p.speed; p.facingRight = true; } else p.vx = 0; 
+                        }
+                    }
 
                     if (kJump) {
                         if (!p.prevJumpKey) {
@@ -842,10 +889,16 @@
                     let swordHitbox = null;
                     if (kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && p.type !== 'AIR' && p.lightCharge === 0) {
                         p.attackTimer = 12; p.attackCooldown = p.atkCdBase; playSound('slash'); triggerVibration('attack');
-                        if (kDown && p.y + p.height < FLOOR - 5) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 45 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); } 
-                        else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + p.atkRange/2, swordHitbox.y + 10, 4); }
+                        
+                        if (p.type === 'FIRE') {
+                            if (kDown && !onFloor) { p.attackType = "DIVE"; p.vy = 15; p.vx = (p.facingRight ? 1 : -1) * 15; p.attackTimer = 20; swordHitbox = { x: p.facingRight ? p.x : p.x - 30, y: p.y + p.height, width: p.width + 30, height: 40 }; } 
+                            else if (kDash) { p.attackType = "HEAVY"; p.attackTimer = 18; p.attackCooldown = 30; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - (p.atkRange + 15), y: p.y + 10, width: p.atkRange + 15, height: 20 }; } 
+                            else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; }
+                        } else {
+                            if (kDown && p.y + p.height < FLOOR - 5) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 45 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); } 
+                            else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + p.atkRange/2, swordHitbox.y + 10, 4); }
+                        }
 
-                        // Отражение снарядов (Пинг-понг)
                         for(let i=airBlades.length-1; i>=0; i--) { 
                             let b = airBlades[i];
                             if (b.state === "SHOOT" && rectIntersect(swordHitbox, {x: b.x-10, y: b.y-10, width: 20, height: 20})) { 
@@ -886,7 +939,7 @@
                                     let finalBossDmg = p.dmgMulti * p.dmgDealtMod; 
                                     boss.hp -= finalBossDmg; boss.invuln = 10; recordHit(p);
                                     if (p.type === 'STAMINA') { if (p.stamina >= 1) p.stamina -= 1; else { let wasH = p.isHealing; takeDamage(p, 0.5, true, true); if (wasH) triggerVibration('heal_interrupt'); else triggerVibration('damage'); } }
-                                    if (p.attackType === "DOWN") { p.vy = -14; p.jumps = 1; triggerVibration('clash'); triggerShake(2, 5, 0, 1); }
+                                    if (p.attackType === "DOWN" || p.attackType === "DIVE") { p.vy = -14; p.jumps = 1; triggerVibration('clash'); triggerShake(2, 5, 0, 1); }
                                     checkPhaseTransition(); 
                                 }
                             }
@@ -897,6 +950,7 @@
                         }
                     }
                     p.prevAttackKey = kAttack;
+                    if (p.type === 'FIRE') p.prevDashKey = kDash;
                     p.vy += currentGravity; let maxWallSlide = globalWindMode === "DOWN" ? 8 : 2; if (onWall && p.vy > maxWallSlide) p.vy = maxWallSlide; 
                 }
             }
@@ -996,7 +1050,8 @@
                         if (boss.state === "PARRY_STANCE") { boss.state = "PARRY_DASH"; boss.stateTimer = 10; boss.vx = boss.x < d.x ? 35 : -35; playSound('parry'); } 
                         else { 
                             let caster = players.find(pl => pl.id === d.pId);
-                            let dmg = 1 * (caster ? caster.dmgDealtMod : 1); boss.hp -= dmg; boss.invuln = 10; playSound('hitBoss'); checkPhaseTransition(); 
+                            let baseDmg = d.dmg || 1;
+                            let dmg = baseDmg * (caster ? caster.dmgDealtMod : 1); boss.hp -= dmg; boss.invuln = 10; playSound('hitBoss'); checkPhaseTransition(); 
                         }
                         playerDaggers.splice(i, 1); 
                     }
@@ -1126,64 +1181,37 @@
             }
             else if (boss.state === "SA1_WINDUP") {
                 if (boss.stateTimer <= 0) { 
-                    boss.sa1Arr = [];
-                    let realIdx = Math.floor(Math.random() * 7);
-                    for(let i=0; i<7; i++) {
-                        boss.sa1Arr.push({
-                            x: Math.random() * (ARENA_W - 50) + 25,
-                            y: Math.random() * (FLOOR - 100) + 50,
-                            isReal: (i === realIdx),
-                            timer: 0,
-                            startDelay: i * 8, // Последовательное появление
-                            active: true,
-                            struck: false
-                        });
-                    }
-                    boss.state = "SA1_ACTIVE"; boss.stateTimer = 300; 
-                    boss.y = -1000; // Прячем босса
+                    boss.sa1Arr = []; let realIdx = Math.floor(Math.random() * 7);
+                    for(let i=0; i<7; i++) { boss.sa1Arr.push({ x: Math.random() * (ARENA_W - 50) + 25, y: Math.random() * (FLOOR - 100) + 50, isReal: (i === realIdx), timer: 0, startDelay: i * 8, active: true, struck: false }); }
+                    boss.state = "SA1_ACTIVE"; boss.stateTimer = 300; boss.y = -1000;
                 }
             }
             else if (boss.state === "SA1_ACTIVE") {
                 let allDone = true;
                 for (let ph of boss.sa1Arr) {
-                    if (!ph.active) continue;
-                    ph.timer++;
+                    if (!ph.active) continue; ph.timer++;
                     if (ph.timer > ph.startDelay) {
                         allDone = false;
                         if (ph.timer === ph.startDelay + 45 && !ph.struck) {
-                            ph.struck = true;
-                            let hitArea = {x: ph.x - 30, y: ph.y - 150, width: 60, height: 300};
-                            for (let p of players) {
-                                if (!p.isDowned && p.hp > 0 && rectIntersect(p, hitArea)) {
-                                    triggerCinematic("SA1", p, true);
-                                }
-                            }
+                            ph.struck = true; let hitArea = {x: ph.x - 30, y: ph.y - 150, width: 60, height: 300};
+                            for (let p of players) { if (!p.isDowned && p.hp > 0 && rectIntersect(p, hitArea)) { triggerCinematic("SA1", p, true); } }
                         }
                         if (ph.timer > ph.startDelay + 60) ph.active = false;
                     }
                 }
-                if (allDone && !activeCinematic) {
-                    boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 10;
-                    boss.y = FLOOR - boss.height; // Возвращаем босса, если никто не попался
-                }
+                if (allDone && !activeCinematic) { boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 10; boss.y = FLOOR - boss.height; }
             }
             else if (boss.state === "SA1_SLAM_WINDUP") {
-                boss.vx = 0; boss.vy = 0; 
-                if (boss.stateTimer <= 0) { boss.state = "SA1_SLAM"; boss.vy = 35; }
+                boss.vx = 0; boss.vy = 0; if (boss.stateTimer <= 0) { boss.state = "SA1_SLAM"; boss.vy = 35; }
             }
             else if (boss.state === "SA1_SLAM") {
                 boss.vy = 35; 
                 if (boss.y + boss.height >= FLOOR) {
-                    boss.y = FLOOR - boss.height; triggerShake(20, 20, 0, 1); triggerVibration('sa1_land');
-                    boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30;
+                    boss.y = FLOOR - boss.height; triggerShake(20, 20, 0, 1); triggerVibration('sa1_land'); boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30;
                 }
             }
             else if (boss.state === "SA2_WINDUP" || boss.state === "SA3_WINDUP") {
-                if (boss.stateTimer === 23) { 
-                    boss.y = -1000;
-                    let ex1 = Math.random()<0.5 ? 0 : ARENA_W; let ex2 = ex1===0 ? ARENA_W : 0;
-                    boss.saLines = [{x1: ex1, y1: Math.random()*(FLOOR-100), x2: ex2, y2: FLOOR, type: boss.state === "SA3_WINDUP" ? "SA3" : "SA2"}];
-                }
+                if (boss.stateTimer === 23) { boss.y = -1000; let ex1 = Math.random()<0.5 ? 0 : ARENA_W; let ex2 = ex1===0 ? ARENA_W : 0; boss.saLines = [{x1: ex1, y1: Math.random()*(FLOOR-100), x2: ex2, y2: FLOOR, type: boss.state === "SA3_WINDUP" ? "SA3" : "SA2"}]; }
                 if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
             }
             else if (boss.state === "SA2_DOUBLE") {
@@ -1221,10 +1249,7 @@
                             }
                         }
                     }
-                } else {
-                    boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 30; 
-                    for (let p of players) p.saHit = false; boss.saLines = null;
-                }
+                } else { boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 30; for (let p of players) p.saHit = false; boss.saLines = null; }
             }
             else if (boss.state === "SHARPEN_WINDUP") { 
                 boss.vx = 0; boss.y = FLOOR - 150; 
@@ -1236,22 +1261,13 @@
                     for(let i=0; i<numPortals; i++) { voidPortals.push({ x: Math.random() * (ARENA_W - 100) + 50, y: Math.random() * (FLOOR - 150) + 50, timer: 24 + i * 9, type: Math.random() < 0.5 ? "TIE" : "SHURIKEN" }); }
                 }
                 boss.vx = 0;
-                if (boss.stateTimer <= 0) { 
-                    if (boss.superQueue && boss.superQueue.length > 0) { boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 1; } 
-                    else { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; }
-                }
+                if (boss.stateTimer <= 0) { if (boss.superQueue && boss.superQueue.length > 0) { boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 1; } else { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; } }
             }
             else if (boss.state === "PLACE_LOOM") {
-                if (boss.stateTimer <= 0) {
-                    looms.push({x: boss.x + 15, y: FLOOR, timer: 600});
-                    boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20;
-                }
+                if (boss.stateTimer <= 0) { looms.push({x: boss.x + 15, y: FLOOR, timer: 600}); boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; }
             }
             else if (boss.state === "L_HEAL") {
-                if (boss.stateTimer <= 0) {
-                    boss.hp = Math.min(boss.maxHp, boss.hp + 2);
-                    boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20;
-                }
+                if (boss.stateTimer <= 0) { boss.hp = Math.min(boss.maxHp, boss.hp + 2); boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; }
             }
             else {
                 switch(boss.state) {
@@ -1416,6 +1432,11 @@
                     ctx.fillStyle = "#9900ff"; ctx.fill(); ctx.strokeStyle = "#ff55ff"; ctx.lineWidth = 2; ctx.stroke();
                 }
             }
+            if (p.orangeHp > 0) {
+                let cx = 30 + (p.maxHp + p.purpleHp) * 30; let cy = yOffset;
+                ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); 
+                ctx.fillStyle = "#ffaa00"; ctx.fill(); ctx.strokeStyle = "yellow"; ctx.lineWidth = 2; ctx.stroke();
+            }
             if (p.type === 'STAMINA') {
                 for (let i = 0; i < p.maxStamina; i++) {
                     let cx = 30 + i * 16; let cy = yOffset + 18;
@@ -1439,7 +1460,7 @@
     }
 
     function drawBackground() {
-        ctx.fillStyle = secretMode ? "#111" : (globalWindMode === "DOWN" ? "#05050a" : "#1a1a24"); 
+        ctx.fillStyle = secretMode ? (window.fireHeroUnlocked ? "#150505" : "#111") : (globalWindMode === "DOWN" ? "#05050a" : "#1a1a24"); 
         ctx.fillRect(0, 0, ARENA_W, FLOOR);
         
         for (let i = 0; i < ARENA_W; i += 600) {
@@ -1449,7 +1470,7 @@
             }
         }
 
-        ctx.fillStyle = secretMode ? "#000" : "#222"; 
+        ctx.fillStyle = secretMode ? (window.fireHeroUnlocked ? "#1a0000" : "#000") : "#222"; 
         ctx.fillRect(0, FLOOR, ARENA_W, ARENA_H - FLOOR);
         ctx.strokeStyle = secretMode ? "#555" : "#111"; 
         ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, FLOOR); ctx.lineTo(ARENA_W, FLOOR); ctx.stroke();
@@ -1567,11 +1588,21 @@
                 ctx.fillStyle = "rgba(153, 0, 255, 0.5)"; ctx.fill();
             }
 
-            for (let d of playerDaggers) { ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(Math.atan2(d.vy, d.vx)); ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-10, 5); ctx.lineTo(-10, -5); ctx.closePath(); ctx.fillStyle = "#00ffff"; ctx.fill(); ctx.strokeStyle = "white"; ctx.stroke(); ctx.restore(); }
+            for (let d of playerDaggers) { 
+                ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(Math.atan2(d.vy, d.vx)); 
+                ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-10, 5); ctx.lineTo(-10, -5); ctx.closePath(); 
+                ctx.fillStyle = d.isFire ? "#ff5500" : "#00ffff"; ctx.fill(); 
+                ctx.strokeStyle = d.isFire ? "#ffcc00" : "white"; ctx.stroke(); 
+                ctx.restore(); 
+            }
 
             for (let t of airTraps) { ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(Date.now()/50); ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, 6); ctx.lineTo(-6, 6); ctx.closePath(); ctx.fillStyle = "#ffdd00"; ctx.fill(); ctx.strokeStyle = "white"; ctx.stroke(); ctx.restore(); }
             for (let t of airComboTraps) { ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(-Date.now()/50); ctx.beginPath(); ctx.arc(0,0, 10, 0, Math.PI*2); ctx.fillStyle = "rgba(255, 255, 100, 0.9)"; ctx.fill(); ctx.strokeStyle = "yellow"; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
-            for (let e of voidExplosions) { ctx.beginPath(); ctx.arc(e.x, e.y, e.timer, 0, Math.PI*2); ctx.fillStyle = e.isWhite ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.8)"; ctx.fill(); }
+            for (let e of voidExplosions) { 
+                ctx.beginPath(); ctx.arc(e.x, e.y, e.timer * (e.r ? (e.r/30) : 1), 0, Math.PI*2); 
+                ctx.fillStyle = e.isOrange ? `rgba(255,100,0,${e.timer/30})` : (e.isWhite ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.8)"); 
+                ctx.fill(); 
+            }
 
             for (let p of players) { 
                 if (p.type === 'STAMINA') { 
@@ -1641,19 +1672,28 @@
 
                     if (p.type === 'WATER' && p.isDashing) { ctx.shadowColor = "#9900ff"; ctx.shadowBlur = 20; }
 
-                    if (p.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0) ctx.fillStyle = "lightblue"; else ctx.fillStyle = p.color;
+                    ctx.fillStyle = p.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0 ? "lightblue" : p.color;
                     ctx.fillRect(p.x, p.y, p.width, p.height);
+
+                    if (p.type === 'FIRE') {
+                        ctx.save(); ctx.translate(p.x + p.width/2, p.y + p.height/2); ctx.rotate((p.facingRight ? -15 : 15) * Math.PI / 180);
+                        ctx.fillStyle = "#8b4513"; ctx.fillRect(-p.width/2, -5, p.width, 10); ctx.restore();
+                        if (p.isParrying) { ctx.fillStyle = "gray"; let px = p.facingRight ? p.x + p.width + 5 : p.x - 10; ctx.fillRect(px, p.y, 5, p.height); }
+                    }
                     
                     ctx.shadowBlur = 0; 
 
-                    if (p.isAoEHealing) { ctx.beginPath(); ctx.arc(p.x + 15, p.y + 25, 50, 0, Math.PI*2); ctx.fillStyle = "rgba(0, 150, 255, 0.3)"; ctx.fill(); }
+                    if (p.isAoEHealing || p.isFieryHealing) { ctx.beginPath(); ctx.arc(p.x + 15, p.y + 25, 50, 0, Math.PI*2); ctx.fillStyle = p.isFieryHealing ? "rgba(255, 100, 0, 0.3)" : "rgba(0, 150, 255, 0.3)"; ctx.fill(); }
                     if (p.tied && boss.state !== "SCARF_PULL" && !boss.state.startsWith("CINEMATIC")) { ctx.strokeStyle = "cyan"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x, p.y + 10); ctx.lineTo(p.x + 30, p.y + 20); ctx.moveTo(p.x, p.y + 30); ctx.lineTo(p.x + 30, p.y + 40); ctx.stroke(); ctx.fillStyle = "cyan"; ctx.font = "12px Arial"; ctx.fillText((secretMode ? 7 : 5) - p.tieClicks, p.x - 10, p.y - 10); }
 
-                    if (p.isHealing && !p.isAoEHealing) { 
+                    if (p.isHealing && !p.isAoEHealing && !p.isFieryHealing) { 
                         ctx.fillStyle = "rgba(0, 255, 100, 0.3)"; ctx.beginPath(); 
-                        let target = p.isMultiHeal ? (p.healFramesTotal/2) : p.healFramesTotal;
-                        let progress = (p.healTimer % target) / target;
+                        let target = p.isMultiHeal ? (p.healFramesTotal/2) : p.healFramesTotal; let progress = (p.healTimer % target) / target;
                         ctx.arc(p.x + 15, p.y + 25, 40, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * progress)); ctx.lineTo(p.x + 15, p.y + 25); ctx.fill(); 
+                    } else if (p.isHealing && p.isFieryHealing) {
+                        ctx.fillStyle = "rgba(255, 100, 0, 0.3)"; ctx.beginPath(); 
+                        let progress = p.healTimer / p.healFramesTotal;
+                        ctx.arc(p.x + 15, p.y + 25, 40, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * progress)); ctx.lineTo(p.x + 15, p.y + 25); ctx.fill();
                     }
 
                     if (p.attackTimer > 0 && p.type !== 'AIR' && p.lightCharge === 0) {
@@ -1661,6 +1701,16 @@
                             ctx.fillStyle = "cyan"; ctx.shadowColor = "cyan"; ctx.shadowBlur = 15;
                             let sx = p.facingRight ? p.x + p.width : p.x - p.atkRange;
                             ctx.fillRect(sx, p.y + 10, p.atkRange, 20); ctx.shadowBlur = 0;
+                        } else if (p.type === 'FIRE') {
+                            ctx.fillStyle = "gray"; 
+                            if (p.attackType === "DIVE") {
+                                ctx.save(); ctx.translate(p.x+15, p.y+25); ctx.rotate((p.facingRight ? 45 : -45) * Math.PI/180);
+                                ctx.fillRect(0, 0, 40, 5); ctx.restore();
+                            } else if (p.attackType === "HEAVY") {
+                                let sx = p.facingRight ? p.x + p.width : p.x - (p.atkRange + 15); ctx.fillRect(sx, p.y + 20, p.atkRange + 15, 5);
+                            } else {
+                                let sx = p.facingRight ? p.x + p.width : p.x - p.atkRange; ctx.fillRect(sx, p.y + 20, p.atkRange, 5);
+                            }
                         } else {
                             ctx.fillStyle = p.color;
                             if (p.attackType === "DOWN") { ctx.beginPath(); ctx.arc(p.x + 15, p.y + 50, 35, 0, Math.PI); ctx.fill(); } 
