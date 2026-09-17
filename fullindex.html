@@ -25,6 +25,37 @@
         .m-btn-l { border-color: purple; color: purple; }
         
         #void-vignette { position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:5; background: radial-gradient(circle, transparent 50%, rgba(20,0,30,0.8) 100%); opacity: 0; transition: opacity 0.2s; }
+        
+        .menu-back-btn { position: absolute; top: 14px; left: 14px; background: rgba(50, 0, 0, 0.85); border: 2px solid #ff3344; color: #ff5566; padding: 6px 14px; font-size: 13px; font-weight: bold; border-radius: 5px; cursor: pointer; transition: all 0.2s ease; z-index: 25; }
+        .menu-back-btn:hover { background: #ff2233; color: #ffffff; box-shadow: 0 0 12px rgba(255, 40, 60, 0.7); transform: scale(1.05); }
+
+        .keybind-container { max-height: 52vh; overflow-y: auto; padding-right: 6px; margin: 15px 0; }
+        .keybind-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin: 5px 0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; }
+        .keybind-name { font-size: 15px; color: #f0f0f0; font-weight: 500; white-space: nowrap; }
+        .keybind-line { flex: 1; border-bottom: 1px dashed #666; margin: 0 14px; height: 1px; }
+        .keybind-btn { min-width: 100px; padding: 6px 14px; background: #151824; border: 1.5px solid #00d4ff; color: #00e5ff; font-weight: bold; font-size: 14px; border-radius: 5px; cursor: pointer; text-align: center; transition: all 0.2s; user-select: none; }
+        .keybind-btn:hover { background: #00d4ff; color: #000; box-shadow: 0 0 10px rgba(0, 212, 255, 0.5); }
+        .keybind-btn.waiting { border-color: #ffcc00; color: #ffcc00; background: rgba(255, 204, 0, 0.2); animation: pulseWaiting 0.7s infinite alternate; }
+        @keyframes pulseWaiting { from { transform: scale(1); box-shadow: 0 0 4px #ffcc00; } to { transform: scale(1.06); box-shadow: 0 0 14px #ffcc00; } }
+        .conflict-banner { background: rgba(80, 10, 15, 0.95); border: 1.5px solid #ff4444; color: #ffbbbb; padding: 9px 14px; margin: 10px 0; font-size: 13px; border-radius: 6px; text-align: center; display: none; box-shadow: 0 0 12px rgba(255, 50, 50, 0.3); }
+
+        .achieve-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0; }
+        @media (max-width: 600px) { .achieve-grid { grid-template-columns: 1fr; } }
+        .achieve-card { background: rgba(14, 20, 32, 0.9); border: 1.5px solid #336699; border-radius: 8px; padding: 14px; text-align: left; box-shadow: 0 0 10px rgba(0, 100, 200, 0.15); }
+        .achieve-card.secret { border-color: #aa33ff; background: rgba(28, 12, 40, 0.9); box-shadow: 0 0 12px rgba(170, 50, 255, 0.25); }
+        .achieve-card-title { font-size: 15px; font-weight: bold; color: #00e5ff; margin-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 4px; }
+        .achieve-card.secret .achieve-card-title { color: #e080ff; }
+        .achieve-stat-line { font-size: 14px; color: #ddd; margin: 5px 0; display: flex; justify-content: space-between; }
+        .achieve-stat-val { font-weight: bold; }
+        .achieve-stat-val.win { color: #00ff66; }
+        .achieve-stat-val.loss { color: #ff5566; }
+
+        #reset-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20, 0, 0, 0.97); border: 2px solid #ff2233; box-shadow: 0 0 35px rgba(255, 0, 30, 0.5); padding: 26px 24px; border-radius: 10px; z-index: 50; width: 85%; max-width: 440px; text-align: center; }
+        .reset-btn-group { display: flex; justify-content: center; gap: 18px; margin-top: 22px; }
+        .reset-btn-yes { background: #880000; border: 2px solid #ff3344; color: #ffffff; font-weight: bold; padding: 10px 24px; cursor: pointer; border-radius: 5px; transition: 0.2s; }
+        .reset-btn-yes:hover { background: #ff2233; box-shadow: 0 0 14px rgba(255, 40, 60, 0.8); }
+        .reset-btn-no { background: #222; border: 2px solid #888; color: #ddd; font-weight: bold; padding: 10px 24px; cursor: pointer; border-radius: 5px; transition: 0.2s; }
+        .reset-btn-no:hover { background: #444; color: #fff; }
     </style>
 </head>
 <body>
@@ -48,26 +79,65 @@
     </div>
     
     <div id="overlay">
-        <div id="main-menu">
+        <!-- Universal Red Back Button -->
+        <button id="menu-back-btn" class="menu-back-btn" style="display: none;" onclick="menuGoBack()">← НАЗАД</button>
+
+        <!-- Test Mode Banner -->
+        <div id="test-mode-banner" style="display: none; background: rgba(0, 45, 10, 0.9); border: 1px solid #00ff66; color: #00ff66; padding: 8px 14px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-radius: 6px; text-align: center; box-shadow: 0 0 12px rgba(0, 255, 100, 0.4);">
+            🛠 ТЕСТОВЫЙ РЕЖИМ ВКЛЮЧЕН<br>
+            <span style="font-size: 11px; color: #aaffbb; font-weight: normal;">(В игре: [9] — Бессмертие | [0] — Урон x5)</span>
+        </div>
+
+        <!-- 1. ROOT MAIN MENU -->
+        <div id="root-menu">
+            <div style="font-size: 26px; margin-bottom: 20px; font-weight: bold; letter-spacing: 2px;">УБЕЖИЩЕ</div>
+            <div class="menu-btn" onclick="openScreen('mode-select')" style="border-color: #00ffcc; color: #00ffcc;">ИГРАТЬ</div>
+            <div class="menu-btn" onclick="openScreen('achievements-menu')" style="border-color: #ffbb00; color: #ffbb00;">ДОСТИЖЕНИЯ</div>
+            <div class="menu-btn" onclick="openScreen('settings-menu')" style="border-color: #00bbff; color: #00bbff;">НАСТРОЙКИ</div>
+            <div class="menu-btn" onclick="showResetModal()" style="border-color: #ff3344; color: #ff5566; margin-top: 25px;">ПЕРЕЗАПУСТИТЬ ИГРУ</div>
+        </div>
+
+        <!-- 2. MODE SELECT (1P / 2P) -->
+        <div id="mode-select" style="display: none;">
             <div style="font-size: 24px; margin-bottom: 15px;">ВЫБЕРИТЕ РЕЖИМ</div>
             <div class="menu-btn" onclick="selectMode(1)">1 ИГРОК</div>
             <div class="menu-btn" onclick="selectMode(2)">2 ИГРОКА</div>
             <div style="font-size: 12px; color: gray; margin-top: 15px;">(Подключите геймпад PS4/Xbox/Nintendo и нажмите любую кнопку)</div>
+            <div class="menu-btn m-btn-l" id="mobile-l-btn-mode" style="display:none; margin-top:20px;" onclick="toggleSecretMobile()">АКТИВОВАТЬ РЕЖИМ [L]</div>
         </div>
+
+        <!-- 3. INPUT SELECT -->
         <div id="input-select" style="display: none;">
             <div style="font-size: 24px; margin-bottom: 15px;">ВЫБОР УПРАВЛЕНИЯ</div>
             <div id="input-1p" style="display: none;">
-                <div class="menu-btn" onclick="selectInput('KEYBOARD_SILK', null)">Клав. (Silksong)</div>
-                <div class="menu-btn" onclick="selectInput('KEYBOARD_SHOOTER', null)">Клав. (Шутер)</div>
+                <div class="menu-btn" onclick="selectInput('KEYBOARD_1', null)">1. Первая раскладка (Клав.)</div>
+                <div class="menu-btn" onclick="selectInput('KEYBOARD_2', null)">2. Вторая раскладка (Клав.)</div>
                 <div class="menu-btn" onclick="selectInput('GAMEPAD', null)" style="border-color: yellow; color: yellow;">Джойстик (PS4/Xbox/Nintendo)</div>
                 <div class="menu-btn" onclick="selectInput('TOUCH', null)" style="border-color: #ff00ff; color: #ff00ff;">На телефоне (Сенсор)</div>
             </div>
             <div id="input-2p" style="display: none;">
-                <div class="menu-btn" onclick="selectInput('KEYBOARD_SILK', 'KEYBOARD_SHOOTER')">1. Оба на Клав. (И1: Silksong / И2: Шутер)</div>
-                <div class="menu-btn" onclick="selectInput('KEYBOARD_SILK', 'GAMEPAD')" style="border-color: yellow; color: yellow;">2. Игрок 1 (Клав) / Игрок 2 (Джойстик)</div>
-                <div class="menu-btn" onclick="selectInput('GAMEPAD', 'KEYBOARD_SHOOTER')" style="border-color: yellow; color: yellow;">3. Игрок 1 (Джойстик) / Игрок 2 (Клав)</div>
+                <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px;">
+                    <!-- Player 1 Box -->
+                    <div style="background: rgba(0, 100, 255, 0.1); border: 1.5px solid #00aaff; border-radius: 6px; padding: 10px; width: 45%; min-width: 170px;">
+                        <div style="color: #00ddff; font-weight: bold; margin-bottom: 8px; font-size: 14px;">ИГРОК 1</div>
+                        <button id="p1-type-kb" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%;" onclick="setP1Device('KEYBOARD')">Клавиатура</button>
+                        <button id="p1-type-gp" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%; border-color: #888; color: #888;" onclick="setP1Device('GAMEPAD')">Джойстик</button>
+                    </div>
+                    <!-- Player 2 Box -->
+                    <div style="background: rgba(255, 200, 0, 0.1); border: 1.5px solid #ffcc00; border-radius: 6px; padding: 10px; width: 45%; min-width: 170px;">
+                        <div style="color: #ffdd44; font-weight: bold; margin-bottom: 8px; font-size: 14px;">ИГРОК 2</div>
+                        <button id="p2-type-kb" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%;" onclick="setP2Device('KEYBOARD')">Клавиатура</button>
+                        <button id="p2-type-gp" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%; border-color: #888; color: #888;" onclick="setP2Device('GAMEPAD')">Джойстик</button>
+                    </div>
+                </div>
+                <!-- Contextual Sub-Selection -->
+                <div id="duo-sub-options" style="font-size: 13px; color: #aaccff; margin: 12px 0; min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center;"></div>
+                <div class="menu-btn" onclick="confirmDuoInput()" style="background: #003344; border-color: #00ffff; color: #00ffff; margin-top: 10px;">ДАЛЕЕ (К ВЫБОРУ ГЕРОЕВ)</div>
             </div>
+            <div class="menu-btn m-btn-l" id="mobile-l-btn-input" style="display:none; margin-top:20px;" onclick="toggleSecretMobile()">АКТИВОВАТЬ РЕЖИМ [L]</div>
         </div>
+
+        <!-- 4. HERO SELECT -->
         <div id="hero-select" style="display: none;">
             <div style="margin-bottom: 15px; font-size: 24px;">ВЫБОР ГЕРОЕВ</div>
             <div id="p1-select-ui">
@@ -76,14 +146,16 @@
                 <div class="menu-btn" onclick="selectHero1('AIR')" style="color: #ffdd00; border-color: #ffdd00;">2. Воздух</div>
                 <div class="menu-btn" onclick="selectHero1('EARTH')" style="color: #33cc33; border-color: #33cc33;">3. Земля</div>
                 <div class="menu-btn" onclick="selectHero1('STAMINA')" style="color: #b35959; border-color: #b35959;">4. 4-й Герой</div>
+                <div id="p1-status" style="margin-top: 10px; color: cyan;"></div>
             </div>
             <div id="p2-select-ui" style="display: none; margin-top: 20px; border-top: 1px solid #444; padding-top: 15px;">
                 <div style="color: yellow;"><b>ИГРОК 2:</b></div>
                 <div id="p2-options-text" style="font-size: 14px; margin-top: 10px;"><b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой</div>
                 <div id="p2-status" style="margin-top: 10px; color: gray;">Ожидание выбора Игрока 2...</div>
             </div>
-            <div class="menu-btn m-btn-l" id="mobile-l-btn" style="display:none; margin-top:30px;" onclick="toggleSecretMobile()">АКТИВОВАТЬ РЕЖИМ [L]</div>
         </div>
+
+        <!-- 5. BADGE SELECT -->
         <div id="badge-select" style="display: none;">
             <div style="font-size: 24px; margin-bottom: 10px;">ВЫБОР СНАРЯЖЕНИЯ</div>
             <div id="team-slot-title" style="color: cyan; margin-bottom: 5px;">Командный знак (Голубые):</div>
@@ -107,6 +179,43 @@
 
             <div id="badge-list" style="display: none;"></div>
             <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 30px; background: #004400; border-color: lime; color: lime;">В БОЙ!</div>
+        </div>
+
+        <!-- 6. ACHIEVEMENTS MENU -->
+        <div id="achievements-menu" style="display: none;">
+            <div style="font-size: 24px; margin-bottom: 15px; color: #ffcc00; font-weight: bold;">ДОСТИЖЕНИЯ И СТАТИСТИКА</div>
+            <div id="achievements-content"></div>
+        </div>
+
+        <!-- 7. SETTINGS MENU (Keybinds) -->
+        <div id="settings-menu" style="display: none;">
+            <div style="font-size: 24px; margin-bottom: 15px; color: #00d4ff; font-weight: bold;">НАСТРОЙКИ УПРАВЛЕНИЯ</div>
+            <div style="font-size: 14px; color: #aaa; margin-bottom: 15px;">Выберите раскладку для настройки:</div>
+            <div class="menu-btn" onclick="openKeybindEditor('SCHEME_1')">1. Первая раскладка</div>
+            <div class="menu-btn" onclick="openKeybindEditor('SCHEME_2')">2. Вторая раскладка</div>
+            <div class="menu-btn" onclick="openKeybindEditor('DUO_KEYBOARD')" style="border-color: #a842f5; color: #a842f5;">3. Оба на клавиатуре</div>
+            <div class="menu-btn" onclick="openKeybindEditor('GAMEPAD')" style="border-color: yellow; color: yellow;">4. Джойстик</div>
+        </div>
+
+        <!-- 8. KEYBIND EDITOR MENU -->
+        <div id="keybind-editor-menu" style="display: none;">
+            <div id="keybind-title" style="font-size: 22px; margin-bottom: 10px; color: #00ffff; font-weight: bold;">НАСТРОЙКА КЛАВИШ</div>
+            <div id="keybind-conflict-banner" class="conflict-banner"></div>
+            <div id="keybind-list" class="keybind-container"></div>
+            <div style="display: flex; gap: 12px; justify-content: center; margin-top: 10px;">
+                <button class="menu-btn" style="margin: 0; padding: 8px 16px; font-size: 13px; border-color: #888; color: #ccc;" onclick="resetCurrentSchemeToDefault()">По умолчанию</button>
+                <button class="menu-btn" style="margin: 0; padding: 8px 20px; font-size: 13px; border-color: #00ffaa; color: #00ffaa;" onclick="menuGoBack()">Готово</button>
+            </div>
+        </div>
+
+        <!-- 9. RESET MODAL CONFIRMATION -->
+        <div id="reset-modal">
+            <div style="font-size: 22px; color: #ff3344; font-weight: bold; margin-bottom: 12px;">ВЫ УВЕРЕНЫ?</div>
+            <div style="font-size: 14px; color: #ddd; line-height: 1.5;">Все сохранения, статистика побед/поражений и кастомные настройки управления будут полностью удалены!</div>
+            <div class="reset-btn-group">
+                <button class="reset-btn-yes" onclick="confirmResetAllData()">ДА, СБРОСИТЬ</button>
+                <button class="reset-btn-no" onclick="hideResetModal()">НЕТ, НАЗАД</button>
+            </div>
         </div>
     </div>
     
@@ -145,8 +254,154 @@
         sa1Count: 0, saLines: null, saLinesState: "", saLinesTimer: 0
     };
 
-    let p1InputType = 'KEYBOARD_SILK'; let p2InputType = 'KEYBOARD_SHOOTER';
+    let p1InputType = 'KEYBOARD_1'; let p2InputType = 'KEYBOARD_2';
     let p1HeroSelection = null; let p2HeroSelection = null;
+    let duoP1Device = 'KEYBOARD'; let duoP2Device = 'KEYBOARD'; let duoSoloKeyboardScheme = 'SCHEME_1';
+
+    const ACTION_DEFS = [
+        { id: 'jump', name: 'Прыжок' },
+        { id: 'attack', name: 'Удар' },
+        { id: 'left', name: 'Лево' },
+        { id: 'right', name: 'Право' },
+        { id: 'down', name: 'Низ' },
+        { id: 'up', name: 'Верх' },
+        { id: 'heal', name: 'Лечение' },
+        { id: 'dash', name: 'Рывок' },
+        { id: 'special', name: 'Способность' },
+        { id: 'light', name: '???' }, // таинственное (кинжал света)
+        { id: 'stance', name: 'Смена стойки/оружия' }
+    ];
+
+    const DEFAULT_CONTROLS = {
+        SCHEME_1: {
+            left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown',
+            jump: 'KeyZ', attack: 'KeyX', heal: 'KeyA', dash: 'KeyC', special: 'KeyF',
+            light: 'KeyL', stance: 'KeyS'
+        },
+        SCHEME_2: {
+            left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
+            jump: 'Space', attack: 'MouseLeft', heal: 'KeyQ', dash: 'KeyE', special: 'MouseRight',
+            light: 'KeyR', stance: 'KeyT'
+        },
+        DUO_KEYBOARD: {
+            p1: {
+                left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown',
+                jump: 'Comma', attack: 'Period', heal: 'KeyK', dash: 'Slash', special: 'Quote',
+                light: 'KeyL', stance: 'Semicolon'
+            },
+            p2: {
+                left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
+                jump: 'Space', attack: 'KeyF', heal: 'KeyQ', dash: 'KeyE', special: 'KeyR',
+                light: 'KeyC', stance: 'KeyT'
+            }
+        },
+        GAMEPAD: {
+            jump: 'Кнопка 0 (A / Cross)', attack: 'Кнопка 2/3 (X/Y)',
+            left: 'D-Pad Влево / Стик', right: 'D-Pad Вправо / Стик',
+            down: 'D-Pad Вниз / Стик', up: 'D-Pad Вверх / Стик',
+            heal: 'Кнопка 1 (B / Circle)', dash: 'Кнопка 7 (ZR / RT)',
+            special: 'Кнопка 5/4 (RB / R1)', light: 'Кнопка 11/10 (R3 / L3)',
+            stance: 'Кнопка 8/9 (L / LB)'
+        }
+    };
+
+    let userControls = JSON.parse(JSON.stringify(DEFAULT_CONTROLS));
+
+    function initControlsFromStorage() {
+        try {
+            let saved = localStorage.getItem('shelter_custom_controls');
+            if (saved) {
+                let parsed = JSON.parse(saved);
+                userControls = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CONTROLS)), parsed);
+            } else {
+                userControls = JSON.parse(JSON.stringify(DEFAULT_CONTROLS));
+            }
+        } catch(e) {
+            userControls = JSON.parse(JSON.stringify(DEFAULT_CONTROLS));
+        }
+    }
+    initControlsFromStorage();
+
+    function saveControlsToStorage() {
+        try { localStorage.setItem('shelter_custom_controls', JSON.stringify(userControls)); } catch(e) {}
+    }
+
+    function formatKeyName(code) {
+        if (!code) return '[Пусто]';
+        if (code === 'ArrowLeft') return '←';
+        if (code === 'ArrowRight') return '→';
+        if (code === 'ArrowUp') return '↑';
+        if (code === 'ArrowDown') return '↓';
+        if (code === 'Space') return 'Пробел';
+        if (code === 'Comma') return ',';
+        if (code === 'Period') return '.';
+        if (code === 'Slash') return '/';
+        if (code === 'Semicolon') return ';';
+        if (code === 'Quote') return "'";
+        if (code === 'ShiftLeft' || code === 'ShiftRight') return 'Shift';
+        if (code === 'ControlLeft' || code === 'ControlRight') return 'Ctrl';
+        if (code === 'AltLeft' || code === 'AltRight') return 'Alt';
+        if (code === 'MouseLeft') return 'ЛКМ';
+        if (code === 'MouseRight') return 'ПКМ';
+        if (code === 'MouseMiddle') return 'СКМ';
+        if (code.startsWith('Key')) return code.slice(3).toUpperCase();
+        if (code.startsWith('Digit')) return code.slice(5);
+        if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
+        return code;
+    }
+
+    window.addEventListener('mousedown', e => {
+        if (e.button === 0) keys['MouseLeft'] = true;
+        if (e.button === 2) keys['MouseRight'] = true;
+        if (e.button === 1) keys['MouseMiddle'] = true;
+    });
+    window.addEventListener('mouseup', e => {
+        if (e.button === 0) keys['MouseLeft'] = false;
+        if (e.button === 2) keys['MouseRight'] = false;
+        if (e.button === 1) keys['MouseMiddle'] = false;
+    });
+    window.addEventListener('contextmenu', e => {
+        if (gameState === "PLAYING" || window.rebindingActive) e.preventDefault();
+    });
+
+    const STATS_KEY = 'shelter_game_stats';
+    function loadGameStats() {
+        try {
+            let raw = localStorage.getItem(STATS_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch(e){}
+        return {
+            soloNormalWins: 0, soloNormalLosses: 0,
+            soloSecretWins: 0, soloSecretLosses: 0,
+            duoNormalWins: 0, duoNormalLosses: 0,
+            duoSecretWins: 0, duoSecretLosses: 0
+        };
+    }
+
+    function saveGameStats(stats) {
+        try { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); } catch(e){}
+    }
+
+    let battleResultRecorded = false;
+    function recordBattleResult(isVictory) {
+        if (battleResultRecorded) return;
+        battleResultRecorded = true;
+        let s = loadGameStats();
+        if (numPlayers === 1) {
+            if (!secretMode) {
+                if (isVictory) s.soloNormalWins++; else s.soloNormalLosses++;
+            } else {
+                if (isVictory) s.soloSecretWins++; else s.soloSecretLosses++;
+            }
+        } else {
+            if (!secretMode) {
+                if (isVictory) s.duoNormalWins++; else s.duoNormalLosses++;
+            } else {
+                if (isVictory) s.duoSecretWins++; else s.duoSecretLosses++;
+            }
+        }
+        saveGameStats(s);
+    }
 
     const badgesDict = {
         'accel': { id: 'accel', name: 'Ускоритель (+20% ск. хила)', teamAllowed: false },
@@ -266,22 +521,52 @@
 
     window.addEventListener("keydown", e => { 
         if(e.code === "Space" && e.target === document.body) e.preventDefault();
+        
+        if (window.rebindingActive && window.currentRebindCallback) {
+            e.preventDefault();
+            window.currentRebindCallback(e.code);
+            return;
+        }
+
         keys[e.code] = true; initAudio(); tryEscapeTie(); 
         
-        if (e.code === 'KeyL' && gameState === "MENU" && (document.getElementById("input-select").style.display === "block" || document.getElementById("hero-select").style.display === "block" || document.getElementById("main-menu").style.display === "block")) {
-            secretMode = true; playSound('heal'); document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#000";
-            if (document.getElementById("mobile-ui").style.display === "flex") {
-                document.getElementById("m-light").style.display = "flex";
+        if (e.code === 'KeyL' && gameState === "MENU") {
+            let modeScreen = document.getElementById("mode-select");
+            let inputScreen = document.getElementById("input-select");
+            let canActivateL = (modeScreen && modeScreen.style.display === "block") || 
+                               (inputScreen && inputScreen.style.display === "block");
+            if (canActivateL && !secretMode) {
+                secretMode = true; playSound('heal'); document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#000";
+                let ml = document.getElementById("m-light");
+                if (ml && document.getElementById("mobile-ui").style.display === "flex") {
+                    ml.style.display = "flex";
+                }
             }
         }
         
-        if (e.key === '4' && gameState === "MENU" && (document.getElementById("input-select").style.display === "block" || document.getElementById("main-menu").style.display === "block")) {
+        if (e.key === '4' && gameState === "MENU" && (document.getElementById("input-select")?.style.display === "block" || document.getElementById("mode-select")?.style.display === "block")) {
             if (!window.fireHeroUnlocked) {
-                window.fireHeroUnlocked = true; playSound('slash');
+                window.fireHeroUnlocked = true;
+                try { localStorage.setItem('shelter_fire_unlocked', 'true'); } catch(e){}
+                playSound('slash');
                 document.body.style.backgroundColor = "#2a0a0a";
-                document.getElementById("p1-select-ui").innerHTML += `<div class="menu-btn" onclick="selectHero1('FIRE')" style="color: #ff5500; border-color: #ff5500;">5. Огонь</div>`;
-                document.getElementById("p2-options-text").innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff5500;'>5</b>-Огонь";
+                let p1Ui = document.getElementById("p1-select-ui");
+                if (p1Ui && !document.getElementById("btn-hero-fire")) {
+                    p1Ui.innerHTML += `<div id="btn-hero-fire" class="menu-btn" onclick="selectHero1('FIRE')" style="color: #ff5500; border-color: #ff5500;">5. Огонь</div>`;
+                }
+                let p2Text = document.getElementById("p2-options-text");
+                if (p2Text) {
+                    p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff5500;'>5</b>-Огонь";
+                }
             }
+        }
+
+        if (gameState === "MENU" && document.getElementById("hero-select").style.display === "block" && numPlayers === 1) {
+            if (e.key === "1") selectHero1('WATER');
+            if (e.key === "2") selectHero1('AIR');
+            if (e.key === "3") selectHero1('EARTH');
+            if (e.key === "4") selectHero1('STAMINA');
+            if (e.key === "5" && window.fireHeroUnlocked) selectHero1('FIRE');
         }
 
         if (gameState === "MENU" && document.getElementById("hero-select").style.display === "block" && numPlayers === 2) {
@@ -290,6 +575,12 @@
             if (e.key === "3") { p2HeroSelection = 'EARTH'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: Земля"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
             if (e.key === "4") { p2HeroSelection = 'STAMINA'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: 4-й Герой"; document.getElementById('p2-status').style.color = "lime"; checkDuoStart(); }
             if (e.key === "5" && window.fireHeroUnlocked) { p2HeroSelection = 'FIRE'; document.getElementById('p2-status').innerText = "Игрок 2 Готов: Огонь"; document.getElementById('p2-status').style.color = "#ff5500"; checkDuoStart(); }
+        }
+
+        if (gameState === "GAMEOVER" && (e.code === "KeyR" || e.key === "r" || e.key === "к" || e.key === "К")) {
+            gameState = "MENU";
+            document.getElementById("overlay").style.display = "block";
+            openScreen('root-menu', false);
         }
     });
 
@@ -342,32 +633,418 @@
         };
     }
 
+    let menuHistory = [];
+
+    function openScreen(screenId, pushHistory = true) {
+        const allScreens = [
+            'root-menu', 'mode-select', 'input-select', 'hero-select', 'badge-select',
+            'achievements-menu', 'settings-menu', 'keybind-editor-menu'
+        ];
+
+        let currentActive = allScreens.find(id => {
+            let el = document.getElementById(id);
+            return el && el.style.display === 'block';
+        });
+
+        if (pushHistory && currentActive && currentActive !== screenId) {
+            menuHistory.push(currentActive);
+        }
+
+        allScreens.forEach(id => {
+            let el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+        let targetEl = document.getElementById(screenId);
+        if (targetEl) targetEl.style.display = 'block';
+
+        let backBtn = document.getElementById('menu-back-btn');
+        if (backBtn) {
+            backBtn.style.display = (screenId === 'root-menu') ? 'none' : 'block';
+        }
+
+        if (screenId === 'root-menu' && secretMode) {
+            cancelSecretMode();
+        }
+
+        if (screenId === 'achievements-menu') {
+            renderAchievements();
+        }
+    }
+
+    function menuGoBack() {
+        if (window.rebindingActive) {
+            cancelRebinding();
+            return;
+        }
+        if (menuHistory.length > 0) {
+            let prev = menuHistory.pop();
+            openScreen(prev, false);
+        } else {
+            openScreen('root-menu', false);
+        }
+    }
+
+    function cancelSecretMode() {
+        secretMode = false;
+        document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#0a0a0a";
+        let ml = document.getElementById("m-light");
+        if (ml) ml.style.display = "none";
+        let lMusic = document.getElementById("lModeMusic");
+        if (lMusic) { lMusic.pause(); lMusic.currentTime = 0; }
+        let mMusic = document.getElementById("menuMusic");
+        if (mMusic && mMusic.paused) { mMusic.play().catch(()=>{}); }
+    }
+
     function toggleSecretMobile() {
         secretMode = true; playSound('heal'); 
         document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#000";
-        document.getElementById("mobile-l-btn").style.display = "none";
-        document.getElementById("m-light").style.display = "flex";
+        let ml = document.getElementById("m-light");
+        if (ml) ml.style.display = "flex";
     }
 
     function selectMode(mode) {
         numPlayers = mode; 
-        document.getElementById("main-menu").style.display = "none"; 
-        document.getElementById("input-select").style.display = "block";
+        openScreen('input-select');
         document.getElementById("input-1p").style.display = (mode === 1) ? "block" : "none"; 
         document.getElementById("input-2p").style.display = (mode === 2) ? "block" : "none";
+        if (mode === 2) updateDuoSubOptions();
+    }
+
+    function setP1Device(dev) {
+        duoP1Device = dev;
+        let btnKb = document.getElementById('p1-type-kb');
+        let btnGp = document.getElementById('p1-type-gp');
+        if (btnKb && btnGp) {
+            if (dev === 'KEYBOARD') {
+                btnKb.style.borderColor = '#00aaff'; btnKb.style.color = '#00ffff';
+                btnGp.style.borderColor = '#888'; btnGp.style.color = '#888';
+            } else {
+                btnGp.style.borderColor = '#00aaff'; btnGp.style.color = '#00ffff';
+                btnKb.style.borderColor = '#888'; btnKb.style.color = '#888';
+            }
+        }
+        updateDuoSubOptions();
+    }
+
+    function setP2Device(dev) {
+        duoP2Device = dev;
+        let btnKb = document.getElementById('p2-type-kb');
+        let btnGp = document.getElementById('p2-type-gp');
+        if (btnKb && btnGp) {
+            if (dev === 'KEYBOARD') {
+                btnKb.style.borderColor = '#ffcc00'; btnKb.style.color = '#ffdd44';
+                btnGp.style.borderColor = '#888'; btnGp.style.color = '#888';
+            } else {
+                btnGp.style.borderColor = '#ffcc00'; btnGp.style.color = '#ffdd44';
+                btnKb.style.borderColor = '#888'; btnKb.style.color = '#888';
+            }
+        }
+        updateDuoSubOptions();
+    }
+
+    function updateDuoSubOptions() {
+        let container = document.getElementById('duo-sub-options');
+        if (!container) return;
+
+        if (duoP1Device === 'KEYBOARD' && duoP2Device === 'KEYBOARD') {
+            container.innerHTML = `
+                <div style="color: #a842f5; font-weight: bold; margin-bottom: 4px;">🎮 Оба на клавиатуре:</div>
+                <div style="color: #ccc; font-size: 12px;">Игрок 1: 1-я раскладка (справа) | Игрок 2: 2-я раскладка (слева)</div>
+            `;
+        } else if (duoP1Device === 'KEYBOARD' && duoP2Device === 'GAMEPAD') {
+            let is1 = (duoSoloKeyboardScheme === 'SCHEME_1');
+            container.innerHTML = `
+                <div style="color: #00ddff; font-weight: bold; margin-bottom: 6px;">Раскладка для Игрока 1 (Клава):</div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="menu-btn" style="padding: 5px 12px; font-size: 12px; margin: 0; ${is1 ? 'border-color: #00ffff; color: #00ffff;' : 'border-color: #666; color: #888;'}" onclick="setDuoKeyboardScheme('SCHEME_1')">1. Первая раскладка</button>
+                    <button class="menu-btn" style="padding: 5px 12px; font-size: 12px; margin: 0; ${!is1 ? 'border-color: #00ffff; color: #00ffff;' : 'border-color: #666; color: #888;'}" onclick="setDuoKeyboardScheme('SCHEME_2')">2. Вторая раскладка</button>
+                </div>
+            `;
+        } else if (duoP1Device === 'GAMEPAD' && duoP2Device === 'KEYBOARD') {
+            let is1 = (duoSoloKeyboardScheme === 'SCHEME_1');
+            container.innerHTML = `
+                <div style="color: #ffdd44; font-weight: bold; margin-bottom: 6px;">Раскладка для Игрока 2 (Клава):</div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="menu-btn" style="padding: 5px 12px; font-size: 12px; margin: 0; ${is1 ? 'border-color: #ffcc00; color: #ffdd44;' : 'border-color: #666; color: #888;'}" onclick="setDuoKeyboardScheme('SCHEME_1')">1. Первая раскладка</button>
+                    <button class="menu-btn" style="padding: 5px 12px; font-size: 12px; margin: 0; ${!is1 ? 'border-color: #ffcc00; color: #ffdd44;' : 'border-color: #666; color: #888;'}" onclick="setDuoKeyboardScheme('SCHEME_2')">2. Вторая раскладка</button>
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div style="color: yellow; font-weight: bold; margin-bottom: 4px;">🎮 Оба на джойстиках:</div>
+                <div style="color: #ccc; font-size: 12px;">Игрок 1: Геймпад 1 | Игрок 2: Геймпад 2</div>
+            `;
+        }
+    }
+
+    function setDuoKeyboardScheme(scheme) {
+        duoSoloKeyboardScheme = scheme;
+        updateDuoSubOptions();
+    }
+
+    function confirmDuoInput() {
+        if (duoP1Device === 'KEYBOARD' && duoP2Device === 'KEYBOARD') {
+            selectInput('DUO_KEYBOARD_P1', 'DUO_KEYBOARD_P2');
+        } else if (duoP1Device === 'KEYBOARD' && duoP2Device === 'GAMEPAD') {
+            selectInput(duoSoloKeyboardScheme === 'SCHEME_1' ? 'KEYBOARD_1' : 'KEYBOARD_2', 'GAMEPAD');
+        } else if (duoP1Device === 'GAMEPAD' && duoP2Device === 'KEYBOARD') {
+            selectInput('GAMEPAD', duoSoloKeyboardScheme === 'SCHEME_1' ? 'KEYBOARD_1' : 'KEYBOARD_2');
+        } else {
+            selectInput('GAMEPAD', 'GAMEPAD');
+        }
     }
 
     function selectInput(in1, in2) {
         p1InputType = in1; if (numPlayers === 2) p2InputType = in2;
-        document.getElementById("input-select").style.display = "none"; 
-        document.getElementById("hero-select").style.display = "block";
-        document.getElementById('p1-status').innerText = ""; document.getElementById('p2-status').innerText = "Ожидание Игрока 2...";
-        document.getElementById("p2-select-ui").style.display = (numPlayers === 2) ? "block" : "none";
+        openScreen('hero-select');
+        let p1Status = document.getElementById('p1-status');
+        let p2Status = document.getElementById('p2-status');
+        if (p1Status) p1Status.innerText = ""; 
+        if (p2Status) p2Status.innerText = "Ожидание Игрока 2...";
+        let p2Ui = document.getElementById("p2-select-ui");
+        if (p2Ui) p2Ui.style.display = (numPlayers === 2) ? "block" : "none";
 
         if (in1 === 'TOUCH' || in2 === 'TOUCH') {
             document.getElementById("mobile-ui").style.display = "flex";
-            if (!secretMode) document.getElementById("mobile-l-btn").style.display = "block";
+            if (!secretMode) {
+                let lBtn = document.getElementById("mobile-l-btn-input");
+                if (lBtn) lBtn.style.display = "block";
+            }
         }
+    }
+
+    function renderAchievements() {
+        let container = document.getElementById('achievements-content');
+        if (!container) return;
+        let s = loadGameStats();
+        let totalWins = s.soloNormalWins + s.soloSecretWins + s.duoNormalWins + s.duoSecretWins;
+        let totalLosses = s.soloNormalLosses + s.soloSecretLosses + s.duoNormalLosses + s.duoSecretLosses;
+        let totalBattles = totalWins + totalLosses;
+        let winRate = totalBattles > 0 ? Math.round((totalWins / totalBattles) * 100) : 0;
+
+        container.innerHTML = `
+            <div style="margin-bottom: 15px; font-size: 14px; color: #aaddff;">
+                Всего боёв: <b>${totalBattles}</b> | Побед: <b style="color: #44ff44;">${totalWins}</b> | Винрейт: <b style="color: #ffcc00;">${winRate}%</b>
+            </div>
+            <div class="achieve-grid">
+                <div class="achieve-card">
+                    <div class="achieve-card-title">1 Игрок (Обычный режим)</div>
+                    <div class="achieve-stat-line"><span>Побед над Боссом:</span><span class="achieve-stat-val win">${s.soloNormalWins}</span></div>
+                    <div class="achieve-stat-line"><span>Поражений:</span><span class="achieve-stat-val loss">${s.soloNormalLosses}</span></div>
+                </div>
+                <div class="achieve-card secret">
+                    <div class="achieve-card-title">1 Игрок (Режим [L])</div>
+                    <div class="achieve-stat-line"><span>Побед над Боссом:</span><span class="achieve-stat-val win">${s.soloSecretWins}</span></div>
+                    <div class="achieve-stat-line"><span>Поражений:</span><span class="achieve-stat-val loss">${s.soloSecretLosses}</span></div>
+                </div>
+                <div class="achieve-card">
+                    <div class="achieve-card-title">2 Игрока (Обычный кооп)</div>
+                    <div class="achieve-stat-line"><span>Командных побед:</span><span class="achieve-stat-val win">${s.duoNormalWins}</span></div>
+                    <div class="achieve-stat-line"><span>Поражений:</span><span class="achieve-stat-val loss">${s.duoNormalLosses}</span></div>
+                </div>
+                <div class="achieve-card secret">
+                    <div class="achieve-card-title">2 Игрока (Кооп в [L])</div>
+                    <div class="achieve-stat-line"><span>Командных побед:</span><span class="achieve-stat-val win">${s.duoSecretWins}</span></div>
+                    <div class="achieve-stat-line"><span>Поражений:</span><span class="achieve-stat-val loss">${s.duoSecretLosses}</span></div>
+                </div>
+            </div>
+        `;
+    }
+
+    let currentEditingScheme = null;
+    let rebindingTarget = null;
+    window.rebindingActive = false;
+
+    function openKeybindEditor(schemeKey) {
+        currentEditingScheme = schemeKey;
+        openScreen('keybind-editor-menu');
+        let title = document.getElementById('keybind-title');
+        let titles = {
+            'SCHEME_1': 'НАСТРОЙКА: 1-Я РАСКЛАДКА',
+            'SCHEME_2': 'НАСТРОЙКА: 2-Я РАСКЛАДКА',
+            'DUO_KEYBOARD': 'НАСТРОЙКА: ОБА НА КЛАВИАТУРЕ',
+            'GAMEPAD': 'НАСТРОЙКА: ДЖОЙСТИК (ГЕЙМПАД)'
+        };
+        if (title) title.innerText = titles[schemeKey] || 'НАСТРОЙКА КЛАВИШ';
+        hideConflictBanner();
+        renderKeybindList();
+    }
+
+    function renderKeybindList() {
+        let container = document.getElementById('keybind-list');
+        if (!container || !currentEditingScheme) return;
+
+        if (currentEditingScheme === 'GAMEPAD') {
+            let html = '';
+            let gpMap = userControls.GAMEPAD;
+            for (let act of ACTION_DEFS) {
+                let label = gpMap[act.id] || 'Не назначено';
+                html += `
+                    <div class="keybind-row">
+                        <span class="keybind-name">${act.name}</span>
+                        <span class="keybind-line"></span>
+                        <div class="keybind-btn" style="border-color: yellow; color: yellow; cursor: default;">${label}</div>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+            return;
+        }
+
+        if (currentEditingScheme === 'DUO_KEYBOARD') {
+            let html = '<div style="color: #00ddff; font-weight: bold; margin: 10px 0 5px 0;">Игрок 1 (Справа / Стрелки):</div>';
+            for (let act of ACTION_DEFS) {
+                let code = userControls.DUO_KEYBOARD.p1[act.id];
+                let isWaiting = (rebindingTarget && rebindingTarget.scheme === 'DUO_KEYBOARD' && rebindingTarget.pKey === 'p1' && rebindingTarget.action === act.id);
+                let btnLabel = isWaiting ? 'Нажмите...' : formatKeyName(code);
+                html += `
+                    <div class="keybind-row">
+                        <span class="keybind-name">${act.name}</span>
+                        <span class="keybind-line"></span>
+                        <button class="keybind-btn ${isWaiting ? 'waiting' : ''}" onclick="startRebinding('DUO_KEYBOARD', '${act.id}', 'p1')">${btnLabel}</button>
+                    </div>
+                `;
+            }
+            html += '<div style="color: #ffdd44; font-weight: bold; margin: 18px 0 5px 0;">Игрок 2 (Слева / WASD):</div>';
+            for (let act of ACTION_DEFS) {
+                let code = userControls.DUO_KEYBOARD.p2[act.id];
+                let isWaiting = (rebindingTarget && rebindingTarget.scheme === 'DUO_KEYBOARD' && rebindingTarget.pKey === 'p2' && rebindingTarget.action === act.id);
+                let btnLabel = isWaiting ? 'Нажмите...' : formatKeyName(code);
+                html += `
+                    <div class="keybind-row">
+                        <span class="keybind-name">${act.name}</span>
+                        <span class="keybind-line"></span>
+                        <button class="keybind-btn ${isWaiting ? 'waiting' : ''}" style="border-color: #ffcc00; color: #ffdd44;" onclick="startRebinding('DUO_KEYBOARD', '${act.id}', 'p2')">${btnLabel}</button>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+            return;
+        }
+
+        let map = userControls[currentEditingScheme];
+        let html = '';
+        for (let act of ACTION_DEFS) {
+            let code = map[act.id];
+            let isWaiting = (rebindingTarget && rebindingTarget.scheme === currentEditingScheme && rebindingTarget.action === act.id);
+            let btnLabel = isWaiting ? 'Нажмите...' : formatKeyName(code);
+            html += `
+                <div class="keybind-row">
+                    <span class="keybind-name">${act.name}</span>
+                    <span class="keybind-line"></span>
+                    <button class="keybind-btn ${isWaiting ? 'waiting' : ''}" onclick="startRebinding('${currentEditingScheme}', '${act.id}')">${btnLabel}</button>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+    }
+
+    function startRebinding(schemeKey, actionId, pKey = null) {
+        hideConflictBanner();
+        rebindingTarget = { scheme: schemeKey, action: actionId, pKey: pKey };
+        window.rebindingActive = true;
+        window.currentRebindCallback = (code) => handleKeyRebind(code);
+        renderKeybindList();
+    }
+
+    function cancelRebinding() {
+        rebindingTarget = null;
+        window.rebindingActive = false;
+        window.currentRebindCallback = null;
+        renderKeybindList();
+    }
+
+    function showConflictBanner(msg) {
+        let b = document.getElementById('keybind-conflict-banner');
+        if (b) { b.innerText = msg; b.style.display = 'block'; }
+    }
+
+    function hideConflictBanner() {
+        let b = document.getElementById('keybind-conflict-banner');
+        if (b) b.style.display = 'none';
+    }
+
+    function handleKeyRebind(newCode) {
+        if (!rebindingTarget) return;
+        let { scheme, action, pKey } = rebindingTarget;
+        hideConflictBanner();
+
+        if (scheme === 'DUO_KEYBOARD') {
+            let myMap = userControls.DUO_KEYBOARD[pKey];
+            let otherPKey = (pKey === 'p1') ? 'p2' : 'p1';
+            let otherMap = userControls.DUO_KEYBOARD[otherPKey];
+
+            let conflictAction = Object.keys(otherMap).find(act => otherMap[act] === newCode);
+            if (conflictAction) {
+                let actName = ACTION_DEFS.find(a => a.id === conflictAction)?.name || conflictAction;
+                let otherPlayerName = (pKey === 'p1') ? 'Игроком 2' : 'Игроком 1';
+                showConflictBanner(`⚠️ Клавиша [${formatKeyName(newCode)}] уже занята ${otherPlayerName} («${actName}»)! Выберите другую.`);
+                playSound('hitPlayer');
+                cancelRebinding();
+                return;
+            }
+
+            let oldCode = myMap[action];
+            let duplicateAction = Object.keys(myMap).find(act => act !== action && myMap[act] === newCode);
+            if (duplicateAction) {
+                myMap[duplicateAction] = oldCode;
+                playSound('parry');
+            } else {
+                playSound('slash');
+            }
+            myMap[action] = newCode;
+        } else {
+            let map = userControls[scheme];
+            let oldCode = map[action];
+            let duplicateAction = Object.keys(map).find(act => act !== action && map[act] === newCode);
+            if (duplicateAction) {
+                map[duplicateAction] = oldCode;
+                playSound('parry');
+            } else {
+                playSound('slash');
+            }
+            map[action] = newCode;
+        }
+
+        saveControlsToStorage();
+        cancelRebinding();
+    }
+
+    function resetCurrentSchemeToDefault() {
+        if (!currentEditingScheme) return;
+        if (currentEditingScheme === 'DUO_KEYBOARD') {
+            userControls.DUO_KEYBOARD = JSON.parse(JSON.stringify(DEFAULT_CONTROLS.DUO_KEYBOARD));
+        } else {
+            userControls[currentEditingScheme] = JSON.parse(JSON.stringify(DEFAULT_CONTROLS[currentEditingScheme]));
+        }
+        saveControlsToStorage();
+        playSound('parry');
+        hideConflictBanner();
+        renderKeybindList();
+    }
+
+    function showResetModal() {
+        let m = document.getElementById('reset-modal');
+        if (m) m.style.display = 'block';
+    }
+
+    function hideResetModal() {
+        let m = document.getElementById('reset-modal');
+        if (m) m.style.display = 'none';
+    }
+
+    function confirmResetAllData() {
+        try {
+            localStorage.removeItem(STATS_KEY);
+            localStorage.removeItem('shelter_custom_controls');
+            localStorage.removeItem('shelter_fire_unlocked');
+        } catch(e){}
+        window.fireHeroUnlocked = false;
+        initControlsFromStorage();
+        hideResetModal();
+        openScreen('root-menu', false);
+        playSound('parry');
     }
 
     function selectHero1(type) { p1HeroSelection = type; if (numPlayers === 1) { Object.assign(configAbilities.p1, defaultAbilities[type]); prepBadgeMenu(); } else { document.getElementById('p1-status').innerText = "Игрок 1 Готов!"; checkDuoStart(); } }
@@ -474,13 +1151,33 @@
         if (secretMode) { ARENA_W = 2500; ARENA_H = 600; FLOOR = 550; } 
         else { ARENA_W = 1000; ARENA_H = 400; FLOOR = 350; }
 
-        let silkSolo = { left: ["ArrowLeft"], right: ["ArrowRight"], down: ["ArrowDown"], jump: ["KeyZ"], attack: ["KeyX"], heal: ["KeyA"], special: ["KeyF"], up: ["ArrowUp"], dash: ["KeyC"] };
-        let shooterSolo = { left: ["KeyA"], right: ["KeyD"], down: ["KeyS"], jump: ["Space"], attack: ["MouseLeft"], heal: ["KeyQ"], special: ["MouseRight"], up: ["KeyW"], dash: ["KeyE"] };
-        
-        let p1Keys = p1InputType === 'KEYBOARD_SHOOTER' ? shooterSolo : silkSolo; 
-        let p2Keys = shooterSolo; 
-        if (numPlayers === 2 && p1InputType === 'KEYBOARD_SILK' && p2InputType === 'KEYBOARD_SHOOTER') {
-            p1Keys = { left: ["ArrowLeft"], right: ["ArrowRight"], down: ["ArrowDown"], jump: ["Comma"], attack: ["Period"], heal: ["KeyK"], special: ["Quote"], up: ["ArrowUp"], dash: ["Slash"] };
+        battleResultRecorded = false;
+
+        function mapControlsToKeysObj(schemeObj) {
+            let res = {};
+            for (let k in schemeObj) {
+                res[k] = [schemeObj[k]];
+            }
+            return res;
+        }
+
+        let p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
+        let p2Keys = mapControlsToKeysObj(userControls.SCHEME_2);
+
+        if (p1InputType === 'KEYBOARD_2' || p1InputType === 'KEYBOARD_SHOOTER') {
+            p1Keys = mapControlsToKeysObj(userControls.SCHEME_2);
+        } else if (p1InputType === 'DUO_KEYBOARD_P1') {
+            p1Keys = mapControlsToKeysObj(userControls.DUO_KEYBOARD.p1);
+        } else {
+            p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
+        }
+
+        if (p2InputType === 'KEYBOARD_1' || p2InputType === 'KEYBOARD_SILK') {
+            p2Keys = mapControlsToKeysObj(userControls.SCHEME_1);
+        } else if (p2InputType === 'DUO_KEYBOARD_P2') {
+            p2Keys = mapControlsToKeysObj(userControls.DUO_KEYBOARD.p2);
+        } else {
+            p2Keys = mapControlsToKeysObj(userControls.SCHEME_2);
         }
 
         let startX1 = secretMode ? ARENA_W/2 - 50 : 150;
@@ -569,6 +1266,7 @@
     }
 
     function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassInvuln = false) {
+        if (godModeActive || window.godModeActive) return;
         if (!isBleed && !boss.state.startsWith("CINEMATIC") && !activeCinematic && !bypassInvuln && !boss.state.startsWith("L_SCREAM") && !boss.state.startsWith("L_INTRO")) { boss.directAttackHit = true; boss.missCount = 0; }
         
         if (boss.hunterInfected > 0 && !isBleed && !isStaminaBleed && amount > 0) amount = Math.max(0.5, amount - 1.5);
@@ -677,10 +1375,24 @@
         return d1 < d2 ? activePlayers[0] : activePlayers[1]; 
     }
 
-    function triggerCinematic(type, targetPlayer, isRealHit = true) {
-        if (type === "SA1") activeCinematic = { type: 'SA1', p: targetPlayer, timer: 90, tick: 0, isReal: isRealHit };
-        else if (type === "SA2") activeCinematic = { type: 'SA2', p: targetPlayer, timer: 90, tick: 0 };
-        else if (type === "SA3") activeCinematic = { type: 'SA3', p: targetPlayer, timer: 120, tick: 0 };
+    function createRandomSaLine(type) {
+        let rx = (camX || 0) + Math.random() * GAME_WIDTH;
+        let ry = (camY || 0) + Math.random() * GAME_HEIGHT;
+        let angle = Math.random() * Math.PI;
+        let dist = 3500;
+        return {
+            x1: rx - Math.cos(angle) * dist,
+            y1: ry - Math.sin(angle) * dist,
+            x2: rx + Math.cos(angle) * dist,
+            y2: ry + Math.sin(angle) * dist,
+            type: type
+        };
+    }
+
+    function triggerCinematic(type, targetPlayer, isRealHit = true, lineAngle = null) {
+        if (type === "SA1") activeCinematic = { type: 'SA1', p: targetPlayer, timer: 90, tick: 0, isReal: isRealHit, angle: lineAngle };
+        else if (type === "SA2") activeCinematic = { type: 'SA2', p: targetPlayer, timer: 60, tick: 0, isReal: isRealHit, angle: lineAngle };
+        else if (type === "SA3") activeCinematic = { type: 'SA3', p: targetPlayer, timer: 65, tick: 0, isReal: isRealHit, angle: lineAngle };
     }
 
     function triggerChaos(saCount) {
@@ -709,7 +1421,7 @@
                         boss.phase = 2; boss.hp = phase2Hp; boss.superQueue = [ { s: "VOID_PORTALS", t: 90 }, { s: "VOID_PORTALS", t: 90 }, { s: "VOID_PORTALS", t: 90 }, { s: "SHARPEN_WINDUP", t: 120 } ]; boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 1;
                         platforms = [ {x: 200, y: FLOOR-80, w: 80, h:10}, {x: 500, y: FLOOR-120, w: 80, h:10}, {x: 800, y: FLOOR-80, w: 80, h:10} ];
                     } else if (boss.phase === 2) { 
-                        boss.phase = 2.5; boss.hp = phase3Hp; boss.state = "L_CLIMB_START"; boss.stateTimer = 180; boss.y = -1000; boss.vx = 0; boss.vy = 0; boss.invuln = 9999;
+                        startPhase3Transition();
                     } 
                 } else {
                     if (boss.phase === 1) { boss.phase = 2; boss.hp = phase2Hp; startTransition("Фаза 2: Кинжалы и Телепорты!"); } 
@@ -725,6 +1437,181 @@
             boss.missCount = 0;
             if (boss.phase === 1) { boss.hp = phase2Hp; boss.phase = 2; startTransition("ЯРОСТЬ! Промахи раздражают. Фаза 2!"); } 
             else if (boss.phase === 2) { boss.phase = 3; boss.damageBonus = 0.5; startTransition("СЛИШКОМ БЫСТРО! Фаза 3!"); globalWindCooldown = 0; }
+        }
+    }
+
+    function startPhase3Transition() {
+        let bgm = document.getElementById("lModeMusic"); 
+        if (bgm) bgm.pause();
+
+        boss.phase = 2.5; 
+        boss.hp = phase3Hp; 
+        boss.invuln = 99999;
+        boss.state = "L_CLIMB_TRANSITION"; 
+        boss.transitionTimer = 0;
+        boss.climbPlatCount = 0;
+        boss.climbPlatTimer = 0;
+        boss.climbSaStep = 0;
+        boss.halfHpSeqDone = false;
+        boss.saLines = null;
+        boss.climbSaTimer = 0;
+        boss.x = -99999;
+        boss.y = -99999; 
+        boss.vx = 0; 
+        boss.vy = 0; 
+
+        airBlades = []; playerDaggers = []; blackDaggers = []; p2Traps = []; phantoms = []; 
+        airTraps = []; airComboTraps = []; scarf.active = false; looms = []; voidPortals = []; chaosBalls = [];
+        platforms = [];
+
+        FLOOR += 500;
+        triggerShake(15, 25);
+        playSound('hitBoss');
+
+        let targetX = (players && players[0]) ? players[0].x : ARENA_W / 2;
+        boss.climbCenterX = Math.min(Math.max(targetX, 240), ARENA_W - 240);
+    }
+
+    function updatePhase3Transition() {
+        boss.x = -99999;
+        boss.y = -99999;
+        boss.vx = 0;
+        boss.vy = 0;
+        boss.invuln = 99999;
+        boss.transitionTimer++;
+
+        if (boss.transitionTimer >= 90) {
+            boss.climbPlatTimer++;
+            if (boss.climbPlatTimer >= 24 && boss.climbPlatCount < 10) {
+                boss.climbPlatTimer = 0;
+                boss.climbPlatCount++;
+                let i = boss.climbPlatCount;
+                let stepY = 85;
+                let platY = FLOOR - (i * stepY);
+                let platW = (i === 10) ? 320 : 180;
+                let offset = (i === 1 || i === 10) ? 0 : ((i % 2 === 0) ? -130 : 130);
+                let platX = boss.climbCenterX + offset - platW / 2;
+                platX = Math.min(Math.max(platX, 20), ARENA_W - platW - 20);
+
+                platforms.push({ x: platX, y: platY, w: platW, h: 16, num: i });
+                playSound('wind');
+                applyPhysicsPushToLeaves(platX + platW / 2, platY, 15);
+                triggerShake(3, 5);
+            }
+        }
+
+        if (boss.transitionTimer > 120 && !boss.saLines && !activeCinematic) {
+            if (!boss.climbSaTimer) boss.climbSaTimer = 0;
+            boss.climbSaTimer++;
+            if (boss.climbSaTimer >= 180) {
+                boss.climbSaTimer = 0;
+                let step = boss.climbSaStep || 0;
+
+                if (step === 0) {
+                    boss.saLines = [ createRandomSaLine("SA2") ];
+                } else if (step === 1) {
+                    boss.saLines = [ createRandomSaLine("SA2") ];
+                } else if (step === 2) {
+                    boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
+                } else if (step === 3) {
+                    boss.saLines = [ createRandomSaLine("SA2") ];
+                } else if (step === 4) {
+                    boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
+                } else if (step === 5) {
+                    boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
+                }
+
+                boss.climbSaStep = (step + 1) % 6;
+                boss.saLinesState = "WINDUP";
+                boss.saLinesTimer = 55;
+            }
+        }
+
+        if (boss.saLines) {
+            boss.saLinesTimer--;
+            if (boss.saLinesTimer <= 0 && boss.saLinesState === "WINDUP") {
+                boss.saLinesState = "EXECUTE";
+                boss.saLinesTimer = 10;
+                playSound('slash');
+                triggerShake(8, 12);
+            } else if (boss.saLinesTimer <= 0 && boss.saLinesState === "EXECUTE") {
+                boss.saLines = null;
+                for (let p of players) p.saHit = false;
+            } else if (boss.saLinesState === "EXECUTE") {
+                for (let l of boss.saLines) {
+                    let progress = 1 - (boss.saLinesTimer / 10);
+                    let curLine = {
+                        x1: l.x1, 
+                        y1: l.y1, 
+                        x2: l.x1 + (l.x2 - l.x1) * progress, 
+                        y2: l.y1 + (l.y2 - l.y1) * progress
+                    };
+                    for (let p of players) {
+                        if (!p.isDowned && !p.saHit && p.invuln <= 0 && distToSegment(p, curLine) < 38 + p.width/2) {
+                            let lineAngle = Math.atan2(l.y2 - l.y1, l.x2 - l.x1);
+                            triggerCinematic(l.type, p, true, lineAngle);
+                            p.saHit = true;
+                            boss.saLines = null;
+                            triggerShake(15, 20);
+                            triggerVibration('sa_hit');
+                            break;
+                        }
+                    }
+                    if (!boss.saLines) break;
+                }
+            }
+        }
+
+        let topPlat = platforms.find(p => p.num === 10);
+        if (topPlat) {
+            let reachedTop = players.some(p => !p.isDowned && p.hp > 0 && (
+                (p.y + p.height <= topPlat.y + 15 && p.y + p.height >= topPlat.y - 15 && p.x + p.width > topPlat.x && p.x < topPlat.x + topPlat.w) ||
+                rectIntersect(p, { x: topPlat.x, y: topPlat.y - 15, width: topPlat.w, height: topPlat.h + 25 })
+            ));
+            if (reachedTop) {
+                FLOOR = topPlat.y;
+                for (let p of players) {
+                    if (p.y > FLOOR - p.height) {
+                        p.y = FLOOR - p.height;
+                        p.vy = 0;
+                    }
+                    p.lastSafeX = p.x;
+                    p.lastSafeY = FLOOR - p.height;
+                }
+                boss.phase = 3;
+                boss.hp = phase3Hp;
+                boss.damageBonus = 0.5;
+                boss.speed = 8.5;
+                boss.state = "IDLE";
+                boss.stateTimer = 45;
+                boss.invuln = 60;
+                boss.color = "#e6c800";
+                boss.x = boss.climbCenterX - 15;
+                boss.y = FLOOR - boss.height;
+                boss.vx = 0;
+                boss.vy = 0;
+                boss.saLines = null;
+                boss.climbSaTimer = 0;
+
+                let cX = boss.climbCenterX;
+                platforms = [
+                    { x: cX - 550, y: FLOOR - 80, w: 180, h: 14 },
+                    { x: cX - 280, y: FLOOR - 140, w: 200, h: 14 },
+                    { x: cX - 80, y: FLOOR - 80, w: 160, h: 14 },
+                    { x: cX + 160, y: FLOOR - 140, w: 200, h: 14 },
+                    { x: cX + 420, y: FLOOR - 80, w: 180, h: 14 }
+                ];
+
+                let bgm = document.getElementById("lModeMusic");
+                if (bgm) {
+                    bgm.currentTime = 0;
+                    bgm.volume = 0.5;
+                    bgm.play().catch(e => console.log(e));
+                }
+
+                triggerShake(15, 20);
+                playSound('parry');
+            }
         }
     }
 
@@ -789,16 +1676,29 @@
 
         if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") { checkPhaseTransition(); }
 
-        if (players.some(p => p.hp <= 0 && (!p.isDowned || p.downedTimer <= 0))) { gameState = "GAMEOVER"; }
+        if (boss.state === "FREE_ROAM" || boss.state === "DEFEATED") {
+            if (typeof recordBattleResult === 'function') recordBattleResult(true);
+        }
 
-        if (secretMode && !activeCinematic && boss.state !== "SA1_ACTIVE") {
+        if (players.some(p => p.hp <= 0 && (!p.isDowned || p.downedTimer <= 0))) { 
+            gameState = "GAMEOVER"; 
+            if (typeof recordBattleResult === 'function') recordBattleResult(false);
+        }
+
+        let shouldFollowCam = (secretMode || boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5) && (!secretMode ? boss.state !== "SA1_ACTIVE" : true);
+        if (activeCinematic) {
+            // Во время катсцены сохраняем координаты камеры, не обнуляем в 0!
+        } else if (shouldFollowCam) {
             let ax = 0, ay = 0, c = 0;
             for (let p of players) { if (p.hp > 0 && !p.isDowned) { ax += p.x; ay += p.y; c++; } }
             if (c > 0) { ax /= c; ay /= c; }
             camX += (ax - GAME_WIDTH/2 - camX) * 0.1; camY += (ay - GAME_HEIGHT/2 - camY) * 0.1;
             if (camX < 0) camX = 0; if (camX > ARENA_W - GAME_WIDTH) camX = ARENA_W - GAME_WIDTH;
-            if (camY < 0 && boss.state !== "L_CLIMB_START" && boss.state !== "L_CLIMB_ACTIVE") camY = 0;
-        } else if (!secretMode) { camX = 0; camY = 0; }
+            let minCamY = -2000;
+            if (camY < minCamY) camY = minCamY;
+            let maxCamY = FLOOR - GAME_HEIGHT + 100;
+            if (camY > maxCamY && maxCamY > 0) camY = maxCamY;
+        } else { camX = 0; camY = 0; }
 
         if (boss.hunterInfected > 0) {
             boss.hunterInfected--;
@@ -806,15 +1706,113 @@
         }
 
         if (activeCinematic) {
-            activeCinematic.tick++; activeCinematic.timer--;
-            if (activeCinematic.type === 'SA1' && activeCinematic.isReal) { if (activeCinematic.tick % 30 === 0 && activeCinematic.tick <= 90) { activeCinematic.p.invuln = 0; takeDamage(activeCinematic.p, 1); triggerShake(8, 10); triggerVibration('sa_hit'); } if (activeCinematic.tick % 5 === 0) triggerVibration('damage'); }
-            if (activeCinematic.type === 'SA2') { if (activeCinematic.tick % 30 === 0 && activeCinematic.tick <= 90) { activeCinematic.p.invuln = 0; takeDamage(activeCinematic.p, 1); triggerShake(10, 10); triggerVibration('sa_hit'); } if (activeCinematic.tick % 5 === 0) triggerVibration('damage'); }
-            if (activeCinematic.type === 'SA3') { if (activeCinematic.tick === 90) { activeCinematic.p.hp = 0; activeCinematic.p.isDowned = false; triggerShake(15, 20); triggerVibration('sa_hit'); } if (activeCinematic.tick % 5 === 0) triggerVibration('damage'); }
+            activeCinematic.tick++; 
+            activeCinematic.timer--;
+            if (activeCinematic.type === 'SA1' && activeCinematic.isReal) { 
+                // 3 урона порциями на тиках 25, 50, 75 (суммарно 3 урона за 1.5 сек)
+                if (activeCinematic.tick === 25 || activeCinematic.tick === 50 || activeCinematic.tick === 75) { 
+                    activeCinematic.p.invuln = 0; 
+                    takeDamage(activeCinematic.p, 1); 
+                    triggerShake(10, 12); 
+                    triggerVibration('sa_hit'); 
+                    playSound('slash');
+                } 
+                if (activeCinematic.tick % 5 === 0) triggerVibration('damage'); 
+            }
+            if (activeCinematic.type === 'SA2') { 
+                // Первые 0.33 сек (20 тиков) статично видим только себя.
+                // На 21 тике босс прорезает игрока: 3 УРОНА СРАЗУ!
+                if (activeCinematic.tick === 21) { 
+                    activeCinematic.p.invuln = 0; 
+                    takeDamage(activeCinematic.p, 3); 
+                    triggerShake(16, 22); 
+                    triggerVibration('sa_hit'); 
+                    playSound('slash');
+                } 
+                if (activeCinematic.tick > 21 && activeCinematic.tick % 5 === 0) triggerVibration('damage'); 
+            }
+            if (activeCinematic.type === 'SA3') { 
+                // Первые 0.5 сек (30 тиков) статично видим только себя.
+                // На 31 тике босс прорезает игрока: БЕСКОНЕЧНЫЙ УРОН (фатальный удар)!
+                if (activeCinematic.tick === 31) { 
+                    if (!godModeActive && !window.godModeActive) {
+                        takeDamage(activeCinematic.p, 9999, false, false, true);
+                        activeCinematic.p.hp = 0; 
+                        activeCinematic.p.purpleHp = 0;
+                        activeCinematic.p.orangeHp = 0;
+                        activeCinematic.p.isDowned = false; 
+                    }
+                    triggerShake(25, 35); 
+                    triggerVibration('sa_hit'); 
+                    playSound('demonRoar');
+                } 
+                if (activeCinematic.tick > 31 && activeCinematic.tick % 5 === 0) triggerVibration('damage'); 
+            }
             if (activeCinematic.timer <= 0) {
-                let targetP = activeCinematic.p; activeCinematic = null;
-                boss.y = Math.min(targetP.y, FLOOR - boss.height);
-                if (boss.superQueue && boss.superQueue.length > 0) { boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 30; } 
-                else { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; if (boss.phase === 2.5) { boss.phase = 3; boss.damageBonus = 0.5; } if (boss.phase === 3.5) boss.phase = 3;}
+                let targetP = activeCinematic.p; 
+                activeCinematic = null;
+                if (boss.state === "L_CLIMB_TRANSITION" || boss.state.startsWith("L_CLIMB") || boss.phase === 2.5) {
+                    boss.x = -99999;
+                    boss.y = -99999;
+                    boss.vx = 0;
+                    boss.vy = 0;
+                    boss.state = "L_CLIMB_ACTIVE";
+                    boss.invuln = 99999;
+                    boss.saLines = null;
+                    boss.climbSaTimer = -120;
+                    for (let p of players) {
+                        p.saHit = false;
+                        p.invuln = 180;
+                    }
+                    if (targetP && targetP.hp > 0 && !targetP.isDowned) {
+                        targetP.vx = 0;
+                        targetP.vy = 0;
+                        let bestPlat = null;
+                        let bestDist = 999999;
+                        for (let plat of platforms) {
+                            let d = Math.hypot((plat.x + plat.w/2) - targetP.x, plat.y - targetP.y);
+                            if (d < bestDist) { bestDist = d; bestPlat = plat; }
+                        }
+                        if (bestPlat) {
+                            targetP.x = bestPlat.x + bestPlat.w / 2 - targetP.width / 2;
+                            targetP.y = bestPlat.y - targetP.height;
+                            targetP.lastSafeX = targetP.x;
+                            targetP.lastSafeY = targetP.y;
+                        }
+                        if (ARENA_W > GAME_WIDTH) {
+                            camX = Math.min(Math.max(targetP.x - GAME_WIDTH / 2, 0), ARENA_W - GAME_WIDTH);
+                        } else {
+                            camX = 0;
+                        }
+                        camY = Math.min(Math.max(targetP.y - GAME_HEIGHT / 2, -2000), FLOOR - GAME_HEIGHT + 100);
+                    }
+                } else if (boss.superQueue && boss.superQueue.length > 0) { 
+                    boss.state = "EXECUTE_QUEUE"; 
+                    boss.stateTimer = 60;
+                    boss.saLines = null;
+                    for (let p of players) {
+                        p.saHit = false;
+                        p.invuln = 90;
+                    }
+                } else { 
+                    boss.halfHpSeqActive = false; 
+                    boss.invuln = 0;
+                    let cX = boss.climbCenterX || (ARENA_W / 2);
+                    let spawnX = cX + (Math.random() - 0.5) * 400;
+                    boss.x = Math.max(60, Math.min(ARENA_W - 80, spawnX));
+                    boss.y = FLOOR - boss.height;
+                    boss.vx = 0;
+                    boss.vy = 0;
+                    boss.state = "IDLE"; 
+                    boss.color = "#e6c800"; 
+                    boss.stateTimer = 30; 
+                    boss.saLines = null;
+                    for (let p of players) {
+                        p.saHit = false;
+                        p.invuln = 60;
+                    }
+                    if (boss.phase === 3.5) boss.phase = 3;
+                }
             }
             return; 
         }
@@ -924,7 +1922,7 @@
             } else {
                 kLeft = isKeyPressed(p.keys.left); kRight = isKeyPressed(p.keys.right); kDown = isKeyPressed(p.keys.down); kUp = isKeyPressed(p.keys.up);
                 kJump = isKeyPressed(p.keys.jump); kAttack = isKeyPressed(p.keys.attack); kHeal = isKeyPressed(p.keys.heal); kSpec = isKeyPressed(p.keys.special);
-                kDash = p.keys.dash ? isKeyPressed(p.keys.dash) : false; kLight = (p.inputType === 'KEYBOARD_SHOOTER') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : (isKeyPressed(['ShiftLeft', 'ShiftRight']));
+                kDash = p.keys.dash ? isKeyPressed(p.keys.dash) : false; kLight = (p.keys && p.keys.light) ? isKeyPressed(p.keys.light) : ((p.inputType === 'KEYBOARD_SHOOTER' || p.inputType === 'KEYBOARD_2') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : (isKeyPressed(['ShiftLeft', 'ShiftRight'])));
             }
 
             if (p.tpDebuffTimer > 0) { p.tpDebuffTimer--; kSpec = false; kHeal = false; if (p.tpDebuffTimer <= 0) p.purpleHp = 0; }
@@ -974,7 +1972,7 @@
                     p.lightCharge = 0; p.attackCooldown = 30; playSound('slash'); p.attackTimer = 15; p.attackType = "LIGHT";
                     let sHit = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 };
                     
-                    if (boss.state === "SA1_ACTIVE") {
+                    if (boss.state === "SA1_ACTIVE" && !boss.halfHpSeqActive) {
                         for (let ph of boss.sa1Arr) {
                             if (ph.active && ph.timer >= ph.startDelay && rectIntersect(sHit, {x: ph.x - 15, y: ph.y - 25, width: 30, height: 50})) {
                                 if (ph.isReal) {
@@ -1037,12 +2035,29 @@
                 let topWallLimit = secretMode ? FLOOR/2 - 100 : FLOOR/2;
                 let onWall = false;
                 
+                let isClimbPhase = boss.state.startsWith("L_CLIMB") || boss.phase === 2.5;
+                
                 if (p.x <= 5 && kLeft && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = -1; p.facingRight = true; } 
                 else if (p.x >= ARENA_W - p.width - 5 && kRight && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = 1; p.facingRight = false; }
                 
-                if (p.y > camY + GAME_HEIGHT + 200 || p.y > FLOOR + 300) {
-                    takeDamage(p, 2, false, false, true);
-                    p.x = p.lastSafeX || ARENA_W/2; p.y = p.lastSafeY - 50; p.vy = 0; triggerShake(5, 10);
+                if (!p.isUnderFloor && (p.y > camY + GAME_HEIGHT + 150 || p.y > FLOOR + 250)) {
+                    if (isClimbPhase && p.invuln > 0) {
+                        p.x = p.lastSafeX || (ARENA_W / 2); 
+                        p.y = p.lastSafeY !== undefined ? p.lastSafeY : (FLOOR - 50); 
+                        p.vy = 0; 
+                        p.vx = 0;
+                    } else {
+                        takeDamage(p, 1, false, false, false);
+                        p.invuln = 90;
+                        p.x = p.lastSafeX || (ARENA_W / 2); 
+                        p.y = p.lastSafeY !== undefined ? p.lastSafeY : (FLOOR - 50); 
+                        p.vy = 0; 
+                        p.vx = 0;
+                        triggerShake(6, 12);
+                        if (isClimbPhase) {
+                            camY = Math.min(Math.max(p.y - GAME_HEIGHT / 2, -2000), FLOOR - GAME_HEIGHT + 100);
+                        }
+                    }
                 }
 
                 if (onFloor || onWall || onPlatform) p.jumps = 0;
@@ -1149,7 +2164,7 @@
                                 } 
                             }
 
-                            if (boss.state === "SA1_ACTIVE") {
+                            if (boss.state === "SA1_ACTIVE" && !boss.halfHpSeqActive) {
                                 for (let ph of boss.sa1Arr) {
                                     if (ph.active && ph.timer >= ph.startDelay && rectIntersect(swordHitbox, {x: ph.x - 15, y: ph.y - 25, width: 30, height: 50})) {
                                         if (ph.isReal) {
@@ -1399,60 +2414,9 @@
             let nearestP = getNearestPlayer(boss.x); boss.facingRight = boss.x < nearestP.x; let prevState = boss.state;
             let onGround = boss.y + boss.height >= FLOOR;
 
-            if (boss.state === "L_CLIMB_START") {
-                if (boss.stateTimer <= 0) { 
-                    boss.state = "L_CLIMB_ACTIVE"; platforms = [];
-                    let curY = players[0].y;
-                    for (let i = 0; i < 10; i++) {
-                        platforms.push({ x: ARENA_W/2 - 200 + Math.random() * 400, y: curY - (i * 120) - 100, w: 120, h: 15 });
-                    }
-                    for (let p of players) { p.lastSafeX = platforms[0].x + platforms[0].w/2; p.lastSafeY = platforms[0].y - p.height; }
-                    boss.climbSaTimer = 0; boss.saLines = null;
-                    FLOOR = 3000;
-                }
-            } else if (boss.state === "L_CLIMB_ACTIVE") {
-                boss.climbSaTimer++;
-                if (boss.climbSaTimer > 60) {
-                    boss.climbSaTimer = 0;
-                    let targetP = players[Math.floor(Math.random() * players.length)];
-                    if (targetP && !targetP.isDowned) {
-                        let type = Math.random() > 0.5 ? "SA2" : "SA3";
-                        let ex1 = targetP.x + targetP.width/2 + (Math.random() - 0.5) * 150;
-                        boss.saLines = [{ x1: ex1, y1: camY - 50, x2: ex1 + (Math.random()-0.5)*150, y2: camY + GAME_HEIGHT + 50, type: type }];
-                        boss.saLinesState = "WINDUP"; boss.saLinesTimer = 45;
-                    }
-                }
-                if (boss.saLines) {
-                    boss.saLinesTimer--;
-                    if (boss.saLinesTimer <= 0 && boss.saLinesState === "WINDUP") {
-                        boss.saLinesState = "EXECUTE"; boss.saLinesTimer = 10;
-                    } else if (boss.saLinesTimer <= 0 && boss.saLinesState === "EXECUTE") {
-                        boss.saLines = null;
-                    } else if (boss.saLinesState === "EXECUTE") {
-                        for (let l of boss.saLines) {
-                            let curX2 = l.x1; let curY2 = l.y1;
-                            let progress = 1 - (boss.saLinesTimer / 10);
-                            let curLine = {x1: l.x1, y1: l.y1, x2: l.x1 + (l.x2 - l.x1)*progress, y2: l.y1 + (l.y2 - l.y1)*progress};
-                            for (let p of players) {
-                                if (!p.isDowned && distToSegment(p, curLine) < 40 + p.width/2 && p.invuln <= 0) {
-                                    takeDamage(p, 2); triggerShake(10, 15); freezeFrames = 5;
-                                    p.vy = 5;
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                let topPlat = platforms[platforms.length - 1];
-                let reachedTop = players.some(p => p.y <= topPlat.y && !p.isDowned);
-                if (reachedTop) {
-                    FLOOR = topPlat.y; 
-                    boss.state = "L_SCREAM"; boss.stateTimer = 120; boss.color = "#aaaaaa";
-                    boss.phase = 3; boss.damageBonus = 0.5; boss.speed = 8.5; boss.invuln = 0;
-                    platforms = [ {x: 200, y: FLOOR-80, w: 80, h:10}, {x: 500, y: FLOOR-120, w: 80, h:10}, {x: 800, y: FLOOR-80, w: 80, h:10} ];
-                    boss.y = FLOOR - boss.height; boss.x = ARENA_W/2; boss.saLines = null;
-                    for(let p of players) { if (p.y > FLOOR) { p.y = FLOOR - 100; p.x = ARENA_W/2; p.vy = 0; } }
-                }
+            if (boss.state === "L_CLIMB_TRANSITION" || boss.state.startsWith("L_CLIMB") || boss.phase === 2.5) {
+                updatePhase3Transition();
+                return;
             } else if (boss.state === "L_INTRO_FALL") {
                 if (boss.stateTimer <= 0) { boss.state = "L_INTRO_RISE"; boss.stateTimer = 45; boss.x = ARENA_W/2; boss.y = FLOOR + 100; playSound('wind'); }
             } else if (boss.state === "L_INTRO_RISE") {
@@ -1483,6 +2447,13 @@
                 if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; }
             }
             else if (boss.state === "EXECUTE_QUEUE") {
+                if (boss.halfHpSeqActive) {
+                    boss.invuln = 99999;
+                    boss.vx = 0;
+                    boss.vy = 0;
+                    boss.x = -99999;
+                    boss.y = -99999;
+                }
                 if (boss.stateTimer <= 0) {
                     if (boss.superQueue && boss.superQueue.length > 0) { let n = boss.superQueue.shift(); boss.state = n.s; boss.stateTimer = n.t; }
                     else { 
@@ -1493,92 +2464,161 @@
                 }
             }
             else if (boss.state === "SA1_WINDUP") {
+                if (boss.halfHpSeqActive) {
+                    boss.invuln = 99999;
+                    boss.vx = 0;
+                    boss.vy = 0;
+                    boss.x = -99999;
+                    boss.y = -99999;
+                }
                 if (boss.stateTimer <= 0) { 
-                    boss.sa1Arr = []; let count = 7; let realIdx = Math.floor(Math.random() * count);
-                    for(let i=0; i<count; i++) { boss.sa1Arr.push({ x: Math.random() * (ARENA_W - 50) + 25, y: Math.random() * (FLOOR - 100) + 50, isReal: (i === realIdx), timer: 0, startDelay: i * 8, active: true, struck: false }); }
-                    boss.state = "SA1_ACTIVE"; boss.stateTimer = 300; boss.y = -1000; boss.color = "#ff8800";
+                    boss.sa1Arr = []; 
+                    let count = 7; 
+                    let realIdx = Math.floor(Math.random() * count);
+                    
+                    let cX = boss.climbCenterX || (ARENA_W / 2);
+                    let minX = secretMode ? Math.max(60, cX - 580) : 60;
+                    let maxX = secretMode ? Math.min(ARENA_W - 60, cX + 580) : ARENA_W - 60;
+                    let minY = secretMode ? FLOOR - 290 : 60;
+                    let maxY = secretMode ? FLOOR - 30 : FLOOR - 50;
+
+                    for (let i = 0; i < count; i++) { 
+                        let phX = minX + Math.random() * (maxX - minX);
+                        let phY = minY + Math.random() * (maxY - minY);
+                        boss.sa1Arr.push({ 
+                            x: phX, 
+                            y: phY, 
+                            isReal: (i === realIdx), 
+                            timer: 0, 
+                            startDelay: i * 22, // Последовательно по очереди!
+                            active: true, 
+                            struck: false,
+                            w: 630, // Оригинальный размер оранжевой зоны (кадр уязвимости)
+                            h: 200
+                        }); 
+                    }
+                    boss.state = "SA1_ACTIVE"; 
+                    boss.stateTimer = 220; 
+                    boss.color = "#ff8800";
                 }
             }
             else if (boss.state === "SA1_ACTIVE") {
+                if (boss.halfHpSeqActive) {
+                    boss.invuln = 99999;
+                    boss.vx = 0;
+                    boss.vy = 0;
+                    boss.x = -99999;
+                    boss.y = -99999;
+                }
                 let allDone = true;
-                for (let ph of boss.sa1Arr) {
-                    if (!ph.active) continue; ph.timer++;
-                    if (ph.timer > ph.startDelay) {
-                        allDone = false;
-                        if (ph.timer === ph.startDelay + 45 && !ph.struck) {
-                            ph.struck = true; let hitArea = {x: ph.x - 300, y: ph.y - 150, width: 630, height: 200};
-                            for (let p of players) { if (!p.isDowned && p.hp > 0 && rectIntersect(p, hitArea)) { triggerCinematic("SA1", p, true); } }
+                if (boss.sa1Arr) {
+                    for (let ph of boss.sa1Arr) {
+                        if (!ph.active) continue; 
+                        ph.timer++;
+                        if (ph.timer > ph.startDelay) {
+                            allDone = false;
+                            if (ph.timer === ph.startDelay + 40 && !ph.struck) {
+                                ph.struck = true; 
+                                playSound('slash');
+                                applyPhysicsPushToLeaves(ph.x, ph.y, 10);
+                                // Оригинальная зона поражения (кадр уязвимости 630x200):
+                                let hitArea = { x: ph.x - 300, y: ph.y - 150, width: ph.w, height: ph.h };
+                                for (let p of players) { 
+                                    if (!p.isDowned && p.hp > 0 && p.invuln <= 0 && rectIntersect(p, hitArea)) { 
+                                        triggerCinematic("SA1", p, true); 
+                                        boss.sa1Arr = null; // Очищаем фантомов, чтобы не было повторных ударов
+                                        break;
+                                    } 
+                                }
+                            }
+                            if (ph && ph.timer > ph.startDelay + 52) ph.active = false;
                         }
-                        if (ph.timer > ph.startDelay + 60) ph.active = false;
+                        if (!boss.sa1Arr) break;
                     }
                 }
-                if (allDone && !activeCinematic) { 
-                    boss.state = "SA1_SLAM_WINDUP"; 
-                    boss.stateTimer = 40; 
-                    boss.x = nearestP.x; 
-                    boss.y = -100;
+                if ((allDone || boss.stateTimer <= 0) && !activeCinematic) { 
+                    boss.halfHpSeqActive = false; 
+                    boss.invuln = 0;
+                    let cX = boss.climbCenterX || (ARENA_W / 2);
+                    boss.x = Math.max(60, Math.min(ARENA_W - 80, cX + (Math.random() - 0.5) * 450));
+                    boss.y = FLOOR - boss.height;
+                    boss.vx = 0;
+                    boss.vy = 0;
+                    boss.state = "IDLE"; 
                     boss.color = "#e6c800"; 
-                }
-            }
-            else if (boss.state === "SA1_SLAM_WINDUP") {
-                boss.vx = 0; boss.vy = 0; boss.y = -100;
-                if (boss.stateTimer <= 0) { boss.state = "SA1_SLAM"; boss.vy = 35; }
-            }
-            else if (boss.state === "SA1_SLAM") {
-                boss.vy = 35; 
-                if (boss.y + boss.height >= FLOOR) {
-                    boss.y = FLOOR - boss.height; 
-                    triggerShake(30, 20, 0, 1); triggerVibration('sa1_land');
+                    boss.stateTimer = 30; 
+                    boss.saLines = null;
+                    boss.sa1Arr = null;
                     for (let p of players) {
-                        if (Math.abs((p.x + p.width/2) - (boss.x + boss.width/2)) < 100) {
-                            takeDamage(p, secretMode ? 2 : 1.5);
-                        }
+                        p.saHit = false;
+                        p.invuln = 60;
                     }
-                    boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30;
+                    applyPhysicsPushToLeaves(boss.x + 15, boss.y + 25, 15);
+                    playSound('wind');
                 }
             }
             else if (boss.state === "SA2_WINDUP" || boss.state === "SA3_WINDUP") {
-                if (boss.stateTimer === 23) {
-                    let ex1 = Math.random() * ARENA_W; let ex2 = Math.random() * ARENA_W;
-                    if (Math.random() < 0.5) { ex1 = 0; ex2 = ARENA_W; }
-                    boss.saLines = [{x1: ex1, y1: Math.random()*(FLOOR-100), x2: ex2, y2: FLOOR, type: boss.state === "SA3_WINDUP" ? "SA3" : "SA2"}];
+                if (boss.halfHpSeqActive) {
+                    boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+                    boss.x = -99999; boss.y = -99999;
+                }
+                if (!boss.saLines) {
+                    boss.saLines = [ createRandomSaLine(boss.state === "SA3_WINDUP" ? "SA3" : "SA2") ];
                 }
                 if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
             }
             else if (boss.state === "SA2_DOUBLE") {
-                if (boss.stateTimer === 23) {
-                    let cX1 = Math.random() * ARENA_W; let cX2 = Math.random() * ARENA_W;
-                    boss.saLines = [
-                        {x1: cX1, y1: 0, x2: ARENA_W - cX1, y2: FLOOR, type: "SA2"},
-                        {x1: cX2, y1: 0, x2: ARENA_W - cX2, y2: FLOOR, type: "SA2"}
-                    ]; 
+                if (boss.halfHpSeqActive) {
+                    boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+                    boss.x = -99999; boss.y = -99999;
+                }
+                if (!boss.saLines) {
+                    boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ]; 
                 }
                 if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
             }
             else if (boss.state === "SA2_TRIPLE") {
-                if (boss.stateTimer === 23) {
-                    boss.saLines = [
-                        {x1: 0, y1: Math.random()*(FLOOR-100), x2: ARENA_W, y2: FLOOR, type: "SA2"},
-                        {x1: ARENA_W, y1: Math.random()*(FLOOR-100), x2: 0, y2: FLOOR, type: "SA2"},
-                        {x1: Math.random()*ARENA_W, y1: 0, x2: Math.random()*ARENA_W, y2: FLOOR, type: "SA2"}
-                    ]; 
+                if (boss.halfHpSeqActive) {
+                    boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+                    boss.x = -99999; boss.y = -99999;
+                }
+                if (!boss.saLines) {
+                    boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA2") ]; 
                 }
                 if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
             }
             else if (boss.state === "SA_EXECUTE") {
+                if (boss.halfHpSeqActive) {
+                    boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+                    boss.x = -99999; boss.y = -99999;
+                }
                 if (boss.stateTimer > 0) {
                     let progress = 1 - (boss.stateTimer / 6);
                     for (let l of boss.saLines) {
-                        let curX2 = l.x1 + (l.x2 - l.x1) * progress; let curY2 = l.y1 + (l.y2 - l.y1) * progress; let curLine = {x1: l.x1, y1: l.y1, x2: curX2, y2: curY2};
+                        let curX2 = l.x1 + (l.x2 - l.x1) * progress; 
+                        let curY2 = l.y1 + (l.y2 - l.y1) * progress; 
+                        let curLine = { x1: l.x1, y1: l.y1, x2: curX2, y2: curY2 };
                         for (let p of players) {
-                            if (!p.isDowned && !p.saHit && distToSegment(p, curLine) < 40 + p.width/2) {
-                                triggerCinematic(l.type, p); p.saHit = true; 
-                                let dx_n = l.x2 - l.x1; let dy_n = l.y2 - l.y1; let dLen = Math.hypot(dx_n, dy_n);
-                                triggerShake(10, 15, dx_n/dLen, dy_n/dLen);
+                            if (!p.isDowned && !p.saHit && p.invuln <= 0 && distToSegment(p, curLine) < 40 + p.width/2) {
+                                let lineAngle = Math.atan2(l.y2 - l.y1, l.x2 - l.x1);
+                                triggerCinematic(l.type, p, true, lineAngle); 
+                                p.saHit = true; 
+                                boss.saLines = null;
+                                let dx_n = l.x2 - l.x1; 
+                                let dy_n = l.y2 - l.y1; 
+                                let dLen = Math.hypot(dx_n, dy_n);
+                                triggerShake(10, 15, dx_n / dLen, dy_n / dLen);
+                                break;
                             }
                         }
+                        if (!boss.saLines) break;
                     }
-                } else { boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 30; for (let p of players) p.saHit = false; boss.saLines = null; }
+                } else { 
+                    boss.state = "EXECUTE_QUEUE"; 
+                    boss.stateTimer = 30; 
+                    for (let p of players) p.saHit = false; 
+                    boss.saLines = null; 
+                }
             }
             else if (boss.state === "SHARPEN_WINDUP") { 
                 boss.vx = 0; boss.y = FLOOR - 150; 
@@ -1779,7 +2819,7 @@
             if (boss.phase === 3 && (boss.state === "PARRY_DASH" || boss.state === "HEAL_PUNISH_DASH")) { bossDmgHitbox.y -= 60; bossDmgHitbox.height += 60; }
 
             for (let p of players) {
-                if (!p.isDowned && p.hp > 0 && rectIntersect(p, bossDmgHitbox) && boss.state !== "TRANSITION" && p.invuln <= 0 && !boss.state.startsWith("TELEPORT") && !boss.state.startsWith("CINEMATIC") && boss.state !== "SA_EXECUTE" && boss.state !== "SA1_ACTIVE" && !boss.state.startsWith("L_INTRO") && !boss.state.startsWith("L_PHASE3") && boss.state !== "HIDDEN_PAUSE" && boss.state !== "L_CLIMB_START" && boss.state !== "L_CLIMB_ACTIVE") {
+                if (!p.isDowned && p.hp > 0 && rectIntersect(p, bossDmgHitbox) && boss.state !== "TRANSITION" && p.invuln <= 0 && !boss.halfHpSeqActive && boss.state !== "EXECUTE_QUEUE" && !boss.state.startsWith("SA") && !boss.state.startsWith("TELEPORT") && !boss.state.startsWith("CINEMATIC") && !boss.state.startsWith("L_INTRO") && !boss.state.startsWith("L_PHASE3") && boss.state !== "HIDDEN_PAUSE" && boss.state !== "L_CLIMB_START" && boss.state !== "L_CLIMB_ACTIVE") {
                     let dmg = (secretMode ? 2 : 1) + boss.damageBonus; 
                     if (boss.state === "LUNGE" || boss.state === "LUNGE_WINDUP" || boss.state.startsWith("FEINT_DASH") || boss.state === "HEAL_PUNISH_DASH" || boss.state === "SCARF_SHOOT") { dmg = (secretMode ? 2 : 1.5) + boss.damageBonus; applyBleed(p); } 
                     if (boss.state === "PARRY_DASH") { dmg = 1; if (boss.damageBonus > 0 || secretMode) { dmg = 1.5; applyBleed(p); } }
@@ -1977,10 +3017,299 @@
         }
 
         if (activeCinematic) {
-            ctx.fillStyle = "#000"; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            ctx.fillStyle = "#fff"; ctx.fillRect(GAME_WIDTH/2 - 15, GAME_HEIGHT/2, 30, 50); 
-            ctx.fillStyle = "#555"; ctx.fillRect(GAME_WIDTH/2 + Math.sin(activeCinematic.tick)*100, GAME_HEIGHT/2, 30, 50); 
-            ctx.fillStyle = "red"; ctx.font = "30px Arial"; ctx.textAlign = "center"; ctx.fillText("КРИТИЧЕСКИЙ УДАР!", GAME_WIDTH/2, 100); ctx.textAlign = "left";
+            ctx.save();
+            const dpr = window.devicePixelRatio || 1;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            let t = activeCinematic.tick;
+            let cType = activeCinematic.type;
+            let pX = GAME_WIDTH / 2;
+            let pY = GAME_HEIGHT * 0.52;
+
+            function drawPlayerSilhouette(px, py, hitShake = 0) {
+                ctx.save();
+                ctx.translate(px + (Math.random() - 0.5) * hitShake, py + (Math.random() - 0.5) * hitShake);
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "#ffffff";
+                ctx.shadowBlur = 20;
+                // Плащ
+                ctx.beginPath();
+                ctx.moveTo(0, -35);
+                ctx.lineTo(26, 42);
+                ctx.lineTo(-26, 42);
+                ctx.closePath();
+                ctx.fill();
+                // Маска
+                ctx.beginPath();
+                ctx.ellipse(0, -42, 14, 20, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Рога
+                ctx.beginPath();
+                ctx.moveTo(-8, -55);
+                ctx.lineTo(-15, -82);
+                ctx.lineTo(-3, -60);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(8, -55);
+                ctx.lineTo(15, -82);
+                ctx.lineTo(3, -60);
+                ctx.closePath();
+                ctx.fill();
+                // Глаза
+                ctx.fillStyle = "#000000";
+                ctx.beginPath();
+                ctx.ellipse(-5, -42, 3, 6, 0.2, 0, Math.PI * 2);
+                ctx.ellipse(5, -42, 3, 6, -0.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            function drawBossSilhouette(bx, by, facingDir = 1, isVoid = false, angle = 0) {
+                ctx.save();
+                ctx.translate(bx, by);
+                if (angle) ctx.rotate(angle);
+                ctx.scale(facingDir, 1);
+                ctx.fillStyle = isVoid ? "#160026" : "#0d0d0d";
+                ctx.shadowColor = isVoid ? "#d000ff" : "#ffffff";
+                ctx.shadowBlur = 25;
+                // Плащ
+                ctx.beginPath();
+                ctx.moveTo(0, -65);
+                ctx.lineTo(45, 55);
+                ctx.lineTo(-40, 55);
+                ctx.closePath();
+                ctx.fill();
+                // Маска
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.ellipse(-5, -65, 18, 26, -0.15, 0, Math.PI * 2);
+                ctx.fill();
+                // Рапира/игла
+                ctx.strokeStyle = isVoid ? "#ff33ff" : "#ffffff";
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.moveTo(-10, -45);
+                ctx.lineTo(85, -30);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            if (cType === 'SA1') {
+                // ЧБ катсцена 1.5 сек (90 кадров): игрок статично в центре, босс разносит из стороны в сторону
+                ctx.fillStyle = "#060606";
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+                // Тонкие линии скорости в ЧБ
+                ctx.save();
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+                ctx.lineWidth = 2;
+                for (let i = 0; i < 24; i++) {
+                    let a = (i / 24) * Math.PI * 2 + (t * 0.03);
+                    ctx.beginPath();
+                    ctx.moveTo(pX + Math.cos(a) * 90, pY + Math.sin(a) * 90);
+                    ctx.lineTo(pX + Math.cos(a) * 800, pY + Math.sin(a) * 800);
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                let shake = (t >= 25 && t <= 32) || (t >= 50 && t <= 57) || (t >= 75 && t <= 83) ? 14 : 0;
+                drawPlayerSilhouette(pX, pY, shake);
+
+                // 1) Проход 1 (слева направо, тики 10..32, пик 25)
+                if (t >= 10 && t <= 32) {
+                    let prog = (t - 10) / 18;
+                    let bx = (pX - 420) + prog * 840;
+                    drawBossSilhouette(bx, pY, 1);
+                }
+                // 2) Проход 2 (справа налево, тики 35..57, пик 50)
+                if (t >= 35 && t <= 57) {
+                    let prog = (t - 35) / 18;
+                    let bx = (pX + 420) - prog * 840;
+                    drawBossSilhouette(bx, pY, -1);
+                }
+                // 3) Проход 3 (по диагонали, тики 60..82, пик 75)
+                if (t >= 60 && t <= 82) {
+                    let prog = (t - 60) / 18;
+                    let bx = (pX - 350) + prog * 700;
+                    let by = (pY - 220) + prog * 440;
+                    drawBossSilhouette(bx, by, 1, false, Math.PI / 8);
+                }
+                // Стойка босса (тики 83..90)
+                if (t > 82) {
+                    drawBossSilhouette(pX + 260, pY, -1);
+                }
+
+                // Белые следы рассечений
+                ctx.save();
+                if (t >= 25) {
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 8;
+                    ctx.beginPath();
+                    ctx.moveTo(pX - 260, pY - 30);
+                    ctx.lineTo(pX + 260, pY + 30);
+                    ctx.stroke();
+                }
+                if (t >= 50) {
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 10;
+                    ctx.beginPath();
+                    ctx.moveTo(pX + 260, pY - 50);
+                    ctx.lineTo(pX - 260, pY + 50);
+                    ctx.stroke();
+                }
+                if (t >= 75) {
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 14;
+                    ctx.beginPath();
+                    ctx.moveTo(pX, pY - 180);
+                    ctx.lineTo(pX, pY + 180);
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                // Белая вспышка на каждом ударе
+                if (t === 25 || t === 26 || t === 50 || t === 51 || t === 75 || t === 76) {
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+                    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                }
+
+                // Заголовок
+                ctx.save();
+                ctx.textAlign = "center";
+                ctx.font = "900 28px 'Courier New', Arial, sans-serif";
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "#ffffff";
+                ctx.shadowBlur = 20;
+                ctx.fillText("СУПЕРАТАКА 1: ФАНТОМНЫЙ ШКВАЛ", GAME_WIDTH / 2, 75);
+                ctx.font = "bold 20px Arial";
+                ctx.shadowBlur = 10;
+                let sub = t >= 75 ? "ФИНАЛЬНЫЙ УДАР 3/3 [-1 HP]" : (t >= 50 ? "УДАР 2/3 [-1 HP]" : (t >= 25 ? "УДАР 1/3 [-1 HP]" : "ЗАХВАТ..."));
+                ctx.fillText(sub, GAME_WIDTH / 2, 115);
+                ctx.restore();
+            } else if (cType === 'SA2') {
+                // ЧБ катсцена 1.0 сек (60 кадров): первые 0.33 сек (20 кадров) видим только себя статично, затем рывок босса и 3 урона сразу
+                ctx.fillStyle = "#050505";
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+                let lAngle = activeCinematic.angle !== null && activeCinematic.angle !== undefined ? activeCinematic.angle : -Math.PI / 6;
+
+                // Направляющая белая линия через всю карту
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(pX - Math.cos(lAngle) * 900, pY - Math.sin(lAngle) * 900);
+                ctx.lineTo(pX + Math.cos(lAngle) * 900, pY + Math.sin(lAngle) * 900);
+                if (t <= 20) {
+                    ctx.setLineDash([10, 10]);
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                } else {
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 18;
+                    ctx.stroke();
+                    ctx.strokeStyle = "#aaaaaa";
+                    ctx.lineWidth = 32;
+                    ctx.globalAlpha = 0.4;
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                // Игрок статично в центре (в первые 0.33 сек - только он!)
+                let shake = (t >= 21 && t <= 28) ? 14 : 0;
+                drawPlayerSilhouette(pX, pY, shake);
+
+                // Остальные 0.67 сек (тики 21..60): быстрый рывок босса через игрока
+                if (t >= 21) {
+                    let dashProg = Math.min(1, (t - 21) / 14);
+                    let dist = -420 + dashProg * 840;
+                    let bx = pX + Math.cos(lAngle) * dist;
+                    let by = pY + Math.sin(lAngle) * dist;
+                    let facing = Math.cos(lAngle) >= 0 ? 1 : -1;
+                    drawBossSilhouette(bx, by, facing, false, lAngle);
+                }
+
+                // Вспышка на ударе
+                if (t === 21 || t === 22) {
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+                    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                }
+
+                // Заголовок
+                ctx.save();
+                ctx.textAlign = "center";
+                ctx.font = "900 28px 'Courier New', Arial, sans-serif";
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "#ffffff";
+                ctx.shadowBlur = 20;
+                ctx.fillText("СУПЕРАТАКА 2: РАССЕКАЮЩИЙ СВЕТ", GAME_WIDTH / 2, 75);
+                ctx.font = "bold 20px Arial";
+                ctx.shadowBlur = 10;
+                ctx.fillText(t <= 20 ? "НАВЕДЕНИЕ ЛУЧА..." : "КРИТИЧЕСКИЙ РАЗРЕЗ [-3 HP]", GAME_WIDTH / 2, 115);
+                ctx.restore();
+            } else if (cType === 'SA3') {
+                // Катсцена SA3 (65 кадров): первые 0.5 сек (30 кадров) видим только себя статично, затем рывок босса и бесконечный урон
+                ctx.fillStyle = "#05000a";
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+                let lAngle = activeCinematic.angle !== null && activeCinematic.angle !== undefined ? activeCinematic.angle : -Math.PI / 6;
+
+                // Фиолетовый луч / разрыв пустоты
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(pX - Math.cos(lAngle) * 900, pY - Math.sin(lAngle) * 900);
+                ctx.lineTo(pX + Math.cos(lAngle) * 900, pY + Math.sin(lAngle) * 900);
+                if (t <= 30) {
+                    ctx.setLineDash([10, 10]);
+                    ctx.strokeStyle = "rgba(208, 0, 255, 0.85)";
+                    ctx.lineWidth = 3.5;
+                    ctx.stroke();
+                } else {
+                    ctx.strokeStyle = "#d000ff";
+                    ctx.lineWidth = 26;
+                    ctx.stroke();
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 8;
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                // Игрок статично в центре (в первые 0.5 сек - только он!)
+                let shake = (t >= 31 && t <= 42) ? 22 : 0;
+                drawPlayerSilhouette(pX, pY, shake);
+
+                // Остальное время (тики 31..65): быстрый рывок босса через игрока с разрывом пустоты
+                if (t >= 31) {
+                    let dashProg = Math.min(1, (t - 31) / 14);
+                    let dist = -420 + dashProg * 840;
+                    let bx = pX + Math.cos(lAngle) * dist;
+                    let by = pY + Math.sin(lAngle) * dist;
+                    let facing = Math.cos(lAngle) >= 0 ? 1 : -1;
+                    drawBossSilhouette(bx, by, facing, true, lAngle);
+                }
+
+                // Фиолетовая вспышка на ударе
+                if (t >= 31 && t <= 33) {
+                    ctx.fillStyle = "rgba(220, 0, 255, 0.95)";
+                    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                }
+
+                // Заголовок
+                ctx.save();
+                ctx.textAlign = "center";
+                ctx.font = "900 28px 'Courier New', Arial, sans-serif";
+                ctx.fillStyle = "#d000ff";
+                ctx.shadowColor = "#d000ff";
+                ctx.shadowBlur = 20;
+                ctx.fillText("СУПЕРАТАКА 3: РАЗРЫВ ПУСТОТЫ", GAME_WIDTH / 2, 75);
+                ctx.font = "bold 20px Arial";
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = t > 30 ? "#ff0055" : "#ffffff";
+                ctx.fillText(t <= 30 ? "РАЗРЫВ ПРОСТРАНСТВА..." : "☠ СМЕРТЕЛЬНЫЙ УДАР (ФАТАЛЬНЫЙ) ☠", GAME_WIDTH / 2, 115);
+                ctx.restore();
+            }
+
+            ctx.restore();
         } else {
             drawBackground();
 
@@ -2002,16 +3331,29 @@
             if (boss.state === "VOID_FLOOR_ACTIVE") { ctx.fillStyle = "rgba(150,0,255,0.6)"; ctx.fillRect(0, FLOOR-15, ARENA_W, 15); }
 
             if (secretMode && boss.saLines) { 
-                for(let l of boss.saLines) {
+                for (let l of boss.saLines) {
+                    ctx.save();
                     ctx.beginPath(); ctx.moveTo(l.x1, l.y1);
                     let drawX2 = l.x2; let drawY2 = l.y2;
-                    if (boss.saLinesState === "EXECUTE") {
-                        let progress = 1 - (boss.saLinesTimer / 10);
+                    let isExecuting = (boss.saLinesState === "EXECUTE" || boss.state === "SA_EXECUTE");
+                    if (isExecuting) {
+                        let progress = (boss.saLinesState === "EXECUTE") ? (1 - (boss.saLinesTimer / 10)) : (1 - (boss.stateTimer / 6));
                         drawX2 = l.x1 + (l.x2 - l.x1) * progress;
                         drawY2 = l.y1 + (l.y2 - l.y1) * progress;
+                        ctx.lineTo(drawX2, drawY2);
+                        ctx.strokeStyle = (l.type === "SA3") ? "#c044ff" : "#ffffff"; 
+                        ctx.lineWidth = 40; 
+                        ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(drawX2, drawY2);
+                        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 12; ctx.stroke();
+                    } else {
+                        ctx.setLineDash([8, 8]);
+                        ctx.lineTo(drawX2, drawY2);
+                        ctx.strokeStyle = (l.type === "SA3") ? "rgba(200, 50, 255, 0.75)" : "rgba(255, 255, 255, 0.75)";
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
                     }
-                    ctx.lineTo(drawX2, drawY2); 
-                    ctx.strokeStyle = (l.type === "SA3") ? "purple" : "white"; ctx.lineWidth = 45; ctx.stroke(); 
+                    ctx.restore();
                 }
             }
 
@@ -2087,21 +3429,51 @@
                 if (boss.state === "SA1_ACTIVE" && boss.sa1Arr) {
                     for (let ph of boss.sa1Arr) {
                         if (ph.active && ph.timer >= ph.startDelay) {
-                            if (ph.timer < ph.startDelay + 45) {
-                                ctx.fillStyle = "rgba(255, 150, 0, 0.3)";
-                                ctx.fillRect(ph.x - 300, ph.y - 150, 630, 200);
-                            } else if (ph.timer < ph.startDelay + 55) {
-                                ctx.fillStyle = "rgba(255, 100, 0, 0.8)";
-                                ctx.fillRect(ph.x - 300, ph.y - 150, 630, 200);
+                            let w = ph.w || 630;
+                            let h = ph.h || 200;
+                            let bx = ph.x - 300;
+                            let by = ph.y - 150;
+
+                            ctx.save();
+                            if (ph.timer < ph.startDelay + 40) {
+                                let pulse = 0.22 + 0.12 * Math.sin(Date.now() / 80 + ph.x);
+                                ctx.fillStyle = `rgba(255, 150, 0, ${pulse})`;
+                                ctx.fillRect(bx, by, w, h);
+                                ctx.setLineDash([8, 6]);
+                                ctx.strokeStyle = "rgba(255, 180, 0, 0.85)";
+                                ctx.lineWidth = 2.5;
+                                ctx.strokeRect(bx, by, w, h);
+                            } else if (ph.timer <= ph.startDelay + 52) {
+                                let fade = Math.max(0, (ph.startDelay + 52 - ph.timer) / 12);
+                                ctx.fillStyle = `rgba(255, 120, 0, ${fade * 0.85})`;
+                                ctx.fillRect(bx, by, w, h);
+                                ctx.strokeStyle = "#ffffff";
+                                ctx.lineWidth = 4;
+                                ctx.beginPath();
+                                ctx.moveTo(bx, by + h / 2);
+                                ctx.lineTo(bx + w, by + h / 2);
+                                ctx.moveTo(bx + 40, by + 20);
+                                ctx.lineTo(bx + w - 40, by + h - 20);
+                                ctx.stroke();
                             }
-                            ctx.fillStyle = ph.isReal ? "#ff8800" : "#221100";
+
+                            ctx.fillStyle = ph.isReal ? "#ff8800" : "rgba(35, 15, 0, 0.9)";
                             ctx.fillRect(ph.x - 15, ph.y - 25, 30, 50);
-                            if (!ph.isReal) { ctx.strokeStyle = "#ff8800"; ctx.lineWidth = 2; ctx.strokeRect(ph.x - 15, ph.y - 25, 30, 50); }
+                            if (!ph.isReal) { 
+                                ctx.strokeStyle = "#ffaa00"; 
+                                ctx.lineWidth = 2; 
+                                ctx.strokeRect(ph.x - 15, ph.y - 25, 30, 50); 
+                            }
+                            ctx.fillStyle = "#ffffff";
+                            ctx.beginPath();
+                            ctx.arc(ph.x, ph.y - 15, 6, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.restore();
                         }
                     }
                 }
 
-                if (boss.state !== "FREE_ROAM" && boss.state !== "SA1_ACTIVE" && boss.state !== "HIDDEN_PAUSE" && boss.state !== "SA1_SLAM_WINDUP" && boss.state !== "L_CLIMB_START" && boss.state !== "L_CLIMB_ACTIVE") {
+                if (!boss.halfHpSeqActive && boss.x > -1000 && boss.state !== "FREE_ROAM" && boss.state !== "SA1_ACTIVE" && boss.state !== "HIDDEN_PAUSE" && boss.state !== "L_CLIMB_START" && boss.state !== "L_CLIMB_ACTIVE") {
                     ctx.fillStyle = getBossColor(boss.color);
                     ctx.globalAlpha = (boss.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0) ? 0.5 : 1.0;
                     ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
@@ -2160,6 +3532,91 @@
                     }
                     ctx.closePath();
                     ctx.fill();
+
+                    // --- CLOAKS & PATTERNS ---
+                    ctx.save();
+                    let cloakColor = "#2952cc";
+                    let patternColor = "#00ffff";
+                    if (p.type === 'WATER') {
+                        if (p.stance === 'DEMON') {
+                            cloakColor = "#25003b";
+                            patternColor = "#d000ff";
+                        } else {
+                            cloakColor = "#2255cc";
+                            patternColor = "#00ffff";
+                        }
+                    } else if (p.type === 'EARTH') {
+                        cloakColor = "#1f7a1f";
+                        patternColor = "#44cc44";
+                    } else if (p.type === 'AIR') {
+                        cloakColor = "#d4af37";
+                        patternColor = "#00e5ff";
+                    } else if (p.type === 'STAMINA') {
+                        cloakColor = "#661426";
+                        patternColor = "#00f0ff";
+                    } else if (p.type === 'FIRE') {
+                        cloakColor = "#bb1b00";
+                        patternColor = "#ff7700";
+                    }
+
+                    // --- DYNAMIC BILLOWING CLOAK WITH CLOTH PHYSICS ---
+                    let trailDir = p.facingRight ? -1 : 1;
+                    let runSpeed = Math.abs(p.vx);
+                    let velLagX = -p.vx * 3.5;
+                    let velLagY = -p.vy * 1.8;
+                    let time = Date.now();
+                    let pIdx = (typeof players !== 'undefined' && players[1] === p) ? 2 : 1;
+                    let waveTime = time / 110 + pIdx * 3;
+
+                    let flutter1 = Math.sin(waveTime) * (5 + runSpeed * 1.5);
+                    let flutter2 = Math.cos(waveTime * 1.4) * (6 + runSpeed * 1.8);
+                    let flap = Math.sin(waveTime * 1.8) * (4 + runSpeed);
+
+                    let anchorX = p.facingRight ? p.x + 8 : p.x + p.width - 8;
+                    let shoulderX = anchorX;
+                    let shoulderY = p.y + 10;
+
+                    let tipX = anchorX + (trailDir * (24 + runSpeed * 4)) + (velLagX * 0.5) + flutter1;
+                    let tipY = p.y + p.height + flutter2 * 0.8 + (velLagY * 0.4);
+                    let midX = anchorX + (trailDir * (28 + runSpeed * 4.5)) + (velLagX * 0.6) + flutter2;
+                    let midY = p.y + 24 + flutter1 * 0.7;
+                    let hemMidX = anchorX + (trailDir * (13 + runSpeed * 2)) + flap;
+                    let hemMidY = p.y + p.height - 2 - flap * 0.5;
+
+                    // 1. Тень складок
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+                    ctx.beginPath();
+                    ctx.moveTo(shoulderX, shoulderY + 2);
+                    ctx.quadraticCurveTo(midX * 0.9, midY, tipX - trailDir * 4, tipY);
+                    ctx.quadraticCurveTo(hemMidX, hemMidY + 2, anchorX, p.y + p.height);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // 2. Основная развевающаяся ткань плаща
+                    ctx.fillStyle = cloakColor;
+                    ctx.beginPath();
+                    ctx.moveTo(shoulderX, shoulderY);
+                    ctx.quadraticCurveTo(shoulderX + (trailDir * (13 + runSpeed * 2)), shoulderY + 4 + flap, midX, midY);
+                    ctx.quadraticCurveTo(midX + trailDir * 4, midY + (p.height * 0.4), tipX, tipY);
+                    ctx.quadraticCurveTo(hemMidX, hemMidY, anchorX, p.y + p.height - 4);
+                    ctx.lineTo(shoulderX, shoulderY);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // 3. Извивающиеся узоры на плаще
+                    ctx.strokeStyle = patternColor;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(shoulderX + (trailDir * 4), shoulderY + 6);
+                    ctx.quadraticCurveTo(midX - (trailDir * 4), midY + 4, tipX - (trailDir * 3), tipY - 4);
+                    ctx.stroke();
+
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(shoulderX + (trailDir * 7), shoulderY + 12);
+                    ctx.quadraticCurveTo(midX - (trailDir * 8), midY + 12, hemMidX, hemMidY - 3);
+                    ctx.stroke();
+                    ctx.restore();
 
                     if (p.type === 'FIRE') {
                         ctx.save(); ctx.translate(p.x + p.width/2, p.y + p.height/2); ctx.rotate((p.facingRight ? -15 : 15) * Math.PI / 180);
@@ -2256,9 +3713,23 @@
             }
         }
 
-        if (boss.state === "FREE_ROAM") {
-            ctx.fillStyle = "white"; ctx.font = "60px Arial"; ctx.textAlign = "center"; 
-            ctx.fillText("ПОБЕДА", GAME_WIDTH/2, 150); ctx.textAlign = "left"; 
+        if (boss.state === "FREE_ROAM" || boss.state === "DEFEATED") {
+            ctx.save();
+            ctx.fillStyle = "white"; ctx.font = "bold 56px Arial"; ctx.textAlign = "center"; 
+            ctx.shadowColor = "rgba(0,0,0,0.8)";
+            ctx.shadowBlur = 10;
+            ctx.fillText("ПОБЕДА", GAME_WIDTH/2, 130);
+            
+            // Фраза звучит ТОЛЬКО в обычном режиме и пишется ТОЛЬКО ОДИН РАЗ (под «ПОБЕДА»):
+            if (!secretMode) {
+                ctx.font = "bold 22px Arial";
+                ctx.fillStyle = "#ffdd44";
+                ctx.shadowColor = "rgba(0,0,0,0.9)";
+                ctx.shadowBlur = 8;
+                ctx.fillText("«Хах, считай это дружеским спаррингом!»", GAME_WIDTH/2, 175);
+            }
+            ctx.restore();
+            ctx.textAlign = "left"; 
         }
 
         if (gameState === "PLAYING") {

@@ -37,6 +37,7 @@ function createPlayer(id, type, keysObj, inputType, startX) {
 }
 
 function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassInvuln = false) {
+    if (godModeActive || window.godModeActive) return;
     if (!isBleed && !boss.state.startsWith("CINEMATIC") && !activeCinematic && !bypassInvuln && !boss.state.startsWith("L_SCREAM") && !boss.state.startsWith("L_INTRO")) { 
         boss.directAttackHit = true; 
         boss.missCount = 0; 
@@ -295,8 +296,8 @@ function updatePlayers() {
             kLeft = isKeyPressed(p.keys.left); kRight = isKeyPressed(p.keys.right); kDown = isKeyPressed(p.keys.down); kUp = isKeyPressed(p.keys.up);
             kJump = isKeyPressed(p.keys.jump); kAttack = isKeyPressed(p.keys.attack); kHeal = isKeyPressed(p.keys.heal); kSpec = isKeyPressed(p.keys.special);
             kDash = p.keys.dash ? isKeyPressed(p.keys.dash) : false; 
-            kLight = (p.inputType === 'KEYBOARD_SHOOTER') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : (isKeyPressed(['ShiftLeft', 'ShiftRight']));
-            kStance = p.keys.stance ? isKeyPressed(p.keys.stance) : isKeyPressed(['KeyS', 'KeyT', 'KeyV']);
+            kLight = (p.keys && p.keys.light) ? isKeyPressed(p.keys.light) : ((p.inputType === 'KEYBOARD_SHOOTER' || p.inputType === 'KEYBOARD_2') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : (isKeyPressed(['ShiftLeft', 'ShiftRight'])));
+            kStance = (p.keys && p.keys.stance) ? isKeyPressed(p.keys.stance) : isKeyPressed(['KeyS', 'KeyT', 'KeyV']);
         }
 
         // Stance / Weapon mode switching (Key S)
@@ -492,7 +493,7 @@ function updatePlayers() {
                         recordHit(p);
                         checkPhaseTransition();
                     }
-                } else if (boss.state === "SA1_ACTIVE") {
+                } else if (boss.state === "SA1_ACTIVE" && !boss.halfHpSeqActive) {
                     for (let ph of boss.sa1Arr) {
                         if (ph.active && ph.timer >= ph.startDelay && rectIntersect(sHit, {x: ph.x - 15, y: ph.y - 25, width: 30, height: 50})) {
                             if (ph.isReal) {
@@ -515,7 +516,7 @@ function updatePlayers() {
                         boss.hunterInfected = 300;
                         boss.color = "#00ffff";
                         boss.state = "HIDDEN_PAUSE"; 
-                        boss.stateTimer = 90; 
+                        boss.stateTimer = 30; 
                         boss.y = -1000;
                         playSound('hitBoss');
                         recordHit(p);
@@ -607,13 +608,25 @@ function updatePlayers() {
                 else if (p.x >= ARENA_W - p.width - 5 && kRight && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = 1; p.facingRight = false; }
             }
             
-            if (!isClimbPhase && !p.isUnderFloor && (p.y > camY + GAME_HEIGHT + 150 || p.y > FLOOR + 250)) {
-                takeDamage(p, 1, false, false, true);
-                p.x = p.lastSafeX || (ARENA_W / 2); 
-                p.y = p.lastSafeY !== undefined ? p.lastSafeY : (FLOOR - 50); 
-                p.vy = 0; 
-                p.vx = 0;
-                triggerShake(6, 12);
+            if (!p.isUnderFloor && (p.y > camY + GAME_HEIGHT + 150 || p.y > FLOOR + 250)) {
+                if (isClimbPhase && p.invuln > 0) {
+                    // Во время подъема по платформам при неуязвимости (например, после SA2) игрок не получает урон от бездны!
+                    p.x = p.lastSafeX || (ARENA_W / 2); 
+                    p.y = p.lastSafeY !== undefined ? p.lastSafeY : (FLOOR - 50); 
+                    p.vy = 0; 
+                    p.vx = 0;
+                } else {
+                    takeDamage(p, 1, false, false, false); // НЕ пробиваем неуязвимость, чтобы исключить мгновенную мультисмерть!
+                    p.invuln = 90; // Честное окно неуязвимости после падения
+                    p.x = p.lastSafeX || (ARENA_W / 2); 
+                    p.y = p.lastSafeY !== undefined ? p.lastSafeY : (FLOOR - 50); 
+                    p.vy = 0; 
+                    p.vx = 0;
+                    triggerShake(6, 12);
+                    if (isClimbPhase) {
+                        camY = Math.min(Math.max(p.y - GAME_HEIGHT / 2, -2000), FLOOR - GAME_HEIGHT + 100);
+                    }
+                }
             }
 
             if (onFloor || onWall || onPlatform || p.isUnderFloor) p.jumps = 0;
@@ -750,7 +763,7 @@ function updatePlayers() {
                             } 
                         }
 
-                        if (boss.state === "SA1_ACTIVE") {
+                        if (boss.state === "SA1_ACTIVE" && !boss.halfHpSeqActive) {
                             for (let ph of boss.sa1Arr) {
                                 if (ph.active && ph.timer >= ph.startDelay && rectIntersect(swordHitbox, {x: ph.x - 15, y: ph.y - 25, width: 30, height: 50})) {
                                     if (ph.isReal) {
@@ -974,25 +987,68 @@ function drawPlayer(p) {
         patternColor = "#ff7700";
     }
 
-    // Cloak mantle / drape
-    ctx.fillStyle = cloakColor;
+    // --- DYNAMIC BILLOWING CLOAK WITH CLOTH PHYSICS ---
+    let trailDir = p.facingRight ? -1 : 1; // Плащ развевается позади персонажа
+    let runSpeed = Math.abs(p.vx);
+    let velLagX = -p.vx * 3.5; // Отклоняется назад от скорости бега
+    let velLagY = -p.vy * 1.8; // Взлетает при падении, опускается при прыжке
+    let time = Date.now();
+    let pIdx = (typeof players !== 'undefined' && players[1] === p) ? 2 : 1;
+    let waveTime = time / 110 + pIdx * 3;
+
+    // Многочастотные волновые колебания для живого извивания ткани
+    let flutter1 = Math.sin(waveTime) * (5 + runSpeed * 1.5);
+    let flutter2 = Math.cos(waveTime * 1.4) * (6 + runSpeed * 1.8);
+    let flap = Math.sin(waveTime * 1.8) * (4 + runSpeed);
+
+    let anchorX = p.facingRight ? p.x + 8 : p.x + p.width - 8;
+    let shoulderX = anchorX;
+    let shoulderY = p.y + 10;
+
+    // Ключевые точки извивающегося края плаща
+    let tipX = anchorX + (trailDir * (24 + runSpeed * 4)) + (velLagX * 0.5) + flutter1;
+    let tipY = p.y + p.height + flutter2 * 0.8 + (velLagY * 0.4);
+    let midX = anchorX + (trailDir * (28 + runSpeed * 4.5)) + (velLagX * 0.6) + flutter2;
+    let midY = p.y + 24 + flutter1 * 0.7;
+    let hemMidX = anchorX + (trailDir * (13 + runSpeed * 2)) + flap;
+    let hemMidY = p.y + p.height - 2 - flap * 0.5;
+
+    // 1. Тень складок плаща для 3D глубины
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
     ctx.beginPath();
-    let cx = p.facingRight ? p.x : p.x + p.width;
-    let cw = p.facingRight ? 18 : -18;
-    ctx.moveTo(cx, p.y + 8);
-    ctx.lineTo(cx + cw, p.y + 16);
-    ctx.lineTo(cx + (cw * 0.8), p.y + p.height - 4);
-    ctx.lineTo(cx, p.y + p.height - 2);
+    ctx.moveTo(shoulderX, shoulderY + 2);
+    ctx.quadraticCurveTo(midX * 0.9, midY, tipX - trailDir * 4, tipY);
+    ctx.quadraticCurveTo(hemMidX, hemMidY + 2, anchorX, p.y + p.height);
     ctx.closePath();
     ctx.fill();
 
-    // Cloak pattern trim
-    ctx.strokeStyle = patternColor;
-    ctx.lineWidth = 1.5;
+    // 2. Основная развевающаяся ткань плаща
+    ctx.fillStyle = cloakColor;
     ctx.beginPath();
-    ctx.moveTo(cx + (cw * 0.3), p.y + 14);
-    ctx.lineTo(cx + (cw * 0.8), p.y + 22);
-    ctx.lineTo(cx + (cw * 0.5), p.y + p.height - 8);
+    ctx.moveTo(shoulderX, shoulderY);
+    // Верхняя волна плаща
+    ctx.quadraticCurveTo(shoulderX + (trailDir * (13 + runSpeed * 2)), shoulderY + 4 + flap, midX, midY);
+    // Внешний колышущийся край к кончику
+    ctx.quadraticCurveTo(midX + trailDir * 4, midY + (p.height * 0.4), tipX, tipY);
+    // Нижняя волнистая кромка плаща
+    ctx.quadraticCurveTo(hemMidX, hemMidY, anchorX, p.y + p.height - 4);
+    ctx.lineTo(shoulderX, shoulderY);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3. Извивающиеся узоры на плаще
+    ctx.strokeStyle = patternColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(shoulderX + (trailDir * 4), shoulderY + 6);
+    ctx.quadraticCurveTo(midX - (trailDir * 4), midY + 4, tipX - (trailDir * 3), tipY - 4);
+    ctx.stroke();
+
+    // Вторая линия узора
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(shoulderX + (trailDir * 7), shoulderY + 12);
+    ctx.quadraticCurveTo(midX - (trailDir * 8), midY + 12, hemMidX, hemMidY - 3);
     ctx.stroke();
     ctx.restore();
 

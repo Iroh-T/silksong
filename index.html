@@ -29,26 +29,65 @@
     </div>
     
     <div id="overlay">
-        <div id="main-menu">
+        <!-- Universal Red Back Button -->
+        <button id="menu-back-btn" class="menu-back-btn" style="display: none;" onclick="menuGoBack()">← НАЗАД</button>
+
+        <!-- Test Mode Banner -->
+        <div id="test-mode-banner" style="display: none; background: rgba(0, 45, 10, 0.9); border: 1px solid #00ff66; color: #00ff66; padding: 8px 14px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-radius: 6px; text-align: center; box-shadow: 0 0 12px rgba(0, 255, 100, 0.4);">
+            🛠 ТЕСТОВЫЙ РЕЖИМ ВКЛЮЧЕН<br>
+            <span style="font-size: 11px; color: #aaffbb; font-weight: normal;">(В игре: [9] — Бессмертие | [0] — Урон x5)</span>
+        </div>
+
+        <!-- 1. ROOT MAIN MENU -->
+        <div id="root-menu">
+            <div style="font-size: 26px; margin-bottom: 20px; font-weight: bold; letter-spacing: 2px;">УБЕЖИЩЕ</div>
+            <div class="menu-btn" onclick="openScreen('mode-select')" style="border-color: #00ffcc; color: #00ffcc;">ИГРАТЬ</div>
+            <div class="menu-btn" onclick="openScreen('achievements-menu')" style="border-color: #ffbb00; color: #ffbb00;">ДОСТИЖЕНИЯ</div>
+            <div class="menu-btn" onclick="openScreen('settings-menu')" style="border-color: #00bbff; color: #00bbff;">НАСТРОЙКИ</div>
+            <div class="menu-btn" onclick="showResetModal()" style="border-color: #ff3344; color: #ff5566; margin-top: 25px;">ПЕРЕЗАПУСТИТЬ ИГРУ</div>
+        </div>
+
+        <!-- 2. MODE SELECT (1P / 2P) -->
+        <div id="mode-select" style="display: none;">
             <div style="font-size: 24px; margin-bottom: 15px;">ВЫБЕРИТЕ РЕЖИМ</div>
             <div class="menu-btn" onclick="selectMode(1)">1 ИГРОК</div>
             <div class="menu-btn" onclick="selectMode(2)">2 ИГРОКА</div>
             <div style="font-size: 12px; color: gray; margin-top: 15px;">(Подключите геймпад PS4/Xbox/Nintendo и нажмите любую кнопку)</div>
+            <div class="menu-btn m-btn-l" id="mobile-l-btn-mode" style="display:none; margin-top:20px;" onclick="toggleSecretMobile()">АКТИВОВАТЬ РЕЖИМ [L]</div>
         </div>
+
+        <!-- 3. INPUT SELECT -->
         <div id="input-select" style="display: none;">
             <div style="font-size: 24px; margin-bottom: 15px;">ВЫБОР УПРАВЛЕНИЯ</div>
             <div id="input-1p" style="display: none;">
-                <div class="menu-btn" onclick="selectInput('KEYBOARD_SILK', null)">Клав. (Silksong)</div>
-                <div class="menu-btn" onclick="selectInput('KEYBOARD_SHOOTER', null)">Клав. (Шутер)</div>
+                <div class="menu-btn" onclick="selectInput('KEYBOARD_1', null)">1. Первая раскладка (Клав.)</div>
+                <div class="menu-btn" onclick="selectInput('KEYBOARD_2', null)">2. Вторая раскладка (Клав.)</div>
                 <div class="menu-btn" onclick="selectInput('GAMEPAD', null)" style="border-color: yellow; color: yellow;">Джойстик (PS4/Xbox/Nintendo)</div>
                 <div class="menu-btn" onclick="selectInput('TOUCH', null)" style="border-color: #ff00ff; color: #ff00ff;">На телефоне (Сенсор)</div>
             </div>
             <div id="input-2p" style="display: none;">
-                <div class="menu-btn" onclick="selectInput('KEYBOARD_SILK', 'KEYBOARD_SHOOTER')">1. Оба на Клав. (И1: Silksong / И2: Шутер)</div>
-                <div class="menu-btn" onclick="selectInput('KEYBOARD_SILK', 'GAMEPAD')" style="border-color: yellow; color: yellow;">2. Игрок 1 (Клав) / Игрок 2 (Джойстик)</div>
-                <div class="menu-btn" onclick="selectInput('GAMEPAD', 'KEYBOARD_SHOOTER')" style="border-color: yellow; color: yellow;">3. Игрок 1 (Джойстик) / Игрок 2 (Клав)</div>
+                <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px;">
+                    <!-- Player 1 Box -->
+                    <div style="background: rgba(0, 100, 255, 0.1); border: 1.5px solid #00aaff; border-radius: 6px; padding: 10px; width: 45%; min-width: 170px;">
+                        <div style="color: #00ddff; font-weight: bold; margin-bottom: 8px; font-size: 14px;">ИГРОК 1</div>
+                        <button id="p1-type-kb" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%;" onclick="setP1Device('KEYBOARD')">Клавиатура</button>
+                        <button id="p1-type-gp" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%; border-color: #888; color: #888;" onclick="setP1Device('GAMEPAD')">Джойстик</button>
+                    </div>
+                    <!-- Player 2 Box -->
+                    <div style="background: rgba(255, 200, 0, 0.1); border: 1.5px solid #ffcc00; border-radius: 6px; padding: 10px; width: 45%; min-width: 170px;">
+                        <div style="color: #ffdd44; font-weight: bold; margin-bottom: 8px; font-size: 14px;">ИГРОК 2</div>
+                        <button id="p2-type-kb" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%;" onclick="setP2Device('KEYBOARD')">Клавиатура</button>
+                        <button id="p2-type-gp" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%; border-color: #888; color: #888;" onclick="setP2Device('GAMEPAD')">Джойстик</button>
+                    </div>
+                </div>
+                <!-- Contextual Sub-Selection -->
+                <div id="duo-sub-options" style="font-size: 13px; color: #aaccff; margin: 12px 0; min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center;"></div>
+                <div class="menu-btn" onclick="confirmDuoInput()" style="background: #003344; border-color: #00ffff; color: #00ffff; margin-top: 10px;">ДАЛЕЕ (К ВЫБОРУ ГЕРОЕВ)</div>
             </div>
+            <div class="menu-btn m-btn-l" id="mobile-l-btn-input" style="display:none; margin-top:20px;" onclick="toggleSecretMobile()">АКТИВОВАТЬ РЕЖИМ [L]</div>
         </div>
+
+        <!-- 4. HERO SELECT -->
         <div id="hero-select" style="display: none;">
             <div style="margin-bottom: 15px; font-size: 24px;">ВЫБОР ГЕРОЕВ</div>
             <div id="p1-select-ui">
@@ -64,8 +103,9 @@
                 <div id="p2-options-text" style="font-size: 14px; margin-top: 10px;"><b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой</div>
                 <div id="p2-status" style="margin-top: 10px; color: gray;">Ожидание выбора Игрока 2...</div>
             </div>
-            <div class="menu-btn m-btn-l" id="mobile-l-btn" style="display:none; margin-top:30px;" onclick="toggleSecretMobile()">АКТИВОВАТЬ РЕЖИМ [L]</div>
         </div>
+
+        <!-- 5. BADGE SELECT -->
         <div id="badge-select" style="display: none;">
             <div style="font-size: 24px; margin-bottom: 10px;">ВЫБОР СНАРЯЖЕНИЯ</div>
             <div id="team-slot-title" style="color: cyan; margin-bottom: 5px;">Командный знак (Голубые):</div>
@@ -90,6 +130,43 @@
             <div id="badge-list" style="display: none;"></div>
             <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 30px; background: #004400; border-color: lime; color: lime;">В БОЙ!</div>
         </div>
+
+        <!-- 6. ACHIEVEMENTS MENU -->
+        <div id="achievements-menu" style="display: none;">
+            <div style="font-size: 24px; margin-bottom: 15px; color: #ffcc00; font-weight: bold;">ДОСТИЖЕНИЯ И СТАТИСТИКА</div>
+            <div id="achievements-content"></div>
+        </div>
+
+        <!-- 7. SETTINGS MENU (Keybinds) -->
+        <div id="settings-menu" style="display: none;">
+            <div style="font-size: 24px; margin-bottom: 15px; color: #00d4ff; font-weight: bold;">НАСТРОЙКИ УПРАВЛЕНИЯ</div>
+            <div style="font-size: 14px; color: #aaa; margin-bottom: 15px;">Выберите раскладку для настройки:</div>
+            <div class="menu-btn" onclick="openKeybindEditor('SCHEME_1')">1. Первая раскладка</div>
+            <div class="menu-btn" onclick="openKeybindEditor('SCHEME_2')">2. Вторая раскладка</div>
+            <div class="menu-btn" onclick="openKeybindEditor('DUO_KEYBOARD')" style="border-color: #a842f5; color: #a842f5;">3. Оба на клавиатуре</div>
+            <div class="menu-btn" onclick="openKeybindEditor('GAMEPAD')" style="border-color: yellow; color: yellow;">4. Джойстик</div>
+        </div>
+
+        <!-- 8. KEYBIND EDITOR MENU -->
+        <div id="keybind-editor-menu" style="display: none;">
+            <div id="keybind-title" style="font-size: 22px; margin-bottom: 10px; color: #00ffff; font-weight: bold;">НАСТРОЙКА КЛАВИШ</div>
+            <div id="keybind-conflict-banner" class="conflict-banner"></div>
+            <div id="keybind-list" class="keybind-container"></div>
+            <div style="display: flex; gap: 12px; justify-content: center; margin-top: 10px;">
+                <button class="menu-btn" style="margin: 0; padding: 8px 16px; font-size: 13px; border-color: #888; color: #ccc;" onclick="resetCurrentSchemeToDefault()">По умолчанию</button>
+                <button class="menu-btn" style="margin: 0; padding: 8px 20px; font-size: 13px; border-color: #00ffaa; color: #00ffaa;" onclick="menuGoBack()">Готово</button>
+            </div>
+        </div>
+
+        <!-- 9. RESET MODAL CONFIRMATION -->
+        <div id="reset-modal">
+            <div style="font-size: 22px; color: #ff3344; font-weight: bold; margin-bottom: 12px;">ВЫ УВЕРЕНЫ?</div>
+            <div style="font-size: 14px; color: #ddd; line-height: 1.5;">Все сохранения, статистика побед/поражений и кастомные настройки управления будут полностью удалены!</div>
+            <div class="reset-btn-group">
+                <button class="reset-btn-yes" onclick="confirmResetAllData()">ДА, СБРОСИТЬ</button>
+                <button class="reset-btn-no" onclick="hideResetModal()">НЕТ, НАЗАД</button>
+            </div>
+        </div>
     </div>
     
     <div id="controls-container">
@@ -100,12 +177,12 @@
         </div>
     </div>
 
-    <!-- Modular Game Scripts -->
-    <script src="constants.js?v=8"></script>
-    <script src="audio.js?v=8"></script>
-    <script src="controls.js?v=8"></script>
-    <script src="player.js?v=8"></script>
-    <script src="boss.js?v=8"></script>
-    <script src="game.js?v=8"></script>
+    <!-- Modular Game Scripts-->
+    <script src="constants.js?v=20"></script>
+    <script src="audio.js?v=20"></script>
+    <script src="controls.js?v=20"></script>
+    <script src="player.js?v=20"></script>
+    <script src="boss.js?v=20"></script>
+    <script src="game.js?v=20"></script>
 </body>
 </html>

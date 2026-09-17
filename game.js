@@ -17,13 +17,33 @@ function buildAndStartGame() {
         FLOOR = 350; 
     }
 
-    let silkSolo = { left: ["ArrowLeft"], right: ["ArrowRight"], down: ["ArrowDown"], jump: ["KeyZ"], attack: ["KeyX"], heal: ["KeyA"], special: ["KeyF"], up: ["ArrowUp"], dash: ["KeyC"], stance: ["KeyS"] };
-    let shooterSolo = { left: ["KeyA"], right: ["KeyD"], down: ["KeyS"], jump: ["Space"], attack: ["MouseLeft"], heal: ["KeyQ"], special: ["MouseRight"], up: ["KeyW"], dash: ["KeyE"], stance: ["KeyT", "KeyV", "KeyX"] };
-    
-    let p1Keys = p1InputType === 'KEYBOARD_SHOOTER' ? shooterSolo : silkSolo; 
-    let p2Keys = shooterSolo; 
-    if (numPlayers === 2 && p1InputType === 'KEYBOARD_SILK' && p2InputType === 'KEYBOARD_SHOOTER') {
-        p1Keys = { left: ["ArrowLeft"], right: ["ArrowRight"], down: ["ArrowDown"], jump: ["Comma"], attack: ["Period"], heal: ["KeyK"], special: ["Quote"], up: ["ArrowUp"], dash: ["Slash"], stance: ["KeyS", "Semicolon"] };
+    battleResultRecorded = false;
+
+    function mapControlsToKeysObj(schemeObj) {
+        let res = {};
+        for (let k in schemeObj) {
+            res[k] = [schemeObj[k]];
+        }
+        return res;
+    }
+
+    let p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
+    let p2Keys = mapControlsToKeysObj(userControls.SCHEME_2);
+
+    if (p1InputType === 'KEYBOARD_2' || p1InputType === 'KEYBOARD_SHOOTER') {
+        p1Keys = mapControlsToKeysObj(userControls.SCHEME_2);
+    } else if (p1InputType === 'DUO_KEYBOARD_P1') {
+        p1Keys = mapControlsToKeysObj(userControls.DUO_KEYBOARD.p1);
+    } else {
+        p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
+    }
+
+    if (p2InputType === 'KEYBOARD_1' || p2InputType === 'KEYBOARD_SILK') {
+        p2Keys = mapControlsToKeysObj(userControls.SCHEME_1);
+    } else if (p2InputType === 'DUO_KEYBOARD_P2') {
+        p2Keys = mapControlsToKeysObj(userControls.DUO_KEYBOARD.p2);
+    } else {
+        p2Keys = mapControlsToKeysObj(userControls.SCHEME_2);
     }
 
     if (!p1HeroSelection) p1HeroSelection = 'WATER';
@@ -114,9 +134,12 @@ function resetGameParams() {
     boss.hunterInfected = 0; boss.infectedTimer = 0; boss.voidWindDisabled = 0; boss.sa1Count = 0; 
     boss.saLines = null; boss.color = "#e6c800"; boss.climbSaTimer = 0; boss.saLinesState = ""; boss.saLinesTimer = 0;
     boss.lightStunDone = false; boss.lightInfected = 0;
+    boss.climbSaStep = 0; boss.halfHpSeqDone = false;
     
     screenShake = { timer: 0, mag: 0, dirX: 0, dirY: 0 }; 
     freezeFrames = 0;
+    godModeActive = false; window.godModeActive = false;
+    megaDamageActive = false; window.megaDamageActive = false;
     let bgm = document.getElementById("lModeMusic"); 
     if (bgm) bgm.pause();
 }
@@ -402,13 +425,20 @@ function update() {
         checkPhaseTransition(); 
     }
 
+    if (boss.state === "FREE_ROAM" || boss.state === "DEFEATED") {
+        if (typeof recordBattleResult === 'function') recordBattleResult(true);
+    }
+
     if (players.some(p => p.hp <= 0 && (!p.isDowned || p.downedTimer <= 0))) { 
         gameState = "GAMEOVER"; 
+        if (typeof recordBattleResult === 'function') recordBattleResult(false);
     }
 
     // Camera follow
-    let shouldFollowCam = (secretMode || boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5) && !activeCinematic && boss.state !== "SA1_ACTIVE";
-    if (shouldFollowCam) {
+    let shouldFollowCam = (secretMode || boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5) && (!secretMode ? boss.state !== "SA1_ACTIVE" : true);
+    if (activeCinematic) {
+        // Во время катсцены камера сохраняет свои текущие координаты, не сбрасываясь в 0!
+    } else if (shouldFollowCam) {
         let ax = 0, ay = 0, c = 0;
         for (let p of players) { 
             if (p.hp > 0 && !p.isDowned) { ax += p.x; ay += p.y; c++; } 
@@ -443,50 +473,115 @@ function update() {
         activeCinematic.tick++; 
         activeCinematic.timer--;
         if (activeCinematic.type === 'SA1' && activeCinematic.isReal) { 
-            if (activeCinematic.tick % 30 === 0 && activeCinematic.tick <= 90) { 
+            // 3 урона порциями на тиках 25, 50, 75 (суммарно 3 урона за 1.5 сек)
+            if (activeCinematic.tick === 25 || activeCinematic.tick === 50 || activeCinematic.tick === 75) { 
                 activeCinematic.p.invuln = 0; 
                 takeDamage(activeCinematic.p, 1); 
-                triggerShake(8, 10); 
+                triggerShake(10, 12); 
                 triggerVibration('sa_hit'); 
+                playSound('slash');
             } 
             if (activeCinematic.tick % 5 === 0) triggerVibration('damage'); 
         }
         if (activeCinematic.type === 'SA2') { 
-            if (activeCinematic.tick % 30 === 0 && activeCinematic.tick <= 90) { 
+            // Первые 0.33 сек (20 тиков) статично видим только себя.
+            // На 21 тике босс прорезает игрока: 3 УРОНА СРАЗУ!
+            if (activeCinematic.tick === 21) { 
                 activeCinematic.p.invuln = 0; 
-                takeDamage(activeCinematic.p, 1); 
-                triggerShake(10, 10); 
+                takeDamage(activeCinematic.p, 3); 
+                triggerShake(16, 22); 
                 triggerVibration('sa_hit'); 
+                playSound('slash');
             } 
-            if (activeCinematic.tick % 5 === 0) triggerVibration('damage'); 
+            if (activeCinematic.tick > 21 && activeCinematic.tick % 5 === 0) triggerVibration('damage'); 
         }
         if (activeCinematic.type === 'SA3') { 
-            if (activeCinematic.tick === 30 || activeCinematic.tick === 60) {
-                activeCinematic.p.invuln = 0;
-                takeDamage(activeCinematic.p, 1);
-                triggerShake(10, 10);
-                triggerVibration('sa_hit');
-            } else if (activeCinematic.tick === 90) { 
-                // Tick 3: INFINITE DAMAGE / INSTANT KILL (bypasses shields & purple HP)
-                takeDamage(activeCinematic.p, 9999, false, false, true);
-                activeCinematic.p.hp = 0; 
-                activeCinematic.p.purpleHp = 0;
-                activeCinematic.p.orangeHp = 0;
-                activeCinematic.p.isDowned = false; 
-                triggerShake(20, 30); 
+            // Первые 0.5 сек (30 тиков) статично видим только себя.
+            // На 31 тике босс прорезает игрока: БЕСКОНЕЧНЫЙ УРОН (фатальный удар)!
+            if (activeCinematic.tick === 31) { 
+                if (!godModeActive && !window.godModeActive) {
+                    takeDamage(activeCinematic.p, 9999, false, false, true);
+                    activeCinematic.p.hp = 0; 
+                    activeCinematic.p.purpleHp = 0;
+                    activeCinematic.p.orangeHp = 0;
+                    activeCinematic.p.isDowned = false; 
+                }
+                triggerShake(25, 35); 
                 triggerVibration('sa_hit'); 
+                playSound('demonRoar');
             } 
-            if (activeCinematic.tick % 5 === 0) triggerVibration('damage'); 
+            if (activeCinematic.tick > 31 && activeCinematic.tick % 5 === 0) triggerVibration('damage'); 
         }
         if (activeCinematic.timer <= 0) {
             let targetP = activeCinematic.p; 
             activeCinematic = null;
-            boss.y = Math.min(targetP.y, FLOOR - boss.height);
-            if (boss.superQueue && boss.superQueue.length > 0) { 
-                boss.state = "EXECUTE_QUEUE"; boss.stateTimer = 30; 
+
+            // Если идет паркур по платформам (переход в 3 фазу):
+            if (boss.state === "L_CLIMB_TRANSITION" || boss.state.startsWith("L_CLIMB") || boss.phase === 2.5) {
+                // Босс остается за экраном, НЕ прилетает на платформы!
+                boss.x = -99999;
+                boss.y = -99999;
+                boss.vx = 0;
+                boss.vy = 0;
+                boss.state = "L_CLIMB_ACTIVE";
+                boss.invuln = 99999;
+                boss.saLines = null; // Обязательно очищаем луч, чтобы не было повторного урона!
+                boss.climbSaTimer = -120; // Даем игроку целых 4-5 секунд передышки перед следующей атакой!
+                for (let p of players) {
+                    p.saHit = false;
+                    p.invuln = 180; // 3 секунды честной неуязвимости
+                }
+
+                // Игрок продолжает карабкаться по платформам:
+                // Спасаем игрока от падения в бездну сразу после завершения катсцены
+                if (targetP && targetP.hp > 0 && !targetP.isDowned) {
+                    targetP.vx = 0;
+                    targetP.vy = 0;
+                    let bestPlat = null;
+                    let bestDist = 999999;
+                    for (let plat of platforms) {
+                        let d = Math.hypot((plat.x + plat.w/2) - targetP.x, plat.y - targetP.y);
+                        if (d < bestDist) { bestDist = d; bestPlat = plat; }
+                    }
+                    if (bestPlat) {
+                        targetP.x = bestPlat.x + bestPlat.w / 2 - targetP.width / 2;
+                        targetP.y = bestPlat.y - targetP.height;
+                        targetP.lastSafeX = targetP.x;
+                        targetP.lastSafeY = targetP.y;
+                    }
+                    // Мгновенно центрируем камеру на спасенном игроке, исключая ложный триггер бездны!
+                    if (ARENA_W > GAME_WIDTH) {
+                        camX = Math.min(Math.max(targetP.x - GAME_WIDTH / 2, 0), ARENA_W - GAME_WIDTH);
+                    } else {
+                        camX = 0;
+                    }
+                    camY = Math.min(Math.max(targetP.y - GAME_HEIGHT / 2, -2000), FLOOR - GAME_HEIGHT + 100);
+                }
+            } else if (boss.superQueue && boss.superQueue.length > 0) { 
+                boss.state = "EXECUTE_QUEUE"; 
+                boss.stateTimer = 60; // Честное окно в 1 сек между атаками очереди
+                boss.saLines = null;
+                for (let p of players) {
+                    p.saHit = false;
+                    p.invuln = 90; // 1.5 сек неуязвимости после выхода из катсцены
+                }
             } else { 
-                boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; 
-                if (boss.phase === 2.5) { boss.phase = 3; boss.damageBonus = 0.5; } 
+                boss.halfHpSeqActive = false; 
+                boss.invuln = 0;
+                let cX = boss.climbCenterX || (ARENA_W / 2);
+                let spawnX = cX + (Math.random() - 0.5) * 400;
+                boss.x = Math.max(60, Math.min(ARENA_W - 80, spawnX));
+                boss.y = FLOOR - boss.height;
+                boss.vx = 0;
+                boss.vy = 0;
+                boss.state = "IDLE"; 
+                boss.color = "#e6c800"; 
+                boss.stateTimer = 30; 
+                boss.saLines = null;
+                for (let p of players) {
+                    p.saHit = false;
+                    p.invuln = 60;
+                }
                 if (boss.phase === 3.5) boss.phase = 3;
             }
         }
@@ -786,10 +881,299 @@ function draw() {
     ctx.translate(-camX, -camY);
 
     if (activeCinematic) {
-        ctx.fillStyle = "#000"; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        ctx.fillStyle = "#fff"; ctx.fillRect(GAME_WIDTH/2 - 15, GAME_HEIGHT/2, 30, 50); 
-        ctx.fillStyle = "#555"; ctx.fillRect(GAME_WIDTH/2 + Math.sin(activeCinematic.tick)*100, GAME_HEIGHT/2, 30, 50); 
-        ctx.fillStyle = "red"; ctx.font = "30px Arial"; ctx.textAlign = "center"; ctx.fillText("КРИТИЧЕСКИЙ УДАР!", GAME_WIDTH/2, 100); ctx.textAlign = "left";
+        ctx.save();
+        const dpr = window.devicePixelRatio || 1;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        let t = activeCinematic.tick;
+        let cType = activeCinematic.type;
+        let pX = GAME_WIDTH / 2;
+        let pY = GAME_HEIGHT * 0.52;
+
+        function drawPlayerSilhouette(px, py, hitShake = 0) {
+            ctx.save();
+            ctx.translate(px + (Math.random() - 0.5) * hitShake, py + (Math.random() - 0.5) * hitShake);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 20;
+            // Плащ
+            ctx.beginPath();
+            ctx.moveTo(0, -35);
+            ctx.lineTo(26, 42);
+            ctx.lineTo(-26, 42);
+            ctx.closePath();
+            ctx.fill();
+            // Маска
+            ctx.beginPath();
+            ctx.ellipse(0, -42, 14, 20, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Рога
+            ctx.beginPath();
+            ctx.moveTo(-8, -55);
+            ctx.lineTo(-15, -82);
+            ctx.lineTo(-3, -60);
+            ctx.closePath();
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(8, -55);
+            ctx.lineTo(15, -82);
+            ctx.lineTo(3, -60);
+            ctx.closePath();
+            ctx.fill();
+            // Глаза
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.ellipse(-5, -42, 3, 6, 0.2, 0, Math.PI * 2);
+            ctx.ellipse(5, -42, 3, 6, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawBossSilhouette(bx, by, facingDir = 1, isVoid = false, angle = 0) {
+            ctx.save();
+            ctx.translate(bx, by);
+            if (angle) ctx.rotate(angle);
+            ctx.scale(facingDir, 1);
+            ctx.fillStyle = isVoid ? "#160026" : "#0d0d0d";
+            ctx.shadowColor = isVoid ? "#d000ff" : "#ffffff";
+            ctx.shadowBlur = 25;
+            // Плащ
+            ctx.beginPath();
+            ctx.moveTo(0, -65);
+            ctx.lineTo(45, 55);
+            ctx.lineTo(-40, 55);
+            ctx.closePath();
+            ctx.fill();
+            // Маска
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.ellipse(-5, -65, 18, 26, -0.15, 0, Math.PI * 2);
+            ctx.fill();
+            // Рапира/игла
+            ctx.strokeStyle = isVoid ? "#ff33ff" : "#ffffff";
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(-10, -45);
+            ctx.lineTo(85, -30);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        if (cType === 'SA1') {
+            // ЧБ катсцена 1.5 сек (90 кадров): игрок статично в центре, босс разносит из стороны в сторону
+            ctx.fillStyle = "#060606";
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            // Тонкие линии скорости в ЧБ
+            ctx.save();
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 24; i++) {
+                let a = (i / 24) * Math.PI * 2 + (t * 0.03);
+                ctx.beginPath();
+                ctx.moveTo(pX + Math.cos(a) * 90, pY + Math.sin(a) * 90);
+                ctx.lineTo(pX + Math.cos(a) * 800, pY + Math.sin(a) * 800);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            let shake = (t >= 25 && t <= 32) || (t >= 50 && t <= 57) || (t >= 75 && t <= 83) ? 14 : 0;
+            drawPlayerSilhouette(pX, pY, shake);
+
+            // 1) Проход 1 (слева направо, тики 10..32, пик 25)
+            if (t >= 10 && t <= 32) {
+                let prog = (t - 10) / 18;
+                let bx = (pX - 420) + prog * 840;
+                drawBossSilhouette(bx, pY, 1);
+            }
+            // 2) Проход 2 (справа налево, тики 35..57, пик 50)
+            if (t >= 35 && t <= 57) {
+                let prog = (t - 35) / 18;
+                let bx = (pX + 420) - prog * 840;
+                drawBossSilhouette(bx, pY, -1);
+            }
+            // 3) Проход 3 (по диагонали, тики 60..82, пик 75)
+            if (t >= 60 && t <= 82) {
+                let prog = (t - 60) / 18;
+                let bx = (pX - 350) + prog * 700;
+                let by = (pY - 220) + prog * 440;
+                drawBossSilhouette(bx, by, 1, false, Math.PI / 8);
+            }
+            // Стойка босса (тики 83..90)
+            if (t > 82) {
+                drawBossSilhouette(pX + 260, pY, -1);
+            }
+
+            // Белые следы рассечений
+            ctx.save();
+            if (t >= 25) {
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 8;
+                ctx.beginPath();
+                ctx.moveTo(pX - 260, pY - 30);
+                ctx.lineTo(pX + 260, pY + 30);
+                ctx.stroke();
+            }
+            if (t >= 50) {
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 10;
+                ctx.beginPath();
+                ctx.moveTo(pX + 260, pY - 50);
+                ctx.lineTo(pX - 260, pY + 50);
+                ctx.stroke();
+            }
+            if (t >= 75) {
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 14;
+                ctx.beginPath();
+                ctx.moveTo(pX, pY - 180);
+                ctx.lineTo(pX, pY + 180);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // Белая вспышка на каждом ударе
+            if (t === 25 || t === 26 || t === 50 || t === 51 || t === 75 || t === 76) {
+                ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            }
+
+            // Заголовок
+            ctx.save();
+            ctx.textAlign = "center";
+            ctx.font = "900 28px 'Courier New', Arial, sans-serif";
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 20;
+            ctx.fillText("СУПЕРАТАКА 1: ФАНТОМНЫЙ ШКВАЛ", GAME_WIDTH / 2, 75);
+            ctx.font = "bold 20px Arial";
+            ctx.shadowBlur = 10;
+            let sub = t >= 75 ? "ФИНАЛЬНЫЙ УДАР 3/3 [-1 HP]" : (t >= 50 ? "УДАР 2/3 [-1 HP]" : (t >= 25 ? "УДАР 1/3 [-1 HP]" : "ЗАХВАТ..."));
+            ctx.fillText(sub, GAME_WIDTH / 2, 115);
+            ctx.restore();
+        } else if (cType === 'SA2') {
+            // ЧБ катсцена 1.0 сек (60 кадров): первые 0.33 сек (20 кадров) видим только себя статично, затем рывок босса и 3 урона сразу
+            ctx.fillStyle = "#050505";
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            let lAngle = activeCinematic.angle !== null && activeCinematic.angle !== undefined ? activeCinematic.angle : -Math.PI / 6;
+
+            // Направляющая белая линия через всю карту
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(pX - Math.cos(lAngle) * 900, pY - Math.sin(lAngle) * 900);
+            ctx.lineTo(pX + Math.cos(lAngle) * 900, pY + Math.sin(lAngle) * 900);
+            if (t <= 20) {
+                ctx.setLineDash([10, 10]);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            } else {
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 18;
+                ctx.stroke();
+                ctx.strokeStyle = "#aaaaaa";
+                ctx.lineWidth = 32;
+                ctx.globalAlpha = 0.4;
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // Игрок статично в центре (в первые 0.33 сек - только он!)
+            let shake = (t >= 21 && t <= 28) ? 14 : 0;
+            drawPlayerSilhouette(pX, pY, shake);
+
+            // Остальные 0.67 сек (тики 21..60): быстрый рывок босса через игрока
+            if (t >= 21) {
+                let dashProg = Math.min(1, (t - 21) / 14);
+                let dist = -420 + dashProg * 840;
+                let bx = pX + Math.cos(lAngle) * dist;
+                let by = pY + Math.sin(lAngle) * dist;
+                let facing = Math.cos(lAngle) >= 0 ? 1 : -1;
+                drawBossSilhouette(bx, by, facing, false, lAngle);
+            }
+
+            // Вспышка на ударе
+            if (t === 21 || t === 22) {
+                ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            }
+
+            // Заголовок
+            ctx.save();
+            ctx.textAlign = "center";
+            ctx.font = "900 28px 'Courier New', Arial, sans-serif";
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 20;
+            ctx.fillText("СУПЕРАТАКА 2: РАССЕКАЮЩИЙ СВЕТ", GAME_WIDTH / 2, 75);
+            ctx.font = "bold 20px Arial";
+            ctx.shadowBlur = 10;
+            ctx.fillText(t <= 20 ? "НАВЕДЕНИЕ ЛУЧА..." : "КРИТИЧЕСКИЙ РАЗРЕЗ [-3 HP]", GAME_WIDTH / 2, 115);
+            ctx.restore();
+        } else if (cType === 'SA3') {
+            // Катсцена SA3 (65 кадров): первые 0.5 сек (30 кадров) видим только себя статично, затем рывок босса и бесконечный урон
+            ctx.fillStyle = "#05000a";
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            let lAngle = activeCinematic.angle !== null && activeCinematic.angle !== undefined ? activeCinematic.angle : -Math.PI / 6;
+
+            // Фиолетовый луч / разрыв пустоты
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(pX - Math.cos(lAngle) * 900, pY - Math.sin(lAngle) * 900);
+            ctx.lineTo(pX + Math.cos(lAngle) * 900, pY + Math.sin(lAngle) * 900);
+            if (t <= 30) {
+                ctx.setLineDash([10, 10]);
+                ctx.strokeStyle = "rgba(208, 0, 255, 0.85)";
+                ctx.lineWidth = 3.5;
+                ctx.stroke();
+            } else {
+                ctx.strokeStyle = "#d000ff";
+                ctx.lineWidth = 26;
+                ctx.stroke();
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 8;
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // Игрок статично в центре (в первые 0.5 сек - только он!)
+            let shake = (t >= 31 && t <= 42) ? 22 : 0;
+            drawPlayerSilhouette(pX, pY, shake);
+
+            // Остальное время (тики 31..65): быстрый рывок босса через игрока с разрывом пустоты
+            if (t >= 31) {
+                let dashProg = Math.min(1, (t - 31) / 14);
+                let dist = -420 + dashProg * 840;
+                let bx = pX + Math.cos(lAngle) * dist;
+                let by = pY + Math.sin(lAngle) * dist;
+                let facing = Math.cos(lAngle) >= 0 ? 1 : -1;
+                drawBossSilhouette(bx, by, facing, true, lAngle);
+            }
+
+            // Фиолетовая вспышка на ударе
+            if (t >= 31 && t <= 33) {
+                ctx.fillStyle = "rgba(220, 0, 255, 0.95)";
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            }
+
+            // Заголовок
+            ctx.save();
+            ctx.textAlign = "center";
+            ctx.font = "900 28px 'Courier New', Arial, sans-serif";
+            ctx.fillStyle = "#d000ff";
+            ctx.shadowColor = "#d000ff";
+            ctx.shadowBlur = 20;
+            ctx.fillText("СУПЕРАТАКА 3: РАЗРЫВ ПУСТОТЫ", GAME_WIDTH / 2, 75);
+            ctx.font = "bold 20px Arial";
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = t > 30 ? "#ff0055" : "#ffffff";
+            ctx.fillText(t <= 30 ? "РАЗРЫВ ПРОСТРАНСТВА..." : "☠ СМЕРТЕЛЬНЫЙ УДАР (ФАТАЛЬНЫЙ) ☠", GAME_WIDTH / 2, 115);
+            ctx.restore();
+        }
+
+        ctx.restore();
     } else {
         drawBackground();
 
@@ -815,8 +1199,9 @@ function draw() {
                 ctx.save();
                 ctx.beginPath(); ctx.moveTo(l.x1, l.y1);
                 let drawX2 = l.x2; let drawY2 = l.y2;
-                if (boss.saLinesState === "EXECUTE") {
-                    let progress = 1 - (boss.saLinesTimer / 10);
+                let isExecuting = (boss.saLinesState === "EXECUTE" || boss.state === "SA_EXECUTE");
+                if (isExecuting) {
+                    let progress = (boss.saLinesState === "EXECUTE") ? (1 - (boss.saLinesTimer / 10)) : (1 - (boss.stateTimer / 6));
                     drawX2 = l.x1 + (l.x2 - l.x1) * progress;
                     drawY2 = l.y1 + (l.y2 - l.y1) * progress;
                     ctx.lineTo(drawX2, drawY2);
@@ -1025,9 +1410,25 @@ function draw() {
         }
     }
 
-    if (boss.state === "FREE_ROAM") {
-        ctx.fillStyle = "white"; ctx.font = "60px Arial"; ctx.textAlign = "center"; 
-        ctx.fillText("ПОБЕДА", GAME_WIDTH/2, 150); ctx.textAlign = "left"; 
+    if (boss.state === "FREE_ROAM" || boss.state === "DEFEATED") {
+        ctx.save();
+        ctx.fillStyle = "white"; 
+        ctx.font = "bold 56px Arial"; 
+        ctx.textAlign = "center"; 
+        ctx.shadowColor = "rgba(0,0,0,0.8)";
+        ctx.shadowBlur = 10;
+        ctx.fillText("ПОБЕДА", GAME_WIDTH/2, 130);
+        
+        // Фраза звучит ТОЛЬКО в обычном режиме и пишется ТОЛЬКО ОДИН РАЗ (под «ПОБЕДА»):
+        if (!secretMode) {
+            ctx.font = "bold 22px Arial";
+            ctx.fillStyle = "#ffdd44";
+            ctx.shadowColor = "rgba(0,0,0,0.9)";
+            ctx.shadowBlur = 8;
+            ctx.fillText("«Хах, считай это дружеским спаррингом!»", GAME_WIDTH/2, 175);
+        }
+        ctx.restore();
+        ctx.textAlign = "left"; 
     }
 
     if (gameState === "PLAYING") {
@@ -1053,6 +1454,35 @@ function draw() {
             }
             ctx.fillStyle = "white"; ctx.font = "12px Arial"; 
             ctx.fillText(`Фаза: ${boss.phase}`, GAME_WIDTH/2 - 20, 385); 
+        }
+
+        // Test Mode HUD Indicator (Corner)
+        if (testModeUnlocked || window.testModeUnlocked) {
+            ctx.save();
+            let boxW = 162, boxH = 46;
+            let boxX = GAME_WIDTH - boxW - 14;
+            let boxY = 12;
+            ctx.fillStyle = "rgba(12, 18, 28, 0.85)";
+            let activeAny = (godModeActive || window.godModeActive || megaDamageActive || window.megaDamageActive);
+            ctx.strokeStyle = activeAny ? "#00ff66" : "#445566";
+            ctx.lineWidth = 1.5;
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+            ctx.font = "bold 11px Arial";
+            ctx.textAlign = "left";
+
+            // God Mode line
+            let isGod = (godModeActive || window.godModeActive);
+            ctx.fillStyle = isGod ? "#44ff44" : "#778899";
+            ctx.fillText(`[9] БЕССМЕРТИЕ: ${isGod ? "ВКЛ" : "ВЫКЛ"}`, boxX + 8, boxY + 18);
+
+            // Mega Damage line
+            let isMega = (megaDamageActive || window.megaDamageActive);
+            ctx.fillStyle = isMega ? "#ffaa00" : "#778899";
+            ctx.fillText(`[0] УРОН x5: ${isMega ? "ВКЛ" : "ВЫКЛ"}`, boxX + 8, boxY + 36);
+
+            ctx.restore();
         }
     } else if (gameState === "GAMEOVER") { 
         ctx.fillStyle = "red"; ctx.font = "40px Arial"; ctx.textAlign = "center"; ctx.fillText("ВЫ ПОГИБЛИ", GAME_WIDTH/2, 180); 

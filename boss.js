@@ -12,8 +12,26 @@ function getBossColor(c) {
     return c;
 }
 
+function createRandomSaLine(type) {
+    let rx = (camX || 0) + Math.random() * GAME_WIDTH;
+    let ry = (camY || 0) + Math.random() * GAME_HEIGHT;
+    let angle = Math.random() * Math.PI;
+    let dist = 3500;
+    return {
+        x1: rx - Math.cos(angle) * dist,
+        y1: ry - Math.sin(angle) * dist,
+        x2: rx + Math.cos(angle) * dist,
+        y2: ry + Math.sin(angle) * dist,
+        type: type
+    };
+}
+
 function tryDamageBoss(dmg, sourcePlayer) {
     if (boss.invuln > 0 || boss.state === "DEFEATED" || boss.state.startsWith("CINEMATIC") || boss.state.startsWith("TELEPORT") || boss.state === "L_CLIMB_START" || boss.state === "L_CLIMB_ACTIVE" || boss.state === "VOID_SINK_STUN") return false;
+
+    if (megaDamageActive || window.megaDamageActive) {
+        dmg *= 5;
+    }
 
     if (boss.state === "PARRY_STANCE") {
         boss.state = "PARRY_COUNTER_WINDUP";
@@ -25,9 +43,10 @@ function tryDamageBoss(dmg, sourcePlayer) {
     }
 
     if (boss.state === "VULN_STANCE") {
-        boss.hp -= 3 * (sourcePlayer ? sourcePlayer.dmgDealtMod : 1);
+        let baseDmg = (megaDamageActive || window.megaDamageActive) ? 15 : 3;
+        boss.hp -= baseDmg * (sourcePlayer ? sourcePlayer.dmgDealtMod : 1);
         boss.state = "HIDDEN_PAUSE";
-        boss.stateTimer = 120;
+        boss.stateTimer = 30;
         boss.y = -1000;
         boss.invuln = 10;
         playSound('hitBoss');
@@ -61,10 +80,10 @@ function tryDamageBoss(dmg, sourcePlayer) {
     return true;
 }
 
-function triggerCinematic(type, targetPlayer, isRealHit = true) {
-    if (type === "SA1") activeCinematic = { type: 'SA1', p: targetPlayer, timer: 90, tick: 0, isReal: isRealHit };
-    else if (type === "SA2") activeCinematic = { type: 'SA2', p: targetPlayer, timer: 90, tick: 0 };
-    else if (type === "SA3") activeCinematic = { type: 'SA3', p: targetPlayer, timer: 120, tick: 0 };
+function triggerCinematic(type, targetPlayer, isRealHit = true, lineAngle = null) {
+    if (type === "SA1") activeCinematic = { type: 'SA1', p: targetPlayer, timer: 90, tick: 0, isReal: isRealHit, angle: lineAngle };
+    else if (type === "SA2") activeCinematic = { type: 'SA2', p: targetPlayer, timer: 60, tick: 0, isReal: isRealHit, angle: lineAngle };
+    else if (type === "SA3") activeCinematic = { type: 'SA3', p: targetPlayer, timer: 65, tick: 0, isReal: isRealHit, angle: lineAngle };
 }
 
 function triggerChaos(saCount) {
@@ -161,6 +180,10 @@ function startPhase3Transition() {
     boss.transitionTimer = 0;
     boss.climbPlatCount = 0;
     boss.climbPlatTimer = 0;
+    boss.climbSaStep = 0;
+    boss.halfHpSeqDone = false;
+    boss.saLines = null;
+    boss.climbSaTimer = 0;
     boss.x = -99999;
     boss.y = -99999; 
     boss.vx = 0; 
@@ -211,28 +234,38 @@ function updatePhase3Transition() {
         }
     }
 
-    // --- SA 2 и SA 3 АТАКИ ВО ВРЕМЯ ПОДЪЕМА ПО ПЛАТФОРМАМ ---
-    if (boss.transitionTimer > 120 && !boss.saLines) {
+    // --- SA 2 АТАКИ ВО ВРЕМЯ ПОДЪЕМА ПО ПЛАТФОРМАМ ---
+    // Честная цепочка SA2 лучей с достаточным временем для прыжков по платформам
+    if (boss.transitionTimer > 120 && !boss.saLines && !activeCinematic) {
         if (!boss.climbSaTimer) boss.climbSaTimer = 0;
         boss.climbSaTimer++;
-        if (boss.climbSaTimer >= 80) { // каждые ~1.3 сек полоса атаки
+        if (boss.climbSaTimer >= 180) { // каждые ~3 секунды, честное окно для паркура
             boss.climbSaTimer = 0;
-            let activeP = players.filter(p => !p.isDowned && p.hp > 0);
-            if (activeP.length > 0) {
-                let targetP = activeP[Math.floor(Math.random() * activeP.length)];
-                let type = Math.random() > 0.5 ? "SA2" : "SA3";
-                let ex1 = targetP.x + targetP.width/2 + (Math.random() - 0.5) * 160;
-                let ex2 = ex1 + (Math.random() - 0.5) * 160;
-                boss.saLines = [{ 
-                    x1: ex1, 
-                    y1: camY - 100, 
-                    x2: ex2, 
-                    y2: camY + GAME_HEIGHT + 100, 
-                    type: type 
-                }];
-                boss.saLinesState = "WINDUP";
-                boss.saLinesTimer = 45; // 0.75с предупреждение (пунктир)
+            let step = boss.climbSaStep || 0;
+
+            if (step === 0) {
+                // 1. SA2 (одиночный случайный луч через весь экран)
+                boss.saLines = [ createRandomSaLine("SA2") ];
+            } else if (step === 1) {
+                // 2. SA2 (одиночный случайный луч)
+                boss.saLines = [ createRandomSaLine("SA2") ];
+            } else if (step === 2) {
+                // 3. 2*SA2 (2 случайных луча SA2 одновременно)
+                boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
+            } else if (step === 3) {
+                // 4. SA2 (одиночный случайный луч SA2)
+                boss.saLines = [ createRandomSaLine("SA2") ];
+            } else if (step === 4) {
+                // 5. 2*SA2 (2 случайных луча SA2 одновременно)
+                boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
+            } else if (step === 5) {
+                // 6. 3*SA2 (3 случайных луча SA2 одновременно)
+                boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
             }
+
+            boss.climbSaStep = (step + 1) % 6;
+            boss.saLinesState = "WINDUP";
+            boss.saLinesTimer = 55; // ~0.9с предупреждение пунктиром
         }
     }
 
@@ -256,15 +289,17 @@ function updatePhase3Transition() {
                     y2: l.y1 + (l.y2 - l.y1) * progress
                 };
                 for (let p of players) {
-                    if (!p.isDowned && !p.saHit && p.invuln <= 0 && distToSegment(p, curLine) < 35 + p.width/2) {
-                        takeDamage(p, 1.5);
+                    if (!p.isDowned && !p.saHit && p.invuln <= 0 && distToSegment(p, curLine) < 38 + p.width/2) {
+                        let lineAngle = Math.atan2(l.y2 - l.y1, l.x2 - l.x1);
+                        triggerCinematic(l.type, p, true, lineAngle);
                         p.saHit = true;
-                        p.vy = 4; // отталкивание вниз
-                        triggerShake(10, 15);
+                        boss.saLines = null; // Очищаем луч сразу, чтобы остальные лучи не ударили повторно
+                        triggerShake(15, 20);
                         triggerVibration('sa_hit');
-                        freezeFrames = 4;
+                        break;
                     }
                 }
+                if (!boss.saLines) break;
             }
         }
     }
@@ -307,9 +342,13 @@ function updatePhase3Transition() {
             boss.climbSaTimer = 0;
 
             // Боевые платформы для 3 фазы:
+            let cX = boss.climbCenterX;
             platforms = [
-                { x: boss.climbCenterX - 280, y: FLOOR - 90, w: 130, h: 12 },
-                { x: boss.climbCenterX + 150, y: FLOOR - 90, w: 130, h: 12 }
+                { x: cX - 550, y: FLOOR - 80, w: 180, h: 14 },
+                { x: cX - 280, y: FLOOR - 140, w: 200, h: 14 },
+                { x: cX - 80, y: FLOOR - 80, w: 160, h: 14 },
+                { x: cX + 160, y: FLOOR - 140, w: 200, h: 14 },
+                { x: cX + 420, y: FLOOR - 80, w: 180, h: 14 }
             ];
 
             // 4. Музыка включается ТОЛЬКО СЕЙЧАС (в начале 3 фазы):
@@ -428,6 +467,38 @@ function updateBoss() {
         }
     }
 
+    if (boss.healCooldown > 0) boss.healCooldown--;
+
+    // Смертоносная последовательность SA при половине ХП в 3 фазе (режим L)
+    // Цепочка: SA2 -> 2*SA2 -> SA2 & SA3 -> 2*SA2 -> 3*SA2 -> 3*SA2 & SA3 -> SA1
+    // Босс полностью исчезает на время цепочки, чтобы ее нельзя было прервать
+    if (secretMode && boss.phase === 3 && boss.hp <= phase3Hp * 0.5 && !boss.halfHpSeqDone && 
+        !boss.state.startsWith("CINEMATIC") && !activeCinematic && boss.state !== "DEFEATED" && 
+        boss.state !== "FREE_ROAM" && !boss.state.startsWith("L_CLIMB") && boss.state !== "VOID_SINK_STUN") {
+        
+        boss.halfHpSeqDone = true;
+        boss.halfHpSeqActive = true;
+        boss.vx = 0;
+        boss.vy = 0;
+        boss.invuln = 99999;
+        boss.superQueue = [
+            { s: "SA2_WINDUP", t: 30 },
+            { s: "SA2_DOUBLE", t: 30 },
+            { s: "SA2_SA3_COMBO", t: 30 },
+            { s: "SA2_DOUBLE", t: 30 },
+            { s: "SA2_TRIPLE", t: 30 },
+            { s: "SA2_TRIPLE_SA3_COMBO", t: 35 },
+            { s: "SA1_WINDUP", t: 1 }
+        ];
+        boss.state = "EXECUTE_QUEUE";
+        boss.stateTimer = 1;
+        boss.color = "#ffffff";
+        boss.saLines = null;
+        for (let p of players) p.saHit = false;
+        playSound('demonRoar');
+        triggerShake(18, 28);
+    }
+
     // Оглушение в луже пустоты при <= 25% HP в 3 фазе (режим L)
     if (secretMode && boss.phase === 3 && boss.hp <= phase3Hp * 0.25 && !boss.lightStunDone && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED" && boss.state !== "FREE_ROAM" && boss.state !== "VOID_SINK_STUN") {
         boss.lightStunDone = true;
@@ -519,9 +590,9 @@ function updateBoss() {
             boss.stateTimer = 40; 
             playSound('slash'); 
         }
-    } else if (boss.state === "CINEMATIC_BREAK") {
+    } else if (boss.state === "CINEMATIC_BREAK") { 
         if (boss.stateTimer <= 0) { 
-            boss.state = "DEFEATED"; 
+            boss.state = "FREE_ROAM"; 
             boss.color = "#e6c800"; 
         }
     } else if (boss.state === "TIED" || boss.state === "TIED_BLEED") {
@@ -537,12 +608,27 @@ function updateBoss() {
             boss.color = "#e6c800"; 
         }
     } else if (boss.state === "EXECUTE_QUEUE") {
+        if (boss.halfHpSeqActive) {
+            boss.invuln = 99999;
+            boss.vx = 0;
+            boss.vy = 0;
+            boss.x = -99999;
+            boss.y = -99999;
+        }
         if (boss.stateTimer <= 0) {
             if (boss.superQueue && boss.superQueue.length > 0) { 
                 let n = boss.superQueue.shift(); 
                 boss.state = n.s; 
                 boss.stateTimer = n.t; 
             } else { 
+                boss.halfHpSeqActive = false;
+                boss.invuln = 0;
+                let targetP = getNearestPlayer(boss.x);
+                let spawnX = targetP ? targetP.x + (Math.random() < 0.5 ? -120 : 120) : (boss.climbCenterX || ARENA_W/2);
+                boss.x = Math.max(60, Math.min(ARENA_W - 80, spawnX));
+                boss.y = FLOOR - boss.height;
+                boss.vx = 0;
+                boss.vy = 0;
                 if (boss.phase === 2.5) { 
                     boss.phase = 3; 
                     boss.damageBonus = 0.5; 
@@ -564,60 +650,109 @@ function updateBoss() {
             }
         }
     } else if (boss.state === "SA1_WINDUP") {
+        if (boss.halfHpSeqActive) {
+            boss.invuln = 99999;
+            boss.vx = 0;
+            boss.vy = 0;
+            boss.x = -99999;
+            boss.y = -99999;
+        }
         if (boss.stateTimer <= 0) { 
             boss.sa1Arr = []; 
             let count = 7; 
             let realIdx = Math.floor(Math.random() * count);
+            
+            // Распределение фантомов ПО ВСЕМУ ПОЛЮ СЛУЧАЙНО (без привязки к игроку):
+            let cX = boss.climbCenterX || (ARENA_W / 2);
+            let minX = secretMode ? Math.max(60, cX - 580) : 60;
+            let maxX = secretMode ? Math.min(ARENA_W - 60, cX + 580) : ARENA_W - 60;
+            let minY = secretMode ? FLOOR - 290 : 60;
+            let maxY = secretMode ? FLOOR - 30 : FLOOR - 50;
+
             for (let i = 0; i < count; i++) { 
+                let phX = minX + Math.random() * (maxX - minX);
+                let phY = minY + Math.random() * (maxY - minY);
                 boss.sa1Arr.push({ 
-                    x: Math.random() * (ARENA_W - 50) + 25, 
-                    y: Math.random() * (FLOOR - 100) + 50, 
+                    x: phX, 
+                    y: phY, 
                     isReal: (i === realIdx), 
                     timer: 0, 
-                    startDelay: i * 8, 
+                    startDelay: i * 22, // Последовательно по очереди!
                     active: true, 
-                    struck: false 
+                    struck: false,
+                    w: 630, // Оригинальный размер оранжевой зоны (кадр уязвимости)
+                    h: 200
                 }); 
             }
             boss.state = "SA1_ACTIVE"; 
-            boss.stateTimer = 300; 
-            boss.y = -1000; 
+            boss.stateTimer = 220; 
             boss.color = "#ff8800";
         }
     } else if (boss.state === "SA1_ACTIVE") {
+        if (boss.halfHpSeqActive) {
+            boss.invuln = 99999;
+            boss.vx = 0;
+            boss.vy = 0;
+            boss.x = -99999;
+            boss.y = -99999;
+        }
         let allDone = true;
-        for (let ph of boss.sa1Arr) {
-            if (!ph.active) continue; 
-            ph.timer++;
-            if (ph.timer > ph.startDelay) {
-                allDone = false;
-                if (ph.timer === ph.startDelay + 45 && !ph.struck) {
-                    ph.struck = true; 
-                    let hitArea = { x: ph.x - 300, y: ph.y - 150, width: 630, height: 200 };
-                    for (let p of players) { 
-                        if (!p.isDowned && p.hp > 0 && rectIntersect(p, hitArea)) { 
-                            triggerCinematic("SA1", p, true); 
-                        } 
+        if (boss.sa1Arr) {
+            for (let ph of boss.sa1Arr) {
+                if (!ph.active) continue; 
+                ph.timer++;
+                if (ph.timer > ph.startDelay) {
+                    allDone = false;
+                    if (ph.timer === ph.startDelay + 40 && !ph.struck) {
+                        ph.struck = true; 
+                        playSound('slash');
+                        applyPhysicsPushToLeaves(ph.x, ph.y, 10);
+                        // Оригинальная зона поражения (кадр уязвимости 630x200):
+                        let hitArea = { x: ph.x - 300, y: ph.y - 150, width: ph.w, height: ph.h };
+                        for (let p of players) { 
+                            if (!p.isDowned && p.hp > 0 && p.invuln <= 0 && rectIntersect(p, hitArea)) { 
+                                triggerCinematic("SA1", p, true); 
+                                boss.sa1Arr = null; // Очищаем фантомов, чтобы не было повторных ударов
+                                break;
+                            } 
+                        }
                     }
+                    if (ph && ph.timer > ph.startDelay + 52) ph.active = false;
                 }
-                if (ph.timer > ph.startDelay + 60) ph.active = false;
+                if (!boss.sa1Arr) break;
             }
         }
-        if (allDone && !activeCinematic) { 
-            boss.state = "SA1_SLAM_WINDUP"; 
-            boss.stateTimer = 40; 
-            boss.x = nearestP.x; 
-            boss.y = Math.max(-50, FLOOR - 350); 
+        if ((allDone || boss.stateTimer <= 0) && !activeCinematic) { 
+            // Больше никакого удара строго вниз по игроку!
+            // Босс плавно появляется на арене в случайном месте вершины:
+            boss.halfHpSeqActive = false; 
+            boss.invuln = 0;
+            let cX = boss.climbCenterX || (ARENA_W / 2);
+            boss.x = Math.max(60, Math.min(ARENA_W - 80, cX + (Math.random() - 0.5) * 450));
+            boss.y = FLOOR - boss.height;
+            boss.vx = 0;
+            boss.vy = 0;
+            boss.state = "IDLE"; 
             boss.color = "#e6c800"; 
+            boss.stateTimer = 30; 
+            boss.saLines = null;
+            boss.sa1Arr = null;
+            for (let p of players) {
+                p.saHit = false;
+                p.invuln = 60;
+            }
+            applyPhysicsPushToLeaves(boss.x + 15, boss.y + 25, 15);
+            playSound('wind');
         }
     } else if (boss.state === "SA1_SLAM_WINDUP") {
-        boss.vx = 0; boss.vy = 0; boss.y = Math.max(-50, FLOOR - 350);
+        boss.vx = 0; boss.vy = 0; boss.y = FLOOR - 220;
         if (boss.stateTimer <= 0) { boss.state = "SA1_SLAM"; boss.vy = 35; }
     } else if (boss.state === "SA1_SLAM") {
         boss.vy = 35; 
         boss.y += boss.vy;
         if (boss.y + boss.height >= FLOOR) {
             boss.y = FLOOR - boss.height; 
+            boss.vy = 0;
             triggerShake(30, 20, 0, 1); 
             triggerVibration('sa1_land');
             for (let p of players) {
@@ -648,33 +783,59 @@ function updateBoss() {
             boss.stateTimer = 30;
         }
     } else if (boss.state === "SA2_WINDUP" || boss.state === "SA3_WINDUP") {
-        if (boss.stateTimer === 23) {
-            let ex1 = Math.random() * ARENA_W; 
-            let ex2 = Math.random() * ARENA_W;
-            if (Math.random() < 0.5) { ex1 = 0; ex2 = ARENA_W; }
-            boss.saLines = [{ x1: ex1, y1: Math.random() * (FLOOR - 100), x2: ex2, y2: FLOOR, type: boss.state === "SA3_WINDUP" ? "SA3" : "SA2" }];
+        if (boss.halfHpSeqActive) {
+            boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+            boss.x = -99999; boss.y = -99999;
+        }
+        if (!boss.saLines) {
+            boss.saLines = [ createRandomSaLine(boss.state === "SA3_WINDUP" ? "SA3" : "SA2") ];
         }
         if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
     } else if (boss.state === "SA2_DOUBLE") {
-        if (boss.stateTimer === 23) {
-            let cX1 = Math.random() * ARENA_W; 
-            let cX2 = Math.random() * ARENA_W;
-            boss.saLines = [
-                { x1: cX1, y1: 0, x2: ARENA_W - cX1, y2: FLOOR, type: "SA2" },
-                { x1: cX2, y1: 0, x2: ARENA_W - cX2, y2: FLOOR, type: "SA2" }
-            ]; 
+        if (boss.halfHpSeqActive) {
+            boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+            boss.x = -99999; boss.y = -99999;
+        }
+        if (!boss.saLines) {
+            boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ]; 
         }
         if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
     } else if (boss.state === "SA2_TRIPLE") {
-        if (boss.stateTimer === 23) {
-            boss.saLines = [
-                { x1: 0, y1: Math.random() * (FLOOR - 100), x2: ARENA_W, y2: FLOOR, type: "SA2" },
-                { x1: ARENA_W, y1: Math.random() * (FLOOR - 100), x2: 0, y2: FLOOR, type: "SA2" },
-                { x1: Math.random() * ARENA_W, y1: 0, x2: Math.random() * ARENA_W, y2: FLOOR, type: "SA2" }
-            ]; 
+        if (boss.halfHpSeqActive) {
+            boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+            boss.x = -99999; boss.y = -99999;
+        }
+        if (!boss.saLines) {
+            boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA2") ]; 
+        }
+        if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
+    } else if (boss.state === "SA2_SA3_COMBO") {
+        if (boss.halfHpSeqActive) {
+            boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+            boss.x = -99999; boss.y = -99999;
+        }
+        if (!boss.saLines) {
+            boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA3") ]; 
+            boss.color = "#d000ff";
+            playSound('slash');
+        }
+        if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
+    } else if (boss.state === "SA2_TRIPLE_SA3_COMBO") {
+        if (boss.halfHpSeqActive) {
+            boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+            boss.x = -99999; boss.y = -99999;
+        }
+        if (!boss.saLines) {
+            boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA3") ]; 
+            boss.color = "#d000ff";
+            playSound('demonRoar');
         }
         if (boss.stateTimer <= 0) { boss.state = "SA_EXECUTE"; boss.stateTimer = 6; }
     } else if (boss.state === "SA_EXECUTE") {
+        if (boss.halfHpSeqActive) {
+            boss.vx = 0; boss.vy = 0; boss.invuln = 99999;
+            boss.x = -99999; boss.y = -99999;
+        }
         if (boss.stateTimer > 0) {
             let progress = 1 - (boss.stateTimer / 6);
             for (let l of boss.saLines) {
@@ -682,15 +843,19 @@ function updateBoss() {
                 let curY2 = l.y1 + (l.y2 - l.y1) * progress; 
                 let curLine = { x1: l.x1, y1: l.y1, x2: curX2, y2: curY2 };
                 for (let p of players) {
-                    if (!p.isDowned && !p.saHit && distToSegment(p, curLine) < 40 + p.width/2) {
-                        triggerCinematic(l.type, p); 
+                    if (!p.isDowned && !p.saHit && p.invuln <= 0 && distToSegment(p, curLine) < 40 + p.width/2) {
+                        let lineAngle = Math.atan2(l.y2 - l.y1, l.x2 - l.x1);
+                        triggerCinematic(l.type, p, true, lineAngle); 
                         p.saHit = true; 
+                        boss.saLines = null; // Очищаем луч сразу
                         let dx_n = l.x2 - l.x1; 
                         let dy_n = l.y2 - l.y1; 
                         let dLen = Math.hypot(dx_n, dy_n);
                         triggerShake(10, 15, dx_n / dLen, dy_n / dLen);
+                        break;
                     }
                 }
+                if (!boss.saLines) break;
             }
         } else { 
             boss.state = "EXECUTE_QUEUE"; 
@@ -730,9 +895,57 @@ function updateBoss() {
             boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; 
         }
     } else if (boss.state === "L_HEAL") {
+        boss.vx = 0;
+        boss.vy = 0;
+        boss.color = "#4a0072";
+        if (boss.stateTimer === 120) {
+            playSound('demonRoar');
+            triggerShake(6, 10);
+            boss.healOrbs = [];
+        }
+
+        // Круговорот черных шариков пустоты, летящих прямо в босса:
+        if (boss.stateTimer % 3 === 0) {
+            let spawnAngle = Math.random() * Math.PI * 2;
+            let spawnR = 150 + Math.random() * 90;
+            boss.healOrbs.push({
+                angle: spawnAngle,
+                dist: spawnR,
+                speed: 3.5 + Math.random() * 2,
+                rotSpeed: (Math.random() < 0.5 ? 1 : -1) * (0.09 + Math.random() * 0.05),
+                r: 7 + Math.random() * 7
+            });
+        }
+
+        for (let i = boss.healOrbs.length - 1; i >= 0; i--) {
+            let o = boss.healOrbs[i];
+            o.dist -= o.speed;
+            o.angle += o.rotSpeed;
+            if (o.dist <= 15) {
+                boss.healOrbs.splice(i, 1);
+                voidExplosions.push({
+                    x: boss.x + boss.width / 2 + (Math.random() - 0.5) * 20,
+                    y: boss.y + boss.height / 2 + (Math.random() - 0.5) * 20,
+                    timer: 10,
+                    isWhite: false,
+                    r: 15
+                });
+            }
+        }
+
+        // Восстанавливает 3 ХП за 2 секунды (каждые 40 кадров по +1 ХП):
+        if (boss.stateTimer === 80 || boss.stateTimer === 40 || boss.stateTimer === 1) {
+            boss.hp = Math.min(phase3Hp, boss.hp + 1);
+            playSound('heal');
+            triggerShake(3, 6);
+        }
+
         if (boss.stateTimer <= 0) {
-            boss.hp = Math.min(boss.maxHp, boss.hp + 2);
-            boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20;
+            boss.state = "IDLE";
+            boss.color = "#e6c800";
+            boss.stateTimer = 25;
+            boss.healCooldown = 360; // 6 сек кулдаун
+            boss.healOrbs = [];
         }
     } else {
         switch(boss.state) {
@@ -792,11 +1005,35 @@ function updateBoss() {
                     
                     if (secretMode) {
                         if (boss.phase === 3) {
-                            if (rand < 0.35) { boss.state = "VOID_PORTALS"; boss.stateTimer = 90; boss.color = "#9900ff"; }
-                            else if (boss.sa1Count < 4 && rand < 0.50) { boss.sa1Count++; boss.state = "SA1_WINDUP"; boss.stateTimer = 1; boss.color = "#ff8800"; }
-                            else if (rand < 0.60) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 15; playSound('wind'); }
-                            else if (rand < 0.70) { boss.state = "CAST_WIND"; boss.stateTimer = 30 * phaseMultiplier; boss.vx = 0; boss.directAttackActive = true; boss.color = "#00ffff"; }
-                            else if (rand < 0.80) { boss.state = "FEINT_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; boss.directAttackActive = true; boss.color = "#aaaaaa"; }
+                            if (boss.hp <= phase3Hp * 0.75 && (!boss.healCooldown || boss.healCooldown <= 0) && Math.random() < 0.28) {
+                                boss.state = "L_HEAL";
+                                boss.stateTimer = 120;
+                                boss.vx = 0;
+                                boss.vy = 0;
+                                boss.color = "#4a0072";
+                            }
+                            else if (rand < 0.28) { boss.state = "VOID_PORTALS"; boss.stateTimer = 90; boss.color = "#9900ff"; }
+                            else if (rand < 0.50) {
+                                // Super attacks in Phase 3
+                                let saRoll = Math.random();
+                                if (saRoll < 0.33) {
+                                    boss.state = "SA1_WINDUP"; boss.stateTimer = 1; boss.color = "#ff8800";
+                                } else if (saRoll < 0.66) {
+                                    let sa2Var = Math.random();
+                                    if (sa2Var < 0.34) { boss.state = "SA2_WINDUP"; boss.stateTimer = 24; }
+                                    else if (sa2Var < 0.67) { boss.state = "SA2_DOUBLE"; boss.stateTimer = 24; }
+                                    else { boss.state = "SA2_TRIPLE"; boss.stateTimer = 24; }
+                                    boss.color = "#ffffff";
+                                    playSound('slash');
+                                } else {
+                                    boss.state = "SA3_WINDUP"; boss.stateTimer = 24;
+                                    boss.color = "#9900ff";
+                                    playSound('demonRoar');
+                                }
+                            }
+                            else if (rand < 0.62) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 15; playSound('wind'); }
+                            else if (rand < 0.72) { boss.state = "CAST_WIND"; boss.stateTimer = 30 * phaseMultiplier; boss.vx = 0; boss.directAttackActive = true; boss.color = "#00ffff"; }
+                            else if (rand < 0.82) { boss.state = "FEINT_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; boss.directAttackActive = true; boss.color = "#aaaaaa"; }
                             else { boss.state = "LUNGE_WINDUP"; boss.stateTimer = 15 * phaseMultiplier; boss.comboCount = 0; boss.attackDir = (Math.random() < 0.3 && boss.y > FLOOR - 50) ? "UP" : (boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"); boss.directAttackActive = true; boss.color = "#ff3333"; }
                         } else if (boss.phase === 2) {
                             if (rand < 0.30) { boss.state = "VOID_PORTALS"; boss.stateTimer = 90; boss.color = "#9900ff"; }
@@ -997,7 +1234,9 @@ function updateBoss() {
             case "HIDDEN_PAUSE":
                 boss.vx = 0; boss.vy = 0; boss.y = -1000;
                 if (boss.stateTimer <= 0) {
-                    boss.x = Math.random() * (ARENA_W - 50);
+                    let targetP = getNearestPlayer(boss.x);
+                    let spawnNearX = targetP ? targetP.x + (Math.random() < 0.5 ? -140 : 140) : (boss.climbCenterX || ARENA_W/2);
+                    boss.x = Math.max(60, Math.min(ARENA_W - 80, spawnNearX));
                     boss.y = FLOOR - boss.height;
                     boss.state = "IDLE"; boss.stateTimer = 20; boss.color = "#e6c800";
                     applyPhysicsPushToLeaves(boss.x + 15, boss.y + 25, 15);
@@ -1023,7 +1262,7 @@ function updateBoss() {
     }
 
     let applyBossGravity = true;
-    if (boss.state.startsWith("L_CLIMB") || ["WIND_FLY", "VULN_STANCE", "VULN_LATE", "PARRY_STANCE", "PARRY_COUNTER_WINDUP", "TRANSITION", "PARRY_DASH", "HEAL_PUNISH_DASH", "CAST_WIND", "CAST_VERTICAL_WIND", "SCARF_SHOOT", "SCARF_PULL", "SCARF_WINDUP", "TELEPORT_OUT", "TELEPORT_IN", "TIED", "TIED_BLEED", "SHARPEN_WINDUP", "EXECUTE_QUEUE", "SA1_WINDUP", "SA1_ACTIVE", "SA2_WINDUP", "SA3_WINDUP", "SA2_DOUBLE", "SA2_TRIPLE", "SA_EXECUTE", "VOID_PORTALS", "SA1_SLAM_WINDUP", "L_HEAL", "L_INTRO_FALL", "L_INTRO_RISE", "L_PHASE3_RISE", "L_SCREAM", "HIDDEN_PAUSE", "VOID_SINK_STUN"].includes(boss.state) || (boss.state === "LUNGE" && boss.attackDir === "UP") || boss.state.startsWith("CINEMATIC")) {
+    if (boss.state.startsWith("L_CLIMB") || ["WIND_FLY", "VULN_STANCE", "VULN_LATE", "PARRY_STANCE", "PARRY_COUNTER_WINDUP", "TRANSITION", "PARRY_DASH", "HEAL_PUNISH_DASH", "CAST_WIND", "CAST_VERTICAL_WIND", "SCARF_SHOOT", "SCARF_PULL", "SCARF_WINDUP", "TELEPORT_OUT", "TELEPORT_IN", "TIED", "TIED_BLEED", "SHARPEN_WINDUP", "EXECUTE_QUEUE", "SA1_WINDUP", "SA1_ACTIVE", "SA2_WINDUP", "SA3_WINDUP", "SA2_DOUBLE", "SA2_TRIPLE", "SA2_SA3_COMBO", "SA2_TRIPLE_SA3_COMBO", "SA_EXECUTE", "VOID_PORTALS", "SA1_SLAM_WINDUP", "L_HEAL", "L_INTRO_FALL", "L_INTRO_RISE", "L_PHASE3_RISE", "L_SCREAM", "HIDDEN_PAUSE", "VOID_SINK_STUN"].includes(boss.state) || (boss.state === "LUNGE" && boss.attackDir === "UP") || boss.state.startsWith("CINEMATIC")) {
         applyBossGravity = false; 
         boss.vy = 0; 
     }
@@ -1059,8 +1298,8 @@ function updateBoss() {
     }
     let bossCeilLimit = secretMode ? -2000 : 0;
     if (boss.y < bossCeilLimit && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB")) boss.y = bossCeilLimit; 
-    if (boss.x < 0) { boss.x = 0; boss.vx *= -1; } 
-    if (boss.x > ARENA_W - 30) { boss.x = ARENA_W - 30; boss.vx *= -1; }
+    if (boss.x < 0 && !boss.state.startsWith("L_CLIMB")) { boss.x = 0; boss.vx *= -1; } 
+    if (boss.x > ARENA_W - 30 && !boss.state.startsWith("L_CLIMB")) { boss.x = ARENA_W - 30; boss.vx *= -1; }
 
     let bossDmgHitbox = { x: boss.x, y: boss.y, width: 30, height: 50 };
     if (boss.phase === 3 && (boss.state === "PARRY_DASH" || boss.state === "HEAL_PUNISH_DASH")) { 
@@ -1069,7 +1308,7 @@ function updateBoss() {
     }
 
     for (let p of players) {
-        if (!p.isDowned && p.hp > 0 && rectIntersect(p, bossDmgHitbox) && boss.state !== "TRANSITION" && p.invuln <= 0 && !boss.state.startsWith("TELEPORT") && !boss.state.startsWith("CINEMATIC") && boss.state !== "SA_EXECUTE" && boss.state !== "SA1_ACTIVE" && !boss.state.startsWith("L_INTRO") && !boss.state.startsWith("L_PHASE3") && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB") && boss.state !== "VOID_SINK_STUN") {
+        if (!p.isDowned && p.hp > 0 && rectIntersect(p, bossDmgHitbox) && boss.state !== "TRANSITION" && p.invuln <= 0 && !boss.halfHpSeqActive && boss.state !== "EXECUTE_QUEUE" && !boss.state.startsWith("SA") && !boss.state.startsWith("TELEPORT") && !boss.state.startsWith("CINEMATIC") && !boss.state.startsWith("L_INTRO") && !boss.state.startsWith("L_PHASE3") && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB") && boss.state !== "VOID_SINK_STUN") {
             let dmg = (secretMode ? 2 : 1) + boss.damageBonus; 
             if (boss.state === "LUNGE" || boss.state === "LUNGE_WINDUP" || boss.state.startsWith("FEINT_DASH") || boss.state === "HEAL_PUNISH_DASH" || boss.state === "SCARF_SHOOT") { 
                 dmg = (secretMode ? 2 : 1.5) + boss.damageBonus; 
@@ -1142,23 +1381,85 @@ function drawRapier(b, isPhantom = false) {
 
 function drawBoss() {
     if (boss.state.startsWith("L_CLIMB") || boss.phase === 2.5) return;
+
+    if (boss.state === "L_HEAL" && boss.healOrbs) {
+        let bCenterX = boss.x + boss.width / 2;
+        let bCenterY = boss.y + boss.height / 2;
+
+        // Темная воронка пустоты
+        ctx.save();
+        let auraPulse = 0.4 + 0.2 * Math.sin(Date.now() / 80);
+        let auraGrad = ctx.createRadialGradient(bCenterX, bCenterY, 15, bCenterX, bCenterY, 180);
+        auraGrad.addColorStop(0, "rgba(80, 0, 140, 0.7)");
+        auraGrad.addColorStop(0.5, `rgba(40, 0, 80, ${auraPulse})`);
+        auraGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = auraGrad;
+        ctx.beginPath();
+        ctx.arc(bCenterX, bCenterY, 180, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Черные шарики пустоты, закручивающиеся в центр босса
+        for (let o of boss.healOrbs) {
+            let ox = bCenterX + Math.cos(o.angle) * o.dist;
+            let oy = bCenterY + Math.sin(o.angle) * o.dist;
+            ctx.beginPath();
+            ctx.arc(ox, oy, o.r, 0, Math.PI * 2);
+            ctx.fillStyle = "#0a0014";
+            ctx.fill();
+            ctx.strokeStyle = "#aa00ff";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
     if (boss.state === "SA1_ACTIVE" && boss.sa1Arr) {
         for (let ph of boss.sa1Arr) {
             if (ph.active && ph.timer >= ph.startDelay) {
-                if (ph.timer < ph.startDelay + 45) {
-                    ctx.fillStyle = "rgba(255, 150, 0, 0.3)";
-                    ctx.fillRect(ph.x - 300, ph.y - 150, 630, 200);
-                } else if (ph.timer < ph.startDelay + 55) {
-                    ctx.fillStyle = "rgba(255, 100, 0, 0.8)";
-                    ctx.fillRect(ph.x - 300, ph.y - 150, 630, 200);
+                let w = ph.w || 630;
+                let h = ph.h || 200;
+                let bx = ph.x - 300;
+                let by = ph.y - 150;
+
+                ctx.save();
+                if (ph.timer < ph.startDelay + 40) {
+                    // Фаза предупреждения: оригинальная полупрозрачная оранжевая зона (кадр уязвимости)
+                    let pulse = 0.22 + 0.12 * Math.sin(Date.now() / 80 + ph.x);
+                    ctx.fillStyle = `rgba(255, 150, 0, ${pulse})`;
+                    ctx.fillRect(bx, by, w, h);
+                    ctx.setLineDash([8, 6]);
+                    ctx.strokeStyle = "rgba(255, 180, 0, 0.85)";
+                    ctx.lineWidth = 2.5;
+                    ctx.strokeRect(bx, by, w, h);
+                } else if (ph.timer <= ph.startDelay + 52) {
+                    // Фаза удара: яркая оранжевая вспышка рассечения
+                    let fade = Math.max(0, (ph.startDelay + 52 - ph.timer) / 12);
+                    ctx.fillStyle = `rgba(255, 120, 0, ${fade * 0.85})`;
+                    ctx.fillRect(bx, by, w, h);
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.moveTo(bx, by + h / 2);
+                    ctx.lineTo(bx + w, by + h / 2);
+                    ctx.moveTo(bx + 40, by + 20);
+                    ctx.lineTo(bx + w - 40, by + h - 20);
+                    ctx.stroke();
                 }
-                ctx.fillStyle = ph.isReal ? "#ff8800" : "#221100";
+
+                // Силуэт фантома босса
+                ctx.fillStyle = ph.isReal ? "#ff8800" : "rgba(35, 15, 0, 0.9)";
                 ctx.fillRect(ph.x - 15, ph.y - 25, 30, 50);
                 if (!ph.isReal) { 
-                    ctx.strokeStyle = "#ff8800"; 
+                    ctx.strokeStyle = "#ffaa00"; 
                     ctx.lineWidth = 2; 
                     ctx.strokeRect(ph.x - 15, ph.y - 25, 30, 50); 
                 }
+                // Маска фантома
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(ph.x, ph.y - 15, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
             }
         }
     }
@@ -1189,7 +1490,7 @@ function drawBoss() {
         let hintKey = (players[0] && players[0].inputType === 'KEYBOARD_SHOOTER') ? "ЛКМ+ПКМ" : "Shift";
         ctx.fillText(`Примените кинжал света (${hintKey})!`, boss.x + boss.width/2, boss.y - 18);
         ctx.restore();
-    } else if (boss.state !== "FREE_ROAM" && boss.state !== "SA1_ACTIVE" && boss.state !== "HIDDEN_PAUSE" && boss.state !== "SA1_SLAM_WINDUP" && !boss.state.startsWith("L_CLIMB")) {
+    } else if (!boss.halfHpSeqActive && boss.x > -1000 && boss.state !== "SA1_ACTIVE" && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB")) {
         ctx.fillStyle = getBossColor(boss.color);
         ctx.globalAlpha = (boss.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0) ? 0.5 : 1.0;
         ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
@@ -1199,25 +1500,58 @@ function drawBoss() {
         let bCloakColor = secretMode ? "#4a3c00" : "#e6c800";
         let bPatternColor = secretMode ? "#8a4500" : "#ff7700";
         
-        // Желтый плащ
-        ctx.fillStyle = bCloakColor;
+        // --- БОСС: ДИНАМИЧЕСКИЙ РАЗВЕВАЮЩИЙСЯ ЖЕЛТЫЙ ПЛАЩ ---
+        let bTrailDir = boss.facingRight ? -1 : 1;
+        let bSpeed = Math.abs(boss.vx);
+        let bLagX = -boss.vx * 3.5;
+        let bLagY = -boss.vy * 2;
+        let bTime = Date.now();
+        let bWaveTime = bTime / 110;
+        let bFlutter1 = Math.sin(bWaveTime) * (5 + bSpeed * 1.5);
+        let bFlutter2 = Math.cos(bWaveTime * 1.4) * (6 + bSpeed * 1.8);
+        let bFlap = Math.sin(bWaveTime * 1.8) * (4 + bSpeed);
+
+        let bAnchorX = boss.facingRight ? boss.x + 8 : boss.x + boss.width - 8;
+        let bShoulderY = boss.y + 10;
+        let bTipX = bAnchorX + (bTrailDir * (28 + bSpeed * 4)) + (bLagX * 0.5) + bFlutter1;
+        let bTipY = boss.y + boss.height + 4 + bFlutter2 * 0.8 + (bLagY * 0.4);
+        let bMidX = bAnchorX + (bTrailDir * (32 + bSpeed * 4.5)) + (bLagX * 0.6) + bFlutter2;
+        let bMidY = boss.y + 26 + bFlutter1 * 0.7;
+        let bHemMidX = bAnchorX + (bTrailDir * (14 + bSpeed * 2)) + bFlap;
+        let bHemMidY = boss.y + boss.height - bFlap * 0.5;
+
+        // 1. Тень складок плаща
+        ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
         ctx.beginPath();
-        let bcx = boss.facingRight ? boss.x : boss.x + boss.width;
-        let bcw = boss.facingRight ? 22 : -22;
-        ctx.moveTo(bcx, boss.y + 10);
-        ctx.lineTo(bcx + bcw, boss.y + 18);
-        ctx.lineTo(bcx + (bcw * 0.85), boss.y + boss.height - 2);
-        ctx.lineTo(bcx, boss.y + boss.height);
+        ctx.moveTo(bAnchorX, bShoulderY + 2);
+        ctx.quadraticCurveTo(bMidX * 0.9, bMidY, bTipX - bTrailDir * 4, bTipY);
+        ctx.quadraticCurveTo(bHemMidX, bHemMidY + 2, bAnchorX, boss.y + boss.height);
         ctx.closePath();
         ctx.fill();
 
-        // Оранжевые узоры плаща
-        ctx.strokeStyle = bPatternColor;
-        ctx.lineWidth = 2;
+        // 2. Основная ткань желтого плаща
+        ctx.fillStyle = bCloakColor;
         ctx.beginPath();
-        ctx.moveTo(bcx + (bcw * 0.3), boss.y + 15);
-        ctx.lineTo(bcx + (bcw * 0.85), boss.y + 24);
-        ctx.lineTo(bcx + (bcw * 0.4), boss.y + boss.height - 6);
+        ctx.moveTo(bAnchorX, bShoulderY);
+        ctx.quadraticCurveTo(bAnchorX + (bTrailDir * (14 + bSpeed * 2)), bShoulderY + 4 + bFlap, bMidX, bMidY);
+        ctx.quadraticCurveTo(bMidX + bTrailDir * 4, bMidY + (boss.height * 0.4), bTipX, bTipY);
+        ctx.quadraticCurveTo(bHemMidX, bHemMidY, bAnchorX, boss.y + boss.height - 4);
+        ctx.lineTo(bAnchorX, bShoulderY);
+        ctx.closePath();
+        ctx.fill();
+
+        // 3. Оранжевые узоры плаща
+        ctx.strokeStyle = bPatternColor;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(bAnchorX + (bTrailDir * 5), bShoulderY + 6);
+        ctx.quadraticCurveTo(bMidX - (bTrailDir * 5), bMidY + 4, bTipX - (bTrailDir * 4), bTipY - 5);
+        ctx.stroke();
+
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(bAnchorX + (bTrailDir * 8), bShoulderY + 12);
+        ctx.quadraticCurveTo(bMidX - (bTrailDir * 9), bMidY + 12, bHemMidX, bHemMidY - 3);
         ctx.stroke();
 
         // Черный шарф вокруг шеи
@@ -1231,12 +1565,12 @@ function drawBoss() {
         // Развевающиеся концы черного шарфа
         let tailX = boss.facingRight ? boss.x - 4 : boss.x + boss.width + 4;
         let tailDir = boss.facingRight ? -1 : 1;
-        let wave = Math.sin(Date.now() / 120) * 4;
+        let wave = Math.sin(Date.now() / 90) * 6;
         ctx.beginPath();
         ctx.moveTo(tailX, scarfY + 4);
-        ctx.quadraticCurveTo(tailX + (tailDir * 14), scarfY + 12 + wave, tailX + (tailDir * 22), scarfY + 18 + wave * 1.5);
-        ctx.lineTo(tailX + (tailDir * 20), scarfY + 23 + wave * 1.5);
-        ctx.quadraticCurveTo(tailX + (tailDir * 12), scarfY + 16 + wave, tailX, scarfY + 8);
+        ctx.quadraticCurveTo(tailX + (tailDir * 16), scarfY + 10 + wave, tailX + (tailDir * 26), scarfY + 16 + wave * 1.6);
+        ctx.lineTo(tailX + (tailDir * 24), scarfY + 22 + wave * 1.6);
+        ctx.quadraticCurveTo(tailX + (tailDir * 14), scarfY + 15 + wave, tailX, scarfY + 8);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
