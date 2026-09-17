@@ -152,9 +152,28 @@ function executeAbility(p, ab) {
     if (ab === 'shuriken') {
         if (sharedHeals >= 0.5) {
             sharedHeals -= 0.5; p.attackCooldown = 15; playSound('throw');
-            let dx = (boss.x + boss.width/2) - (p.x + p.width/2); 
-            let dy = (boss.y + boss.height/2) - (p.y + p.height/2); 
-            let dist = Math.hypot(dx, dy); 
+            let targetX = boss.x + boss.width/2;
+            let targetY = boss.y + boss.height/2;
+
+            if (typeof isTutorial !== 'undefined' && isTutorial && typeof tutorialTargets !== 'undefined' && tutorialTargets.length > 0) {
+                let minD = Infinity;
+                let closest = null;
+                for (let trg of tutorialTargets) {
+                    let d = Math.hypot(trg.x - (p.x + p.width/2), trg.y - (p.y + p.height/2));
+                    if (d < minD) { minD = d; closest = trg; }
+                }
+                if (closest) {
+                    targetX = closest.x;
+                    targetY = closest.y;
+                }
+            } else if (boss.x < -500 || boss.y < -500 || boss.state === "INACTIVE" || boss.state === "DEFEATED") {
+                targetX = (p.x + p.width/2) + (p.facingRight ? 300 : -300);
+                targetY = p.y + p.height/2;
+            }
+
+            let dx = targetX - (p.x + p.width/2); 
+            let dy = targetY - (p.y + p.height/2); 
+            let dist = Math.hypot(dx, dy) || 1; 
             playerDaggers.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (dx/dist) * 14, vy: (dy/dist) * 14, active: true, pId: p.id });
         }
     }
@@ -298,6 +317,25 @@ function updatePlayers() {
             kDash = p.keys.dash ? isKeyPressed(p.keys.dash) : false; 
             kLight = (p.keys && p.keys.light) ? isKeyPressed(p.keys.light) : ((p.inputType === 'KEYBOARD_SHOOTER' || p.inputType === 'KEYBOARD_2') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : (isKeyPressed(['ShiftLeft', 'ShiftRight'])));
             kStance = (p.keys && p.keys.stance) ? isKeyPressed(p.keys.stance) : isKeyPressed(['KeyS', 'KeyT', 'KeyV']);
+        }
+
+        // Tutorial Input Restrictions
+        if (typeof isTutorial !== 'undefined' && isTutorial) {
+            if (tutorialStep === 'WALK') {
+                kJump = false; kAttack = false; kHeal = false; kSpec = false; kDash = false; kLight = false; kStance = false; kUp = false; kDown = false;
+            } else if (tutorialStep === 'JUMP') {
+                kAttack = false; kHeal = false; kSpec = false; kDash = false; kLight = false; kStance = false;
+            } else if (tutorialStep === 'DASH') {
+                kAttack = false; kHeal = false; kSpec = false; kLight = false; kStance = false;
+            } else if (tutorialStep === 'WALL') {
+                kAttack = false; kHeal = false; kSpec = false; kLight = false; kStance = false;
+            } else if (tutorialStep === 'ATTACK') {
+                kHeal = false; kSpec = false; kLight = false; kStance = false;
+            } else if (tutorialStep === 'HEAL') {
+                kSpec = false; kLight = false; kStance = false;
+            } else if (tutorialStep === 'SPECIAL') {
+                kLight = false; kStance = false;
+            }
         }
 
         // Stance / Weapon mode switching (Key S)
@@ -748,6 +786,21 @@ function updatePlayers() {
                         } else {
                             if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 45 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); } 
                             else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + p.atkRange/2, swordHitbox.y + 10, 4); }
+                        }
+
+                        // Tutorial targets hit check
+                        if (typeof isTutorial !== 'undefined' && isTutorial && typeof tutorialTargets !== 'undefined') {
+                            for (let ti = tutorialTargets.length - 1; ti >= 0; ti--) {
+                                let trg = tutorialTargets[ti];
+                                let trgBox = { x: trg.x - trg.r, y: trg.y - trg.r, width: trg.r * 2, height: trg.r * 2 };
+                                if (rectIntersect(swordHitbox, trgBox)) {
+                                    playSound('hitBoss');
+                                    playSound('parry');
+                                    triggerShake(3, 5);
+                                    voidExplosions.push({ x: trg.x, y: trg.y, timer: 20, isWhite: true, r: 25 });
+                                    tutorialTargets.splice(ti, 1);
+                                }
+                            }
                         }
 
                         for(let i=airBlades.length-1; i>=0; i--) { 

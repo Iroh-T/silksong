@@ -53,6 +53,7 @@ window.addEventListener("keydown", e => {
         if (canActivateL && !secretMode) {
             secretMode = true; 
             playSound('heal'); 
+            if (typeof unlockAchievement === 'function') unlockAchievement('whisper_of_void');
             document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#000";
             let ml = document.getElementById("m-light");
             if (ml && document.getElementById("mobile-ui").style.display === "flex") {
@@ -78,11 +79,17 @@ window.addEventListener("keydown", e => {
             godModeActive = !godModeActive;
             window.godModeActive = godModeActive;
             playSound(godModeActive ? 'parry' : 'hitPlayer');
+            if (godModeActive && typeof flagCheatUsage === 'function') {
+                flagCheatUsage('Режим Бога [9]');
+            }
         }
         if (e.key === '0' || e.code === 'Digit0') {
             megaDamageActive = !megaDamageActive;
             window.megaDamageActive = megaDamageActive;
             playSound(megaDamageActive ? 'slash' : 'hitBoss');
+            if (megaDamageActive && typeof flagCheatUsage === 'function') {
+                flagCheatUsage('Мега-урон х5 [0]');
+            }
         }
     }
     
@@ -92,6 +99,7 @@ window.addEventListener("keydown", e => {
             window.fireHeroUnlocked = true; 
             try { localStorage.setItem('shelter_fire_unlocked', 'true'); } catch(e){}
             playSound('slash');
+            if (typeof unlockAchievement === 'function') unlockAchievement('true_flame');
             document.body.style.backgroundColor = "#2a0a0a";
             let p1Ui = document.getElementById("p1-select-ui");
             if (p1Ui && !document.getElementById("btn-hero-fire")) {
@@ -127,6 +135,10 @@ window.addEventListener("keydown", e => {
     // Restart key [R] (from Game Over or Boss Defeat straight to layout selection with saved accounts!)
     let isGameOverOrWon = (gameState === "GAMEOVER" || (gameState === "PLAYING" && (boss.state === "DEFEATED" || boss.state === "FREE_ROAM")));
     if (isGameOverOrWon && (e.code === "KeyR" || e.key === "r" || e.key === "к" || e.key === "К")) {
+        if (typeof isTutorial !== 'undefined' && isTutorial) {
+            buildAndStartTutorialGame();
+            return;
+        }
         gameState = "MENU";
         battleResultRecorded = false;
         document.getElementById("overlay").style.display = "block";
@@ -671,9 +683,73 @@ function confirmDuoInput() {
 }
 window.confirmDuoInput = confirmDuoInput;
 
+function openTutorialLayoutModal() {
+    let modal = document.getElementById('tutorial-layout-modal');
+    if (modal) modal.style.display = 'flex';
+}
+window.openTutorialLayoutModal = openTutorialLayoutModal;
+
+function closeTutorialLayoutModal() {
+    let modal = document.getElementById('tutorial-layout-modal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeTutorialLayoutModal = closeTutorialLayoutModal;
+
+function startTutorialWithInput(inputType) {
+    closeTutorialLayoutModal();
+    isTutorial = true;
+    numPlayers = 1;
+    secretMode = false;
+    p1HeroSelection = 'WATER';
+    p1InputType = inputType || 'KEYBOARD_1';
+
+    let mobUi = document.getElementById("mobile-ui");
+    if (inputType === 'TOUCH') {
+        if (mobUi) mobUi.style.display = "flex";
+    } else {
+        if (mobUi) mobUi.style.display = "none";
+    }
+
+    buildAndStartTutorialGame();
+}
+window.startTutorialWithInput = startTutorialWithInput;
+
+function startTutorial() {
+    openTutorialLayoutModal();
+}
+window.startTutorial = startTutorial;
+
+function showTutorialPromptModal() {
+    let modal = document.getElementById('tutorial-prompt-modal');
+    if (modal) modal.style.display = 'flex';
+}
+window.showTutorialPromptModal = showTutorialPromptModal;
+
+function closeTutorialPromptModal() {
+    let modal = document.getElementById('tutorial-prompt-modal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeTutorialPromptModal = closeTutorialPromptModal;
+
+function startTutorialFromPrompt() {
+    closeTutorialPromptModal();
+    openTutorialLayoutModal();
+}
+window.startTutorialFromPrompt = startTutorialFromPrompt;
+
 function selectInput(in1, in2) {
     p1InputType = in1; 
     if (numPlayers === 2) p2InputType = in2;
+
+    if (typeof isTutorial !== 'undefined' && isTutorial) {
+        if (in1 === 'TOUCH') {
+            let mobUi = document.getElementById("mobile-ui");
+            if (mobUi) mobUi.style.display = "flex";
+        }
+        buildAndStartTutorialGame();
+        return;
+    }
+
     openScreen('hero-select');
     
     let p1Status = document.getElementById('p1-status');
@@ -695,6 +771,25 @@ function selectInput(in1, in2) {
 }
 window.selectInput = selectInput;
 
+function promptRenamePlace(netId) {
+    let targetNet = netId || currentNetworkId;
+    let curName = getNetworkDisplayName(targetNet);
+    let curUser = getCurrentUser() || '';
+    let isCreator = (curUser.toLowerCase() === 'рыба' || curUser.toLowerCase() === 'admin');
+    
+    let promptMsg = isCreator 
+        ? "👑 СОЗДАТЕЛЬ РЫБа:\nВведите официальное название для этого места (оно отобразится У ВСЕХ игроков):" 
+        : "Введите ваше название для этого места (например: 'Дом', 'Школа', 'У друга'):";
+        
+    let res = prompt(promptMsg, curName.startsWith("Неизведанное") ? "" : curName);
+    if (res && res.trim()) {
+        setNetworkName(targetNet, res.trim()).then(() => {
+            renderAchievements();
+        });
+    }
+}
+window.promptRenamePlace = promptRenamePlace;
+
 // --- ACHIEVEMENTS RENDERER ---
 function renderAchievements() {
     let container = document.getElementById('achievements-content');
@@ -714,7 +809,96 @@ function renderAchievements() {
         ? `Игрок: <b style="color: #00ffff; font-size: 18px;">${userAcc.name}</b>` 
         : `Общая статистика игры`;
 
-    // Leaderboard across all accounts
+    // 1. Secret Achievements (ONLY completed are shown; fish_day is pinned prestigiously at top)
+    let userAchMap = (userAcc && userAcc.achievements) ? userAcc.achievements : {};
+    let unlockedAchs = ACHIEVEMENTS_DEF.filter(a => userAchMap[a.id]);
+    let hasFishDay = !!userAchMap['fish_day'];
+    let otherUnlocked = unlockedAchs.filter(a => a.id !== 'fish_day');
+
+    let fishDayHtml = '';
+    if (hasFishDay) {
+        let fishDef = ACHIEVEMENTS_DEF.find(a => a.id === 'fish_day');
+        fishDayHtml = `
+            <div class="prestigious-fish-card">
+                <div class="prestigious-crown">👑 ВЫСШЕЕ ПОЧЁТНОЕ ДОСТИЖЕНИЕ 👑</div>
+                <div class="prestigious-title">${fishDef.title}</div>
+                <div class="prestigious-desc">${fishDef.desc}</div>
+                <div class="prestigious-badge">✨ ЗНАК ДРУЖБЫ И ПРИЗНАНИЯ РЫБЫ ✨</div>
+            </div>
+        `;
+    }
+
+    let achGridHtml = '';
+    if (otherUnlocked.length > 0) {
+        achGridHtml = `
+            <div class="achieve-grid" style="margin-top: 10px;">
+                ${otherUnlocked.map(a => `
+                    <div class="achieve-card unlocked-secret">
+                        <div class="achieve-card-title" style="color: #ffd700;">${a.title}</div>
+                        <div style="font-size: 12px; color: #cbd5e1; margin-top: 4px;">${a.desc}</div>
+                        <div style="font-size: 10px; color: #4ade80; margin-top: 6px; font-weight: bold;">✓ РАЗБЛОКИРОВАНО</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    let secretAchSection = '';
+    if (unlockedAchs.length === 0) {
+        secretAchSection = `
+            <div class="leaderboard-container" style="text-align: center; padding: 18px;">
+                <div class="leaderboard-title" style="color: #ffd700;">🎖️ СЕКРЕТНЫЕ ДОСТИЖЕНИЯ</div>
+                <div style="color: #94a3b8; font-size: 13px; font-style: italic; margin-top: 6px;">
+                    Секретные боевые достижения скрыты и ждут первооткрывателей!<br>
+                    Сражайтесь, побеждайте босса в разных режимах и условиях, чтобы раскрыть их.
+                </div>
+            </div>
+        `;
+    } else {
+        secretAchSection = `
+            <div class="leaderboard-container">
+                <div class="leaderboard-title" style="color: #ffd700;">🎖️ ВЫПОЛНЕННЫЕ СЕКРЕТНЫЕ ДОСТИЖЕНИЯ (${unlockedAchs.length})</div>
+                ${fishDayHtml}
+                ${achGridHtml}
+            </div>
+        `;
+    }
+
+    // 2. Visited Places / Networks
+    let placesHtml = '';
+    let visitedMap = (userAcc && userAcc.visitedNetworks) ? userAcc.visitedNetworks : {};
+    let visitedKeys = Object.keys(visitedMap);
+    if (visitedKeys.length === 0 && currentNetworkId) {
+        visitedKeys = [currentNetworkId];
+    }
+
+    if (visitedKeys.length > 0) {
+        placesHtml = `
+            <div class="leaderboard-container">
+                <div class="leaderboard-title" style="color: #00ffcc; display: flex; justify-content: space-between; align-items: center;">
+                    <span>📍 ГДЕ ВЫ ПОБЫВАЛИ (${visitedKeys.length})</span>
+                    <button class="menu-btn" style="padding: 3px 10px; font-size: 11px; margin: 0;" onclick="promptRenamePlace('${currentNetworkId}')">✏️ Назвать текущее место</button>
+                </div>
+                ${visitedKeys.map(netId => {
+                    let dName = getNetworkDisplayName(netId);
+                    let isGlobal = globalNetworks && globalNetworks[netId] && globalNetworks[netId].name;
+                    let isCurrent = (netId === currentNetworkId);
+                    return `
+                        <div class="leaderboard-row" style="align-items: center; justify-content: space-between;">
+                            <div>
+                                <span style="font-size: 14px;">🏠 <b>${dName}</b></span>
+                                ${isGlobal ? '<span style="color:#ffd700; font-size:11px; margin-left: 6px;" title="Официальное имя от Создателя">👑 Официальное место</span>' : ''}
+                                ${isCurrent ? '<span style="color:#00ffff; font-size:11px; margin-left: 6px;">[Сейчас здесь]</span>' : ''}
+                            </div>
+                            <button class="menu-btn" style="padding: 2px 8px; font-size: 11px; margin: 0;" onclick="promptRenamePlace('${netId}')">✏️ Назвать</button>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    // 3. Leaderboard across all accounts
     let accList = Object.values(accs);
     accList.sort((a, b) => {
         let aW = (a.stats ? a.stats.soloNormalWins + a.stats.soloSecretWins + a.stats.duoNormalWins + a.stats.duoSecretWins : 0);
@@ -743,7 +927,7 @@ function renderAchievements() {
         `;
     }
 
-    // Co-op partners history
+    // 4. Co-op partners history
     let partnersHtml = '';
     let partnersMap = (userAcc && userAcc.coopPartners) ? userAcc.coopPartners : {};
     let partnersList = Object.entries(partnersMap);
@@ -776,7 +960,9 @@ function renderAchievements() {
         <div style="margin-bottom: 15px; font-size: 13px; color: #aaddff;">
             Боёв: <b>${totalBattles}</b> | Побед: <b style="color: #44ff44;">${totalWins}</b> | Винрейт: <b style="color: #ffcc00;">${winRate}%</b>
         </div>
-        <div class="achieve-grid">
+        ${secretAchSection}
+        ${placesHtml}
+        <div class="achieve-grid" style="margin-top: 15px;">
             <div class="achieve-card">
                 <div class="achieve-card-title">1 Игрок (Обычный режим)</div>
                 <div class="achieve-stat-line"><span>Побед над Боссом:</span><span class="achieve-stat-val win">${s.soloNormalWins}</span></div>
@@ -1269,12 +1455,29 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     } catch(e){}
 
+    // Detect network and visited places
+    if (typeof detectCurrentNetwork === 'function') {
+        detectCurrentNetwork();
+    }
+
     // Check user authentication & background sync cloud accounts
     let curUser = getCurrentUser();
     let accs = loadAccounts();
     if (curUser && accs[curUser.toLowerCase()]) {
         updateUserBadge();
         openScreen('root-menu', false);
+
+        // Check if newcomer with 0 battles
+        let u = accs[curUser.toLowerCase()];
+        let st = u.stats || {};
+        let totalB = (st.soloNormalWins || 0) + (st.soloNormalLosses || 0) + (st.soloSecretWins || 0) + (st.soloSecretLosses || 0) + (st.duoNormalWins || 0) + (st.duoNormalLosses || 0) + (st.duoSecretWins || 0) + (st.duoSecretLosses || 0);
+        let hasGrad = u.achievements && u.achievements['tutorial_grad'];
+        if (totalB === 0 && !hasGrad && !sessionStorage.getItem('shelter_tut_prompt_seen')) {
+            sessionStorage.setItem('shelter_tut_prompt_seen', 'true');
+            setTimeout(() => {
+                showTutorialPromptModal();
+            }, 600);
+        }
     } else {
         openScreen('auth-screen', false);
         switchAuthTab('register');

@@ -6,6 +6,7 @@ function buildAndStartGame() {
     let overlay = document.getElementById("overlay");
     if (overlay) overlay.style.display = "none"; 
     players = [];
+    isTutorial = false;
     
     if (secretMode) { 
         ARENA_W = 2500; 
@@ -101,6 +102,77 @@ function buildAndStartGame() {
     }
 }
 window.buildAndStartGame = buildAndStartGame;
+
+function buildAndStartTutorialGame() {
+    initAudio(); 
+    if (typeof stopMenuMusic === 'function') stopMenuMusic();
+    let overlay = document.getElementById("overlay");
+    if (overlay) overlay.style.display = "none"; 
+    players = [];
+    
+    secretMode = false;
+    ARENA_W = 1000; 
+    ARENA_H = 400; 
+    FLOOR = 350; 
+    platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10 } ];
+
+    battleResultRecorded = false;
+    cheatUsedInBattle = false;
+    healsUsedInBattle = 0;
+    battleStartTime = Date.now();
+    
+    isTutorial = true;
+    tutorialStep = 'WALK';
+    tutorialSubStep = 0;
+    tutorialDamageDealt = false;
+    tutorialTargets = [];
+
+    numPlayers = 1;
+    p1HeroSelection = 'WATER';
+
+    function mapControlsToKeysObj(schemeObj) {
+        let res = {};
+        for (let k in schemeObj) {
+            res[k] = [schemeObj[k]];
+        }
+        return res;
+    }
+
+    let p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
+    if (p1InputType === 'KEYBOARD_2' || p1InputType === 'KEYBOARD_SHOOTER') {
+        p1Keys = mapControlsToKeysObj(userControls.SCHEME_2);
+    } else {
+        p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
+    }
+
+    let p1 = createPlayer(1, 'WATER', p1Keys, p1InputType, 120);
+    p1.abilities = { top: 'shuriken', mid: 'shuriken', bot: 'shuriken' };
+    applyBadgesToPlayer(p1, true);
+    players.push(p1);
+
+    resetGameParams();
+
+    // 4 heal charges for training
+    sharedHeals = 4;
+    maxSharedHeals = 4;
+
+    // Step 1: 4 glowing spheres on the floor
+    tutorialDots = [
+        { x: 240, y: FLOOR - 20 },
+        { x: 440, y: FLOOR - 20 },
+        { x: 640, y: FLOOR - 20 },
+        { x: 820, y: FLOOR - 20 }
+    ];
+
+    boss.hp = 7;
+    boss.maxHp = 7;
+    boss.x = -999;
+    boss.y = -999;
+    boss.state = "INACTIVE";
+
+    gameState = "PLAYING";
+}
+window.buildAndStartTutorialGame = buildAndStartTutorialGame;
 
 function resetGameParams() {
     for (let p of players) { 
@@ -210,6 +282,24 @@ function updateProjectiles() {
             if (!d.dodgeChecked && Math.abs(d.x - boss.x) < 100 && ["IDLE","WALK","CHASE"].includes(boss.state)) { 
                 d.dodgeChecked = true;
                 if (Math.random() < 0.30) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 10; playSound('wind'); } 
+            }
+
+            if (typeof isTutorial !== 'undefined' && isTutorial && typeof tutorialTargets !== 'undefined') {
+                let hitTrg = false;
+                for (let ti = tutorialTargets.length - 1; ti >= 0; ti--) {
+                    let trg = tutorialTargets[ti];
+                    let trgBox = { x: trg.x - trg.r, y: trg.y - trg.r, width: trg.r * 2, height: trg.r * 2 };
+                    if (rectIntersect({x: d.x-5, y: d.y-5, width: 10, height: 10}, trgBox)) {
+                        playSound('hitBoss');
+                        triggerShake(3, 5);
+                        voidExplosions.push({ x: trg.x, y: trg.y, timer: 20, isWhite: true, r: 25 });
+                        tutorialTargets.splice(ti, 1);
+                        playerDaggers.splice(i, 1);
+                        hitTrg = true;
+                        break;
+                    }
+                }
+                if (hitTrg) continue;
             }
 
             if (rectIntersect({x: d.x-5, y: d.y-5, width: 10, height: 10}, boss) && boss.state !== "TRANSITION" && boss.state !== "DEFEATED" && !boss.state.startsWith("TELEPORT")) {
@@ -418,15 +508,256 @@ function updateProjectiles() {
     }
 }
 
+function updateTutorialBoss() {
+    if (boss.state === "INACTIVE" || boss.state === "DEFEATED") return;
+
+    if (boss.invuln > 0) boss.invuln--;
+    boss.stateTimer--;
+
+    let p = players[0];
+    if (!p) return;
+
+    boss.facingDir = (p.x < boss.x) ? -1 : 1;
+
+    if (boss.state === "IDLE") {
+        boss.vx = 0;
+        if (boss.stateTimer <= 0) {
+            let dist = Math.abs(boss.x - p.x);
+            let action = (Math.random() < 0.55 || dist > 350) ? "DASH_WINDUP" : "PORTAL_SHURIKEN";
+
+            if (action === "DASH_WINDUP") {
+                boss.state = "DASH_WINDUP";
+                boss.stateTimer = 45; // Generous windup
+            } else {
+                boss.state = "PORTAL_SHURIKEN";
+                boss.stateTimer = 50; // Generous windup
+            }
+        }
+    } else if (boss.state === "DASH_WINDUP") {
+        boss.vx = 0;
+        boss.color = (Math.floor(boss.stateTimer / 5) % 2 === 0) ? "#ffffff" : "#9933ff";
+        if (boss.stateTimer <= 0) {
+            boss.state = "DASH";
+            boss.stateTimer = 25;
+            boss.color = "#9933ff";
+            boss.vx = boss.facingDir * 7.5; // Slower dash (was 9.5)
+            playSound('dash');
+            voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y + boss.height/2, timer: 15, isWhite: false, r: 25 });
+        }
+    } else if (boss.state === "DASH") {
+        boss.x += boss.vx;
+        if (boss.x < 40) { boss.x = 40; boss.stateTimer = 0; }
+        if (boss.x > ARENA_W - 70) { boss.x = ARENA_W - 70; boss.stateTimer = 0; }
+
+        if (rectIntersect(boss, p) && p.invuln <= 0 && !p.isDowned) {
+            takeDamage(p, 1.0); // 1.0 dmg (was 1.5)
+            triggerShake(4, 8);
+            triggerVibration('damage');
+        }
+
+        if (boss.stateTimer <= 0) {
+            boss.state = "RECOVER";
+            boss.stateTimer = 45; // Longer pause to strike back
+            boss.vx = 0;
+        }
+    } else if (boss.state === "PORTAL_SHURIKEN") {
+        boss.vx = 0;
+        boss.color = "#9933ff";
+        if (boss.stateTimer === 24) {
+            playSound('throw');
+            let sx = boss.x + (boss.facingDir > 0 ? 40 : -10);
+            let sy = boss.y + 15;
+            voidExplosions.push({ x: sx, y: sy, timer: 20, isWhite: true, r: 18 });
+            let angle = Math.atan2((p.y + 20) - sy, (p.x + 15) - sx);
+            let spd = 5.0; // Slower shuriken (was 6.5)
+            blackDaggers.push({
+                x: sx,
+                y: sy,
+                vx: Math.cos(angle) * spd,
+                vy: Math.sin(angle) * spd,
+                isShuriken: true,
+                dmg: 0.75, // 0.75 dmg (was 1.0)
+                deflected: 0
+            });
+        }
+        if (boss.stateTimer <= 0) {
+            boss.state = "RECOVER";
+            boss.stateTimer = 40;
+        }
+    } else if (boss.state === "RECOVER") {
+        boss.vx = 0;
+        boss.color = "#9933ff";
+        if (boss.stateTimer <= 0) {
+            boss.state = "IDLE";
+            boss.stateTimer = 40 + Math.floor(Math.random() * 25);
+        }
+    }
+
+    boss.y = FLOOR - boss.height;
+}
+
+function updateTutorial() {
+    let p = players[0];
+    if (!p) return;
+
+    if (tutorialStep === 'WALK') {
+        for (let i = tutorialDots.length - 1; i >= 0; i--) {
+            let dot = tutorialDots[i];
+            if (Math.hypot((p.x + p.width/2) - dot.x, (p.y + p.height/2) - dot.y) < 45) {
+                tutorialDots.splice(i, 1);
+                playSound('lightChime');
+                voidExplosions.push({ x: dot.x, y: dot.y, timer: 15, isWhite: true, r: 16 });
+            }
+        }
+        if (tutorialDots.length === 0) {
+            tutorialStep = 'JUMP';
+            playSound('heal');
+            triggerShake(2, 5);
+            tutorialDots = [
+                { x: 320, y: FLOOR - 70 },
+                { x: 500, y: FLOOR - 140 },
+                { x: 680, y: FLOOR - 70 }
+            ];
+        }
+    } else if (tutorialStep === 'JUMP') {
+        for (let i = tutorialDots.length - 1; i >= 0; i--) {
+            let dot = tutorialDots[i];
+            if (Math.hypot((p.x + p.width/2) - dot.x, (p.y + p.height/2) - dot.y) < 45) {
+                tutorialDots.splice(i, 1);
+                playSound('lightChime');
+                voidExplosions.push({ x: dot.x, y: dot.y, timer: 15, isWhite: true, r: 16 });
+            }
+        }
+        if (tutorialDots.length === 0) {
+            tutorialStep = 'DASH';
+            playSound('heal');
+            triggerShake(2, 5);
+            tutorialDots = [
+                { x: 220, y: FLOOR - 20 },
+                { x: 500, y: FLOOR - 20 },
+                { x: 780, y: FLOOR - 20 }
+            ];
+        }
+    } else if (tutorialStep === 'DASH') {
+        for (let i = tutorialDots.length - 1; i >= 0; i--) {
+            let dot = tutorialDots[i];
+            if (Math.hypot((p.x + p.width/2) - dot.x, (p.y + p.height/2) - dot.y) < 45) {
+                tutorialDots.splice(i, 1);
+                playSound('lightChime');
+                voidExplosions.push({ x: dot.x, y: dot.y, timer: 15, isWhite: true, r: 16 });
+            }
+        }
+        if (tutorialDots.length === 0) {
+            tutorialStep = 'WALL';
+            playSound('heal');
+            triggerShake(2, 5);
+            tutorialDots = [
+                { x: 40, y: FLOOR - 130 },
+                { x: 40, y: FLOOR - 240 },
+                { x: ARENA_W - 40, y: FLOOR - 200 }
+            ];
+        }
+    } else if (tutorialStep === 'WALL') {
+        for (let i = tutorialDots.length - 1; i >= 0; i--) {
+            let dot = tutorialDots[i];
+            if (Math.hypot((p.x + p.width/2) - dot.x, (p.y + p.height/2) - dot.y) < 45) {
+                tutorialDots.splice(i, 1);
+                playSound('lightChime');
+                voidExplosions.push({ x: dot.x, y: dot.y, timer: 15, isWhite: true, r: 16 });
+            }
+        }
+        if (tutorialDots.length === 0) {
+            tutorialStep = 'ATTACK';
+            playSound('heal');
+            triggerShake(2, 5);
+            tutorialDots = [];
+            tutorialTargets = [
+                { x: 320, y: FLOOR - 30, r: 22 },
+                { x: 500, y: FLOOR - 130, r: 22 },
+                { x: 720, y: FLOOR - 30, r: 22 }
+            ];
+        }
+    } else if (tutorialStep === 'ATTACK') {
+        if (tutorialTargets.length === 0) {
+            tutorialStep = 'HEAL';
+            playSound('damage');
+            triggerShake(5, 10);
+            p.hp = 3; // Hurt player down to 3 HP
+            sharedHeals = 4; // 4 heal charges available
+            maxSharedHeals = 4;
+            tutorialDots = [];
+            tutorialTargets = [];
+        }
+    } else if (tutorialStep === 'HEAL') {
+        if (p.hp >= 5) {
+            tutorialStep = 'SPECIAL';
+            playSound('heal');
+            triggerShake(2, 5);
+            tutorialDots = [];
+            tutorialTargets = [
+                { x: 260, y: FLOOR - 100, r: 24 },
+                { x: 740, y: FLOOR - 100, r: 24 }
+            ];
+        }
+    } else if (tutorialStep === 'SPECIAL') {
+        if (tutorialTargets.length === 0) {
+            tutorialStep = 'BOSS';
+            playSound('demonRoar');
+            triggerShake(6, 15);
+            tutorialDots = [];
+            tutorialTargets = [];
+            boss.x = ARENA_W / 2;
+            boss.y = FLOOR - 50;
+            boss.hp = 7;
+            boss.maxHp = 7;
+            boss.color = "#9933ff";
+            boss.state = "IDLE";
+            boss.stateTimer = 60;
+            sharedHeals = 4;
+            maxSharedHeals = 4;
+            voidExplosions.push({ x: boss.x + 15, y: boss.y + 25, timer: 30, isWhite: false, r: 50 });
+        }
+    } else if (tutorialStep === 'BOSS') {
+        updateTutorialBoss();
+        if (boss.hp <= 0 && boss.state !== "DEFEATED") {
+            boss.state = "DEFEATED";
+            boss.hp = 0;
+            tutorialStep = 'COMPLETE';
+            tutorialSubStep = 210;
+            playSound('victory');
+            triggerShake(8, 20);
+            voidExplosions.push({ x: boss.x + 15, y: boss.y + 25, timer: 45, isWhite: true, r: 60 });
+            unlockAchievement('tutorial_grad');
+            let curU = getCurrentUser() || "Новичок";
+            sendTelegramNotification(
+                `🎓 <b>ОБУЧЕНИЕ ПРОЙДЕНО!</b>\n` +
+                `👤 <b>Игрок:</b> ${curU}\n` +
+                `⚔️ <i>Победил тренировочного манекена и изучил основы «Убежища»!</i>\n` +
+                `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+            );
+        }
+    } else if (tutorialStep === 'COMPLETE') {
+        tutorialSubStep--;
+        if (tutorialSubStep <= 0) {
+            isTutorial = false;
+            gameState = "MENU";
+            let overlay = document.getElementById("overlay");
+            if (overlay) overlay.style.display = "flex";
+        }
+    }
+}
+
 function update() {
     if (gameState !== "PLAYING") return;
 
-    if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") { 
-        checkPhaseTransition(); 
-    }
+    if (!isTutorial) {
+        if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") { 
+            checkPhaseTransition(); 
+        }
 
-    if (boss.state === "FREE_ROAM" || boss.state === "DEFEATED") {
-        if (typeof recordBattleResult === 'function') recordBattleResult(true);
+        if (boss.state === "FREE_ROAM" || boss.state === "DEFEATED") {
+            if (typeof recordBattleResult === 'function') recordBattleResult(true);
+        }
     }
 
     if (players.some(p => p.hp <= 0 && (!p.isDowned || p.downedTimer <= 0))) { 
@@ -598,7 +929,11 @@ function update() {
 
     updatePlayers();
     updateProjectiles();
-    updateBoss();
+    if (typeof isTutorial !== 'undefined' && isTutorial) {
+        updateTutorial();
+    } else {
+        updateBoss();
+    }
 
     let voidVignette = document.getElementById('void-vignette');
     if (voidVignette) {
@@ -1362,6 +1697,59 @@ function draw() {
         for (let cb of chaosBalls) {
             ctx.beginPath(); ctx.arc(cb.x, cb.y, cb.r, 0, Math.PI*2); ctx.fill();
         }
+        // Draw Tutorial Dots & Targets
+        if (typeof isTutorial !== 'undefined' && isTutorial) {
+            let now = performance.now();
+            if (tutorialDots && tutorialDots.length > 0) {
+                for (let dot of tutorialDots) {
+                    if (dot) {
+                        let pulse = Math.sin(now / 150) * 3;
+                        let r = 14 + pulse;
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.arc(dot.x, dot.y, r, 0, Math.PI * 2);
+                        ctx.fillStyle = "rgba(0, 255, 255, 0.35)";
+                        ctx.fill();
+
+                        ctx.beginPath();
+                        ctx.arc(dot.x, dot.y, 8, 0, Math.PI * 2);
+                        ctx.fillStyle = "#ffffff";
+                        ctx.shadowColor = "#00ffff";
+                        ctx.shadowBlur = 12;
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                }
+            }
+
+            if (tutorialTargets && tutorialTargets.length > 0) {
+                for (let trg of tutorialTargets) {
+                    ctx.save();
+                    ctx.translate(trg.x, trg.y);
+                    let pulse = Math.sin(now / 200) * 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, trg.r + pulse, 0, Math.PI * 2);
+                    ctx.strokeStyle = "#ff0077";
+                    ctx.lineWidth = 2.5;
+                    ctx.shadowColor = "#ff0077";
+                    ctx.shadowBlur = 10;
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, trg.r * 0.55, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(255, 50, 100, 0.4)";
+                    ctx.fill();
+
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(-trg.r - 4, 0); ctx.lineTo(trg.r + 4, 0);
+                    ctx.moveTo(0, -trg.r - 4); ctx.lineTo(0, trg.r + 4);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        }
     }
     
     ctx.filter = "none";
@@ -1421,22 +1809,30 @@ function draw() {
         ctx.textAlign = "center"; 
         ctx.shadowColor = "rgba(0,0,0,0.8)";
         ctx.shadowBlur = 10;
-        ctx.fillText("ПОБЕДА", GAME_WIDTH/2, 130);
+        ctx.fillText(isTutorial ? "ПОБЕДА!" : "ПОБЕДА", GAME_WIDTH/2, 130);
         
-        // Фраза звучит ТОЛЬКО в обычном режиме и пишется ТОЛЬКО ОДИН РАЗ (под «ПОБЕДА»):
-        if (!secretMode) {
-            ctx.font = "bold 22px Arial";
-            ctx.fillStyle = "#ffdd44";
+        if (typeof isTutorial !== 'undefined' && isTutorial) {
+            ctx.font = "bold 21px Arial";
+            ctx.fillStyle = "#00ff88";
+            ctx.shadowColor = "rgba(0,255,136,0.7)";
+            ctx.shadowBlur = 10;
+            ctx.fillText("Обучение пройдено, теперь ты готов(-а) к настоящему бою", GAME_WIDTH/2, 185);
+        } else {
+            // Фраза звучит ТОЛЬКО в обычном режиме и пишется ТОЛЬКО ОДИН РАЗ (под «ПОБЕДА»):
+            if (!secretMode) {
+                ctx.font = "bold 22px Arial";
+                ctx.fillStyle = "#ffdd44";
+                ctx.shadowColor = "rgba(0,0,0,0.9)";
+                ctx.shadowBlur = 8;
+                ctx.fillText("«Хах, считай это дружеским спаррингом!»", GAME_WIDTH/2, 175);
+            }
+
+            ctx.font = "bold 18px Arial";
+            ctx.fillStyle = "#ffffff";
             ctx.shadowColor = "rgba(0,0,0,0.9)";
             ctx.shadowBlur = 8;
-            ctx.fillText("«Хах, считай это дружеским спаррингом!»", GAME_WIDTH/2, 175);
+            ctx.fillText("Нажмите 'R' для новой битвы", GAME_WIDTH/2, secretMode ? 185 : 215);
         }
-
-        ctx.font = "bold 18px Arial";
-        ctx.fillStyle = "#ffffff";
-        ctx.shadowColor = "rgba(0,0,0,0.9)";
-        ctx.shadowBlur = 8;
-        ctx.fillText("Нажмите 'R' для новой битвы", GAME_WIDTH/2, secretMode ? 185 : 215);
 
         ctx.restore();
         ctx.textAlign = "left"; 
@@ -1444,7 +1840,7 @@ function draw() {
 
     if (gameState === "PLAYING") {
         drawMasks(); 
-        if (!activeCinematic && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM" && !boss.state.startsWith("L_CLIMB")) { 
+        if (!activeCinematic && !isTutorial && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM" && !boss.state.startsWith("L_CLIMB")) { 
             ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(GAME_WIDTH/2 - 200, 375, 400, 10); 
             let hpBarColor = "red";
             let isLightGlow = (boss.lightInfected > 0 || boss.hunterInfected > 0);
@@ -1495,10 +1891,127 @@ function draw() {
 
             ctx.restore();
         }
+
+        if (typeof isTutorial !== 'undefined' && isTutorial) {
+            drawTutorialHUD();
+        }
     } else if (gameState === "GAMEOVER") { 
         ctx.fillStyle = "red"; ctx.font = "40px Arial"; ctx.textAlign = "center"; ctx.fillText("ВЫ ПОГИБЛИ", GAME_WIDTH/2, 180); 
         ctx.font = "20px Arial"; ctx.fillText("Нажмите 'R' для рестарта", GAME_WIDTH/2, 220); ctx.textAlign = "left";
     }
+}
+
+function drawTutorialHUD() {
+    if (!isTutorial) return;
+
+    ctx.save();
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    let title = "";
+    let desc = "";
+    let pKey = (action) => {
+        if (p1InputType === 'GAMEPAD') {
+            if (action === 'left' || action === 'right') return 'D-Pad / Стик';
+            if (action === 'jump') return 'Кнопка A (✕)';
+            if (action === 'attack') return 'Кнопка X (▢)';
+            if (action === 'heal') return 'Кнопка B (◯)';
+            if (action === 'dash') return 'Кнопка RT / ZR';
+            if (action === 'special') return 'Кнопка RB (R1)';
+            return 'Геймпад';
+        }
+        if (p1InputType === 'TOUCH') {
+            if (action === 'left' || action === 'right') return 'Экранный джойстик';
+            if (action === 'jump') return '[ПРЫЖОК]';
+            if (action === 'attack') return '[АТАКА]';
+            if (action === 'heal') return '[ХИЛ]';
+            if (action === 'dash') return '[РЫВОК]';
+            if (action === 'special') return '[СПЕЦ]';
+            return 'Сенсор';
+        }
+        let scheme = (p1InputType === 'KEYBOARD_2' || p1InputType === 'KEYBOARD_SHOOTER') ? userControls.SCHEME_2 : userControls.SCHEME_1;
+        return '[' + formatKeyName(scheme[action]) + ']';
+    };
+
+    if (tutorialStep === 'WALK') {
+        title = "ШАГ 1/8: ДВИЖЕНИЕ";
+        desc = `Используй ${pKey('left')} и ${pKey('right')} для ходьбы. Собери сферы на арене!`;
+    } else if (tutorialStep === 'JUMP') {
+        title = "ШАГ 2/8: ПРЫЖОК И ПЛАТФОРМЫ";
+        desc = `Нажми ${pKey('jump')} для прыжка. Запрыгни на платформу и собери сферы!`;
+    } else if (tutorialStep === 'DASH') {
+        title = "ШАГ 3/8: БЫСТРЫЙ РЫВОК";
+        desc = `Нажми ${pKey('dash')} для стремительного рывка вперед. Собери сферы рывком!`;
+    } else if (tutorialStep === 'WALL') {
+        title = "ШАГ 4/8: КАРАБКАНИЕ ПО СТЕНАМ";
+        desc = `Прыгай в сторону стены и нажимай ${pKey('jump')}, чтобы отталкиваться выше!`;
+    } else if (tutorialStep === 'ATTACK') {
+        title = "ШАГ 5/8: БОЕВОЙ УДАР КЛИНКОМ";
+        desc = `Нажми ${pKey('attack')} для удара клинком. Разбей 3 тренировочные мишени!`;
+    } else if (tutorialStep === 'HEAL') {
+        title = "ШАГ 6/8: ИСЦЕЛЕНИЕ";
+        desc = `Осторожно, ты ранен! Зажми и удерживай ${pKey('heal')}, чтобы восполнить здоровье (доступно 4 заряда).`;
+    } else if (tutorialStep === 'SPECIAL') {
+        title = "ШАГ 7/8: СПЕЦ-АТАКА (СЮРИКЕНЫ)";
+        desc = `Нажми ${pKey('special')}, чтобы метнуть сюрикены. Сбей 2 парящие мишени!`;
+    } else if (tutorialStep === 'BOSS') {
+        title = "ШАГ 8/8: ТРЕНИРОВОЧНЫЙ БОЙ";
+        desc = "ФИНАЛ: Победи тренировочного манекена (7 HP)! Уклоняйся от рывков и сюрикенов.";
+    } else if (tutorialStep === 'COMPLETE') {
+        title = "🎉 ОБУЧЕНИЕ ЗАВЕРШЕНО!";
+        desc = "Ты освоил все основы! Получено достижение «Выпускник Убежища» 🎓";
+    }
+
+    // Glowing Cyan Top Banner
+    let bannerW = 680;
+    let bannerH = 54;
+    let bannerX = (GAME_WIDTH - bannerW) / 2;
+    let bannerY = 14;
+
+    ctx.fillStyle = "rgba(10, 20, 35, 0.9)";
+    ctx.strokeStyle = "#00ffff";
+    ctx.lineWidth = 2;
+    ctx.shadowColor = "#00ffff";
+    ctx.shadowBlur = 12;
+
+    ctx.beginPath();
+    ctx.roundRect(bannerX, bannerY, bannerW, bannerH, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.textAlign = "center";
+    ctx.font = "bold 15px Arial";
+    ctx.fillStyle = "#00ffff";
+    ctx.fillText(title, GAME_WIDTH / 2, bannerY + 22);
+
+    ctx.font = "13px Arial";
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillText(desc, GAME_WIDTH / 2, bannerY + 42);
+
+    // If training boss is active, draw its purple HP bar
+    if (tutorialStep === 'BOSS' && boss.state !== "INACTIVE") {
+        let bBarW = 260;
+        let bBarH = 10;
+        let bBarX = (GAME_WIDTH - bBarW) / 2;
+        let bBarY = 74;
+
+        ctx.fillStyle = "rgba(20, 10, 35, 0.8)";
+        ctx.fillRect(bBarX - 2, bBarY - 2, bBarW + 4, bBarH + 4);
+
+        let curW = (Math.max(0, boss.hp) / boss.maxHp) * bBarW;
+        ctx.fillStyle = "#9933ff";
+        ctx.shadowColor = "#bb66ff";
+        ctx.shadowBlur = 8;
+        ctx.fillRect(bBarX, bBarY, curW, bBarH);
+        ctx.shadowBlur = 0;
+
+        ctx.font = "bold 11px Arial";
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(`Тренировочный Манекен: ${Math.max(0, Math.ceil(boss.hp))} / 7 HP`, GAME_WIDTH / 2, bBarY + 22);
+    }
+
+    ctx.restore();
 }
 
 // Fixed timestep loop

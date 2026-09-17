@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Убежище</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=29">
 </head>
 <body>
     <audio id="lModeMusic" src="lost_lace.mp3" loop></audio>
@@ -73,6 +73,7 @@
         <!-- 2. MODE SELECT (1P / 2P) -->
         <div id="mode-select" style="display: none;">
             <div style="font-size: 24px; margin-bottom: 15px;">ВЫБЕРИТЕ РЕЖИМ</div>
+            <div class="menu-btn btn-tutorial-green" onclick="startTutorial()">🎓 ОБУЧЕНИЕ (Основы боя)</div>
             <div class="menu-btn" onclick="selectMode(1)">1 ИГРОК</div>
             <div class="menu-btn" onclick="selectMode(2)">2 ИГРОКА</div>
             <div style="font-size: 12px; color: gray; margin-top: 15px;">(Подключите геймпад PS4/Xbox/Nintendo и нажмите любую кнопку)</div>
@@ -224,16 +225,6 @@
             <div id="admin-toast" style="display: none; color: #00ff66; font-size: 12px; margin-bottom: 10px; font-weight: bold;"></div>
             <div id="admin-cards-list" style="max-height: 250px; overflow-y: auto; text-align: left; padding: 4px;"></div>
         </div>
-
-        <!-- 9. RESET MODAL CONFIRMATION -->
-        <div id="reset-modal">
-            <div style="font-size: 22px; color: #ff3344; font-weight: bold; margin-bottom: 12px;">ВЫ УВЕРЕНЫ?</div>
-            <div style="font-size: 14px; color: #ddd; line-height: 1.5;">Все сохранения, статистика побед/поражений и кастомные настройки управления будут полностью удалены!</div>
-            <div class="reset-btn-group">
-                <button class="reset-btn-yes" onclick="confirmResetAllData()">ДА, СБРОСИТЬ</button>
-                <button class="reset-btn-no" onclick="hideResetModal()">НЕТ, НАЗАД</button>
-            </div>
-        </div>
     </div>
     
     <div id="controls-container">
@@ -244,12 +235,50 @@
         </div>
     </div>
 
+    <!-- Newcomer Tutorial Prompt Modal -->
+    <div id="tutorial-prompt-modal" style="display: none; position: fixed; inset: 0; background: rgba(5, 10, 20, 0.88); backdrop-filter: blur(6px); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #0f172a; border: 2px solid #00ffff; box-shadow: 0 0 30px rgba(0,255,255,0.45); border-radius: 12px; max-width: 440px; width: 100%; padding: 24px; text-align: center; color: #e2e8f0;">
+            <div style="font-size: 36px; margin-bottom: 8px;">🎓</div>
+            <div style="font-size: 20px; font-weight: bold; color: #00ffff; margin-bottom: 10px;">Добро пожаловать в «Убежище»!</div>
+            <div style="font-size: 14px; color: #cbd5e1; line-height: 1.5; margin-bottom: 22px;">
+                Ты здесь впервые! Рекомендуем пройти тренировочный курс, чтобы освоить управление, удары клинком, прыжки по стенам и одолеть своего первого тренировочного фантома.
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button class="menu-btn btn-tutorial-green" style="flex: 1; padding: 10px 14px; margin: 0; font-size: 13px;" onclick="startTutorialFromPrompt()">🎓 Пройти обучение</button>
+                <button class="menu-btn" style="flex: 1; border-color: #64748b; color: #94a3b8; padding: 10px 14px; margin: 0; font-size: 13px;" onclick="closeTutorialPromptModal()">⚔️ Я уже мастер</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tutorial Controls Selection Modal -->
+    <div id="tutorial-layout-modal" style="display: none; position: fixed; inset: 0; background: rgba(5, 10, 20, 0.9); backdrop-filter: blur(8px); z-index: 1050; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #0f172a; border: 2px solid #00ff88; box-shadow: 0 0 35px rgba(0,255,136,0.45); border-radius: 12px; max-width: 440px; width: 100%; padding: 24px; text-align: center; color: #e2e8f0; position: relative;">
+            <div onclick="closeTutorialLayoutModal()" style="position: absolute; top: 12px; right: 16px; font-size: 20px; color: #64748b; cursor: pointer;">✕</div>
+            <div style="font-size: 32px; margin-bottom: 6px;">🎮</div>
+            <div style="font-size: 19px; font-weight: bold; color: #00ff88; margin-bottom: 6px; letter-spacing: 1px;">ВЫБЕРИТЕ УПРАВЛЕНИЕ</div>
+            <div style="font-size: 13px; color: #94a3b8; line-height: 1.4; margin-bottom: 18px;">
+                С каким управлением вы хотите пройти обучение?
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button class="menu-btn" style="border-color: #00ff88; color: #00ff88; margin: 0; padding: 12px; font-size: 14px;" onclick="startTutorialWithInput('KEYBOARD_1')">
+                    ⌨️ Клавиатура (WASD / Стрелки + C, V, F)
+                </button>
+                <button class="menu-btn" style="border-color: #38bdf8; color: #38bdf8; margin: 0; padding: 12px; font-size: 14px;" onclick="startTutorialWithInput('GAMEPAD')">
+                    🎮 Джойстик (Геймпад PS / Xbox / Switch)
+                </button>
+                <button class="menu-btn" style="border-color: #f59e0b; color: #f59e0b; margin: 0; padding: 12px; font-size: 14px;" onclick="startTutorialWithInput('TOUCH')">
+                    📱 Сенсор (Экранные кнопки)
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=25"></script>
-    <script src="audio.js?v=25"></script>
-    <script src="controls.js?v=25"></script>
-    <script src="player.js?v=25"></script>
-    <script src="boss.js?v=25"></script>
-    <script src="game.js?v=25"></script>
+    <script src="constants.js?v=29"></script>
+    <script src="audio.js?v=29"></script>
+    <script src="controls.js?v=29"></script>
+    <script src="player.js?v=29"></script>
+    <script src="boss.js?v=29"></script>
+    <script src="game.js?v=30"></script>
 </body>
 </html>

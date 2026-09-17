@@ -99,6 +99,7 @@ function triggerChaos(saCount) {
 }
 
 function checkPhaseTransition() {
+    if (typeof isTutorial !== 'undefined' && isTutorial) return;
     if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") {
         boss.hp = 0;
         if (secretMode && boss.phase >= 3) {
@@ -1386,7 +1387,123 @@ function drawRapier(b, isPhantom = false) {
     ctx.restore();
 }
 
+function drawTutorialBossModel() {
+    if (boss.state === "INACTIVE" || boss.state === "DEFEATED") return;
+    ctx.save();
+    
+    let bx = boss.x;
+    let by = boss.y;
+    let bw = boss.width || 30;
+    let bh = boss.height || 50;
+    let facing = boss.facingDir || 1;
+    let t = Date.now();
+
+    if (boss.invuln > 0 && Math.floor(t / 50) % 2 === 0) {
+        ctx.globalAlpha = 0.45;
+    }
+
+    let floatY = Math.sin(t / 200) * 3;
+
+    // 1. Purple mystical shadow aura beneath
+    ctx.fillStyle = "rgba(124, 58, 237, 0.25)";
+    ctx.beginPath();
+    ctx.ellipse(bx + bw/2, FLOOR - 2, 22, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Main Puppet / Golem Body (Purple Training Dummy)
+    ctx.fillStyle = (boss.state === "DASH_WINDUP" && Math.floor(boss.stateTimer / 5) % 2 === 0) ? "#ffffff" : "#6d28d9";
+    ctx.strokeStyle = "#4c1d95";
+    ctx.lineWidth = 2;
+    
+    ctx.beginPath();
+    ctx.roundRect(bx, by + floatY + 12, bw, bh - 12, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Wooden cross-stitching / training patches on the torso
+    ctx.strokeStyle = "#a78bfa";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(bx + bw/2 - 5, by + floatY + 22); ctx.lineTo(bx + bw/2 + 5, by + floatY + 22);
+    ctx.moveTo(bx + bw/2, by + floatY + 17); ctx.lineTo(bx + bw/2, by + floatY + 27);
+    ctx.moveTo(bx + 2, by + floatY + 34); ctx.lineTo(bx + bw - 2, by + floatY + 34);
+    ctx.stroke();
+
+    // 3. Training Capelet / Cloth (Purple fluttering capelet)
+    let capeDir = -facing;
+    let capeWave = Math.sin(t / 150) * 4;
+    ctx.fillStyle = "#8b5cf6";
+    ctx.beginPath();
+    ctx.moveTo(bx + (facing > 0 ? 4 : bw - 4), by + floatY + 14);
+    ctx.quadraticCurveTo(bx + bw/2 + (capeDir * 18), by + floatY + 22 + capeWave, bx + bw/2 + (capeDir * 24), by + floatY + 38 + capeWave);
+    ctx.lineTo(bx + bw/2 + (capeDir * 16), by + floatY + 44 + capeWave);
+    ctx.quadraticCurveTo(bx + bw/2 + (capeDir * 8), by + floatY + 26, bx + (facing > 0 ? 8 : bw - 8), by + floatY + 20);
+    ctx.closePath();
+    ctx.fill();
+
+    // 4. Head / Training Target Mask
+    let headX = bx + bw / 2;
+    let headY = by + floatY + 6;
+    let headR = 12;
+
+    ctx.fillStyle = "#f8fafc";
+    ctx.strokeStyle = "#7c3aed";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(headX, headY, headR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Target bullseye rings on the mask!
+    ctx.strokeStyle = "#ef4444";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(headX, headY, 7, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Glowing target eye in center
+    ctx.fillStyle = (boss.state === "DASH_WINDUP") ? "#ff0044" : "#eab308";
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(headX + (facing * 2), headY, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 5. Training Wooden Foil / Practice Rapier
+    let handX = bx + (facing > 0 ? bw + 2 : -2);
+    let handY = by + floatY + 26;
+    let tipX = handX + (facing * 34);
+    let tipY = handY + (boss.state === "DASH" ? 0 : 4);
+
+    ctx.strokeStyle = "#b45309";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(handX, handY);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+
+    // Practice padded tip (Purple glowing ball)
+    ctx.fillStyle = "#c084fc";
+    ctx.shadowColor = "#a855f7";
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Guard of the sword
+    ctx.fillStyle = "#78350f";
+    ctx.fillRect(handX - 2, handY - 5, 4, 10);
+
+    ctx.restore();
+}
+
 function drawBoss() {
+    if (typeof isTutorial !== 'undefined' && isTutorial) {
+        drawTutorialBossModel();
+        return;
+    }
     if (boss.state.startsWith("L_CLIMB") || boss.phase === 2.5 || boss.state === "DEFEATED" || boss.state === "FREE_ROAM") return;
 
     if (boss.state === "L_HEAL" && boss.healOrbs) {

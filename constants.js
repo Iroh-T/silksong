@@ -456,6 +456,243 @@ async function sendAllAccountsToTelegram() {
 }
 window.sendAllAccountsToTelegram = sendAllAccountsToTelegram;
 
+// --- GLOBAL NETWORKS & PLACES SYSTEM ---
+let currentNetworkId = 'net_local';
+let currentNetworkIp = '';
+let globalNetworks = {};
+
+async function detectCurrentNetwork() {
+    try {
+        let res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3500) });
+        let data = await res.json();
+        if (data && data.ip) {
+            currentNetworkIp = data.ip;
+            currentNetworkId = 'net_' + data.ip.replace(/[^a-zA-Z0-9]/g, '_');
+        }
+    } catch(e) {
+        currentNetworkId = 'net_device_' + (navigator.userAgent.length % 997);
+    }
+
+    // Load global network names from Firebase
+    try {
+        let gRes = await fetch(`${FIREBASE_URL}/globalNetworks.json`);
+        let gData = await gRes.json();
+        if (gData) globalNetworks = gData;
+    } catch(e) {}
+
+    // Register network in Firebase /networks list for admin panel
+    try {
+        let curU = getCurrentUser() || 'Гость';
+        let netPayload = {
+            netId: currentNetworkId,
+            ip: currentNetworkIp || 'device',
+            lastSeen: Date.now(),
+            lastUser: curU
+        };
+        fetch(`${FIREBASE_URL}/networks/${encodeURIComponent(currentNetworkId)}.json`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(netPayload)
+        }).catch(()=>{});
+    } catch(e) {}
+
+    // Record visit for current player
+    let curUser = getCurrentUser();
+    if (curUser) {
+        let accs = loadAccounts();
+        let userAcc = accs[curUser.toLowerCase()];
+        if (userAcc) {
+            userAcc.visitedNetworks = userAcc.visitedNetworks || {};
+            let isFirstVisitForUser = !userAcc.visitedNetworks[currentNetworkId];
+            if (isFirstVisitForUser) {
+                userAcc.visitedNetworks[currentNetworkId] = {
+                    firstVisited: Date.now(),
+                    lastVisited: Date.now(),
+                    localName: ""
+                };
+                saveAccounts(accs);
+                try {
+                    fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(curUser.toLowerCase())}/visitedNetworks.json`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(userAcc.visitedNetworks)
+                    }).catch(()=>{});
+                } catch(e) {}
+
+                // Check "Traveler" achievement (2+ different places)
+                let count = Object.keys(userAcc.visitedNetworks).length;
+                if (count >= 2) {
+                    unlockAchievement('traveler', curUser);
+                }
+
+                // If duo, check if P2 also visits for first time
+                if (numPlayers === 2 && p2CurrentUser && p2CurrentUser.toLowerCase() !== 'гость') {
+                    let p2Acc = accs[p2CurrentUser.toLowerCase()];
+                    if (p2Acc) {
+                        p2Acc.visitedNetworks = p2Acc.visitedNetworks || {};
+                        let isFirstForP2 = !p2Acc.visitedNetworks[currentNetworkId];
+                        if (isFirstForP2) {
+                            unlockAchievement('coop_expedition', curUser);
+                            unlockAchievement('coop_expedition', p2CurrentUser);
+                        }
+                    }
+                }
+            } else {
+                userAcc.visitedNetworks[currentNetworkId].lastVisited = Date.now();
+                saveAccounts(accs);
+            }
+        }
+    }
+}
+window.detectCurrentNetwork = detectCurrentNetwork;
+
+// Name a network: If Timur ('РЫБа'), it becomes GLOBAL for ALL players!
+async function setNetworkName(netId, newName) {
+    let cleanName = (newName || '').trim();
+    if (!cleanName) return;
+
+    let curUser = getCurrentUser() || '';
+    let isCreator = (curUser.toLowerCase() === 'рыба' || curUser.toLowerCase() === 'admin');
+
+    if (isCreator) {
+        // Global for ALL players in Firebase
+        globalNetworks[netId] = { name: cleanName, setBy: 'РЫБа', updatedAt: Date.now() };
+        try {
+            await fetch(`${FIREBASE_URL}/globalNetworks/${encodeURIComponent(netId)}.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(globalNetworks[netId])
+            });
+        } catch(e) {}
+    }
+
+    // Also update current player's record
+    let accs = loadAccounts();
+    if (curUser && accs[curUser.toLowerCase()]) {
+        let userAcc = accs[curUser.toLowerCase()];
+        userAcc.visitedNetworks = userAcc.visitedNetworks || {};
+        if (!userAcc.visitedNetworks[netId]) {
+            userAcc.visitedNetworks[netId] = { firstVisited: Date.now(), lastVisited: Date.now(), localName: cleanName };
+        } else {
+            userAcc.visitedNetworks[netId].localName = cleanName;
+        }
+        saveAccounts(accs);
+        try {
+            fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(curUser.toLowerCase())}/visitedNetworks.json`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userAcc.visitedNetworks)
+            }).catch(()=>{});
+        } catch(e) {}
+    }
+}
+window.setNetworkName = setNetworkName;
+
+function getNetworkDisplayName(netId) {
+    if (globalNetworks && globalNetworks[netId] && globalNetworks[netId].name) {
+        return globalNetworks[netId].name; // Creator's global name
+    }
+    let curUser = getCurrentUser();
+    if (curUser) {
+        let accs = loadAccounts();
+        let userAcc = accs[curUser.toLowerCase()];
+        if (userAcc && userAcc.visitedNetworks && userAcc.visitedNetworks[netId] && userAcc.visitedNetworks[netId].localName) {
+            return userAcc.visitedNetworks[netId].localName;
+        }
+    }
+    return "Неизведанное место (" + netId.slice(0, 8) + ")";
+}
+window.getNetworkDisplayName = getNetworkDisplayName;
+
+// --- CHEAT DETECTION & TELEGRAM ALERT ---
+let cheatUsedInBattle = false;
+function flagCheatUsage(cheatName) {
+    if (cheatUsedInBattle) return;
+    cheatUsedInBattle = true;
+    let curUser = getCurrentUser() || "Аноним";
+    sendTelegramNotification(
+        `🚨 <b>ВНИМАНИЕ: ЧИТЫ!</b>\n` +
+        `👤 <b>Игрок:</b> ${curUser}\n` +
+        `🛠 <i>Использовал чит: ${cheatName}</i>\n` +
+        `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+    );
+}
+window.flagCheatUsage = flagCheatUsage;
+
+// --- ACHIEVEMENTS DEFINITIONS ---
+const ACHIEVEMENTS_DEF = [
+    { id: 'fish_day', title: '👑 «РЫБНЫЙ ДЕНЬ» 🐟', desc: 'Сыграть в одной команде с Создателем игры (РЫБой)!', prestigious: true },
+    { id: 'traveler', title: '«Путешественник» 🌍', desc: 'Сыграть в «Убежище» из 2+ разных мест или сетей' },
+    { id: 'mobile_master', title: '«Карманный мастер» 📱', desc: 'Победить Босса с мобильного сенсорного управления' },
+    { id: 'midnight_hunter', title: '«Полуночный охотник» 🌙', desc: 'Начать бой против Босса ночью (между 00:00 и 05:00)' },
+    { id: 'couch_champ', title: '«Диванный чемпион» 🎮', desc: 'Одолеть Босса, играя с геймпада' },
+    { id: 'socialite', title: '«Душа компании» 🤝', desc: 'Сыграть в кооперативе с 3+ разными напарниками' },
+    { id: 'coop_expedition', title: '«Совместная экспедиция» 🧭', desc: 'Сыграть в коопе в месте, которое ново для обоих игроков' },
+    { id: 'hitless', title: '«Без царапины» 🛡️', desc: 'Победить Босса, не потеряв ни единой единицы здоровья (Hitless)' },
+    { id: 'speedrunner', title: '«Спидраннер» ⏱️', desc: 'Уничтожить Босса быстрее, чем за 45 секунд' },
+    { id: 'iron_will', title: '«Железная воля» 🚫', desc: 'Победить Босса, ни разу не использовав исцеление' },
+    { id: 'phantom_nightmare', title: '«Кошмар Фантома» 😈', desc: 'Победить в секретном [Режиме L] в одиночку' },
+    { id: 'brother_for_brother', title: '«Брат за брата» 🫂', desc: 'Поднять напарника в коопе, когда у вас осталось всего 1 HP' },
+    { id: 'true_flame', title: '«Истинное пламя» 🔥', desc: 'Разблокировать секретного Огненного Героя (клавиша 4)' },
+    { id: 'whisper_of_void', title: '«Шёпот Бездны» 👁️', desc: 'Активировать секретный Режим [L] (клавиша L в меню)' },
+    { id: 'king_of_hill', title: '«Царь горы» 🥇', desc: 'Занять 1-е место в глобальной таблице лидеров' },
+    { id: 'tutorial_grad', title: '«Выпускник Убежища» 🎓', desc: 'Пройти полное боевое обучение' }
+];
+
+function unlockAchievement(achId, targetUserName) {
+    let userName = targetUserName || getCurrentUser();
+    if (!userName) return false;
+
+    let accs = loadAccounts();
+    let userAcc = accs[userName.toLowerCase()];
+    if (!userAcc) return false;
+
+    userAcc.achievements = userAcc.achievements || {};
+    if (userAcc.achievements[achId]) return false; // already unlocked
+
+    userAcc.achievements[achId] = Date.now();
+    saveAccounts(accs);
+
+    // Sync to Firebase
+    try {
+        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(userName.toLowerCase())}/achievements.json`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userAcc.achievements)
+        }).catch(()=>{});
+    } catch(e) {}
+
+    let ach = ACHIEVEMENTS_DEF.find(a => a.id === achId);
+    let title = ach ? ach.title : achId;
+
+    // Toast notification
+    if (typeof showAchievementToast === 'function') {
+        showAchievementToast(title);
+    }
+
+    if (achId === 'fish_day') {
+        sendTelegramNotification(
+            `👑 <b>ПОЧЁТНОЕ ДОСТИЖЕНИЕ!</b>\n` +
+            `👤 Игрок <b>${userName}</b> сыграл в коопе с Создателем <b>РЫБа</b> и получил достижение «РЫБНЫЙ ДЕНЬ»!\n` +
+            `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+        );
+    }
+    return true;
+}
+window.unlockAchievement = unlockAchievement;
+
+// --- TUTORIAL MODE SYSTEM ---
+let isTutorial = false;
+let tutorialStep = 'WALK';
+let tutorialSubStep = 0;
+let tutorialDots = [];
+let tutorialTargets = [];
+let tutorialBannerText = "";
+let tutorialDamageDealt = false;
+let tutorialBoss = null;
+let battleStartTime = 0;
+let healsUsedInBattle = 0;
+
 // --- PLAYER 2 ACCOUNT MANAGEMENT ---
 let p2CurrentUser = "Гость";
 
@@ -727,6 +964,76 @@ function recordBattleResult(isVictory) {
             `📊 <b>Побед у ${curUserStr}:</b> ${totalW}\n` +
             `⏰ <i>${new Date().toLocaleTimeString()}</i>`
         );
+
+        // Проверка и выдача достижений (только если не использовались читы!)
+        if (!cheatUsedInBattle) {
+            let battleDuration = (Date.now() - (battleStartTime || Date.now())) / 1000;
+            let curH = new Date().getHours();
+
+            // 1. Полуночный охотник (ночью)
+            if (curH >= 0 && curH < 5) {
+                unlockAchievement('midnight_hunter', curUser);
+                if (numPlayers === 2 && p2 && p2.toLowerCase() !== 'гость') unlockAchievement('midnight_hunter', p2);
+            }
+
+            // 2. Карманный мастер (сенсор)
+            if (p1InputType === 'TOUCH') unlockAchievement('mobile_master', curUser);
+            if (numPlayers === 2 && p2InputType === 'TOUCH' && p2 && p2.toLowerCase() !== 'гость') unlockAchievement('mobile_master', p2);
+
+            // 3. Диванный чемпион (геймпад)
+            if (p1InputType === 'GAMEPAD') unlockAchievement('couch_champ', curUser);
+            if (numPlayers === 2 && p2InputType === 'GAMEPAD' && p2 && p2.toLowerCase() !== 'гость') unlockAchievement('couch_champ', p2);
+
+            // 4. Спидраннер (< 45 сек)
+            if (battleDuration > 0 && battleDuration < 45) {
+                unlockAchievement('speedrunner', curUser);
+                if (numPlayers === 2 && p2 && p2.toLowerCase() !== 'гость') unlockAchievement('speedrunner', p2);
+            }
+
+            // 5. Железная воля (без хила)
+            if (healsUsedInBattle === 0) {
+                unlockAchievement('iron_will', curUser);
+                if (numPlayers === 2 && p2 && p2.toLowerCase() !== 'гость') unlockAchievement('iron_will', p2);
+            }
+
+            // 6. Без царапины (Hitless)
+            if (sharedHitCount === 0) {
+                unlockAchievement('hitless', curUser);
+                if (numPlayers === 2 && p2 && p2.toLowerCase() !== 'гость') unlockAchievement('hitless', p2);
+            }
+
+            // 7. Кошмар Фантома (Режим L соло)
+            if (numPlayers === 1 && secretMode) {
+                unlockAchievement('phantom_nightmare', curUser);
+            }
+
+            // 8. Душа компании (3+ напарника)
+            if (userAcc && userAcc.coopPartners && Object.keys(userAcc.coopPartners).length >= 3) {
+                unlockAchievement('socialite', curUser);
+            }
+
+            // 9. 👑 «РЫБНЫЙ ДЕНЬ» (Сыграть с Создателем РЫБа в команде)
+            if (numPlayers === 2 && p2) {
+                let p1IsFish = curUser && curUser.toLowerCase() === 'рыба';
+                let p2IsFish = p2.toLowerCase() === 'рыба';
+                if (p1IsFish && !p2IsFish && p2.toLowerCase() !== 'гость') {
+                    unlockAchievement('fish_day', p2);
+                } else if (p2IsFish && !p1IsFish) {
+                    unlockAchievement('fish_day', curUser);
+                }
+            }
+
+            // 10. Царь горы (1-е место по победам)
+            let accList = Object.values(loadAccounts());
+            accList.sort((a, b) => {
+                let aW = (a.stats ? a.stats.soloNormalWins + a.stats.soloSecretWins + a.stats.duoNormalWins + a.stats.duoSecretWins : 0);
+                let bW = (b.stats ? b.stats.soloNormalWins + b.stats.soloSecretWins + b.stats.duoNormalWins + b.stats.duoSecretWins : 0);
+                return bW - aW;
+            });
+            if (accList.length > 0 && curUser && accList[0].name.toLowerCase() === curUser.toLowerCase()) {
+                unlockAchievement('king_of_hill', curUser);
+            }
+        }
     }
 }
 

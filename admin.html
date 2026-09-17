@@ -234,13 +234,38 @@
         </div>
     </div>
 
-    <div class="actions">
-        <button class="btn btn-cyan" onclick="loadFirebaseData()">🔄 Обновить</button>
-        <button class="btn btn-gold" onclick="sendRosterToTelegram()">📤 В Telegram</button>
+    <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+        <button class="btn btn-gold" id="tab-btn-players" onclick="switchAdminTab('players')">👥 Игроки и пароли</button>
+        <button class="btn" id="tab-btn-networks" onclick="switchAdminTab('networks')">🌐 Названия сетей (для всех)</button>
     </div>
 
-    <div id="cards-container" class="cards-list">
-        <div class="loading">Загрузка данных из облака...</div>
+    <div id="players-view">
+        <div class="actions">
+            <button class="btn btn-cyan" onclick="loadFirebaseData()">🔄 Обновить</button>
+            <button class="btn btn-gold" onclick="sendRosterToTelegram()">📤 В Telegram</button>
+        </div>
+
+        <div id="cards-container" class="cards-list">
+            <div class="loading">Загрузка данных из облака...</div>
+        </div>
+    </div>
+
+    <div id="networks-view" style="display: none;">
+        <div class="actions">
+            <button class="btn btn-cyan" onclick="loadNetworksData()">🔄 Обновить сети</button>
+        </div>
+
+        <!-- Manual add form -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
+            <div style="font-size: 14px; font-weight: bold; color: #00ffff; margin-bottom: 10px;">➕ Назвать сеть вручную для всех игроков</div>
+            <input type="text" id="manual-net-id" placeholder="ID сети (напр: net_178_62_20_1)" style="width: 100%; padding: 8px 10px; background: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">
+            <input type="text" id="manual-net-name" placeholder="Официальное имя (напр: Дом Тимура, Школа)" style="width: 100%; padding: 8px 10px; background: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; font-size: 13px; margin-bottom: 10px;">
+            <button class="btn btn-gold" style="width: 100%;" onclick="saveManualNetwork()">💾 Сохранить глобально для всех</button>
+        </div>
+
+        <div id="networks-list" class="cards-list">
+            <div class="loading">Загрузка списка сетей...</div>
+        </div>
     </div>
 
     <div id="toast" class="toast">✅ Сообщение отправлено!</div>
@@ -393,6 +418,162 @@
                 }
             } catch(e) {
                 showToast("Ошибка сети: " + e.message);
+            }
+        }
+
+        function switchAdminTab(tab) {
+            let pView = document.getElementById('players-view');
+            let nView = document.getElementById('networks-view');
+            let pBtn = document.getElementById('tab-btn-players');
+            let nBtn = document.getElementById('tab-btn-networks');
+
+            if (tab === 'players') {
+                pView.style.display = 'block';
+                nView.style.display = 'none';
+                pBtn.className = 'btn btn-gold';
+                nBtn.className = 'btn';
+            } else {
+                pView.style.display = 'none';
+                nView.style.display = 'block';
+                pBtn.className = 'btn';
+                nBtn.className = 'btn btn-gold';
+                loadNetworksData();
+            }
+        }
+
+        async function loadNetworksData() {
+            let container = document.getElementById('networks-list');
+            container.innerHTML = '<div class="loading">Загрузка сетей из Firebase...</div>';
+
+            try {
+                let [netRes, gNetRes] = await Promise.all([
+                    fetch(`${FIREBASE_URL}/networks.json`),
+                    fetch(`${FIREBASE_URL}/globalNetworks.json`)
+                ]);
+                let nets = await netRes.json() || {};
+                let gNets = await gNetRes.json() || {};
+
+                let allKeys = Array.from(new Set([...Object.keys(nets), ...Object.keys(gNets)]));
+
+                if (allKeys.length === 0) {
+                    container.innerHTML = '<div class="loading">Сетей пока нет в базе. Зайдите в игру для регистрации сети!</div>';
+                    return;
+                }
+
+                container.innerHTML = allKeys.map(netId => {
+                    let info = nets[netId] || {};
+                    let gInfo = gNets[netId] || {};
+                    let currentName = gInfo.name || '';
+                    let lastSeen = info.lastSeen ? new Date(info.lastSeen).toLocaleString() : '—';
+                    let lastUser = info.lastUser || '—';
+                    let ip = info.ip || '—';
+
+                    return `
+                        <div class="player-card" style="border-left-color: ${currentName ? '#ffd700' : '#00ffff'};">
+                            <div class="card-top">
+                                <div class="player-name" style="font-size: 14px;">
+                                    🌐 <code>${netId}</code>
+                                    ${currentName ? '<span class="admin-tag">ОФИЦИАЛЬНОЕ</span>' : ''}
+                                </div>
+                            </div>
+                            <div class="card-row">
+                                <span style="font-size: 12px; color: #94a3b8;">IP адрес:</span>
+                                <span style="font-size: 12px; color: #cbd5e1;">${ip}</span>
+                            </div>
+                            <div class="card-row">
+                                <span style="font-size: 12px; color: #94a3b8;">Последний игрок:</span>
+                                <span style="font-size: 12px; color: #aaddff;">👤 ${lastUser} (${lastSeen})</span>
+                            </div>
+                            <div style="margin-top: 10px; display: flex; gap: 8px;">
+                                <input type="text" id="net-input-${netId.replace(/[^a-zA-Z0-9]/g, '_')}" value="${currentName}" placeholder="Название для всех (напр: Дом)" style="flex: 1; padding: 7px 10px; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; font-size: 13px;">
+                                <button class="btn btn-gold" style="padding: 7px 12px; font-size: 12px; flex: none;" onclick="saveGlobalNetworkName('${netId}')">💾 Сохранить для всех</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch(e) {
+                container.innerHTML = `<div class="loading" style="color: #ff6666;">Ошибка загрузки сетей: ${e.message}</div>`;
+            }
+        }
+
+        async function saveGlobalNetworkName(netId) {
+            let inputId = `net-input-${netId.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            let inputEl = document.getElementById(inputId);
+            let nameVal = inputEl ? inputEl.value.trim() : '';
+
+            if (!nameVal) {
+                showToast("Введите название!");
+                return;
+            }
+
+            try {
+                let payload = {
+                    name: nameVal,
+                    setBy: "РЫБа (Telegram)",
+                    updatedAt: Date.now()
+                };
+                await fetch(`${FIREBASE_URL}/globalNetworks/${encodeURIComponent(netId)}.json`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                showToast(`✅ Сеть названа «${nameVal}» для всех!`);
+                loadNetworksData();
+
+                // Send Telegram confirmation to Timur
+                fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: TG_ADMIN_CHAT_ID,
+                        text: `🌐 <b>СЕТЬ НАЗВАНА ДЛЯ ВСЕХ ИГРОКОВ!</b>\n` +
+                              `📍 <b>ID:</b> <code>${netId}</code>\n` +
+                              `🏷️ <b>Название:</b> <b>${nameVal}</b>\n` +
+                              `⏰ <i>${new Date().toLocaleTimeString()}</i>`,
+                        parse_mode: 'HTML'
+                    })
+                }).catch(()=>{});
+            } catch(e) {
+                showToast("Ошибка сохранения: " + e.message);
+            }
+        }
+
+        async function saveManualNetwork() {
+            let idEl = document.getElementById('manual-net-id');
+            let nameEl = document.getElementById('manual-net-name');
+            let netId = idEl ? idEl.value.trim() : '';
+            let newName = nameEl ? nameEl.value.trim() : '';
+
+            if (!netId) {
+                showToast("Введите ID сети!");
+                return;
+            }
+            if (!newName) {
+                showToast("Введите название сети!");
+                return;
+            }
+
+            if (!netId.startsWith('net_')) {
+                netId = 'net_' + netId.replace(/[^a-zA-Z0-9]/g, '_');
+            }
+
+            try {
+                let payload = {
+                    name: newName,
+                    setBy: "РЫБа (Telegram)",
+                    updatedAt: Date.now()
+                };
+                await fetch(`${FIREBASE_URL}/globalNetworks/${encodeURIComponent(netId)}.json`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                showToast(`✅ Сеть ${netId} названа «${newName}»!`);
+                if (idEl) idEl.value = '';
+                if (nameEl) nameEl.value = '';
+                loadNetworksData();
+            } catch(e) {
+                showToast("Ошибка: " + e.message);
             }
         }
 
