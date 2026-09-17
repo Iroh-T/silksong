@@ -891,41 +891,45 @@ function draw() {
         let pY = GAME_HEIGHT * 0.52;
 
         function drawPlayerSilhouette(px, py, hitShake = 0) {
+            let targetP = (activeCinematic && activeCinematic.p) ? activeCinematic.p : players[0];
+            if (!targetP) return;
+
             ctx.save();
-            ctx.translate(px + (Math.random() - 0.5) * hitShake, py + (Math.random() - 0.5) * hitShake);
-            ctx.fillStyle = "#ffffff";
-            ctx.shadowColor = "#ffffff";
-            ctx.shadowBlur = 20;
-            // Плащ
-            ctx.beginPath();
-            ctx.moveTo(0, -35);
-            ctx.lineTo(26, 42);
-            ctx.lineTo(-26, 42);
-            ctx.closePath();
-            ctx.fill();
-            // Маска
-            ctx.beginPath();
-            ctx.ellipse(0, -42, 14, 20, 0, 0, Math.PI * 2);
-            ctx.fill();
-            // Рога
-            ctx.beginPath();
-            ctx.moveTo(-8, -55);
-            ctx.lineTo(-15, -82);
-            ctx.lineTo(-3, -60);
-            ctx.closePath();
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo(8, -55);
-            ctx.lineTo(15, -82);
-            ctx.lineTo(3, -60);
-            ctx.closePath();
-            ctx.fill();
-            // Глаза
-            ctx.fillStyle = "#000000";
-            ctx.beginPath();
-            ctx.ellipse(-5, -42, 3, 6, 0.2, 0, Math.PI * 2);
-            ctx.ellipse(5, -42, 3, 6, -0.2, 0, Math.PI * 2);
-            ctx.fill();
+            let shakeX = (Math.random() - 0.5) * hitShake;
+            let shakeY = (Math.random() - 0.5) * hitShake;
+            ctx.translate(px + shakeX, py + shakeY);
+            ctx.scale(2.2, 2.2);
+
+            // Отрисовываем реального персонажа игрока, отцентрированного в точке (0, 0)
+            let dummyP = Object.assign({}, targetP, {
+                x: -15,
+                y: -25,
+                width: 30,
+                height: 50,
+                vx: 0,
+                vy: 0,
+                facingRight: targetP.facingRight !== undefined ? targetP.facingRight : true,
+                isDowned: false,
+                isDashing: false,
+                attackTimer: 0,
+                lightCharge: 0,
+                invuln: 0
+            });
+
+            // Мягкое свечение вокруг героя под его стихию
+            ctx.shadowColor = targetP.color || "#00e5ff";
+            ctx.shadowBlur = hitShake > 0 ? 30 : 15;
+
+            drawPlayer(dummyP);
+
+            // Если идет ударный кадр рассечения (hitShake > 0), накладываем яркий блик попадания
+            if (hitShake > 0) {
+                ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 22, 30, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
             ctx.restore();
         }
 
@@ -1427,6 +1431,13 @@ function draw() {
             ctx.shadowBlur = 8;
             ctx.fillText("«Хах, считай это дружеским спаррингом!»", GAME_WIDTH/2, 175);
         }
+
+        ctx.font = "bold 18px Arial";
+        ctx.fillStyle = "#ffffff";
+        ctx.shadowColor = "rgba(0,0,0,0.9)";
+        ctx.shadowBlur = 8;
+        ctx.fillText("Нажмите 'R' для новой битвы", GAME_WIDTH/2, secretMode ? 185 : 215);
+
         ctx.restore();
         ctx.textAlign = "left"; 
     }

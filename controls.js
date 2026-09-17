@@ -25,6 +25,10 @@ function tryEscapeTie() {
 
 // Keyboard events
 window.addEventListener("keydown", e => { 
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        return; // Don't trigger game hotkeys or preventDefault when typing in inputs
+    }
+
     if (e.code === "Space" && e.target === document.body) e.preventDefault();
     
     // Key rebinding listener takes absolute precedence if active
@@ -42,8 +46,10 @@ window.addEventListener("keydown", e => {
     if (e.code === 'KeyL' && gameState === "MENU") {
         let modeScreen = document.getElementById("mode-select");
         let inputScreen = document.getElementById("input-select");
+        let p2Screen = document.getElementById("p2-account-screen");
         let canActivateL = (modeScreen && modeScreen.style.display === "block") || 
-                           (inputScreen && inputScreen.style.display === "block");
+                           (inputScreen && inputScreen.style.display === "block") ||
+                           (p2Screen && p2Screen.style.display === "block");
         if (canActivateL && !secretMode) {
             secretMode = true; 
             playSound('heal'); 
@@ -118,11 +124,16 @@ window.addEventListener("keydown", e => {
         if (e.key === "5" && window.fireHeroUnlocked) { p2HeroSelection = 'FIRE'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Огонь"; p2Status.style.color = "#ff5500"; } checkDuoStart(); }
     }
 
-    // Restart key (from Game Over back to root menu)
-    if (gameState === "GAMEOVER" && (e.code === "KeyR" || e.key === "r" || e.key === "к" || e.key === "К")) {
+    // Restart key [R] (from Game Over or Boss Defeat straight to layout selection with saved accounts!)
+    let isGameOverOrWon = (gameState === "GAMEOVER" || (gameState === "PLAYING" && (boss.state === "DEFEATED" || boss.state === "FREE_ROAM")));
+    if (isGameOverOrWon && (e.code === "KeyR" || e.key === "r" || e.key === "к" || e.key === "К")) {
         gameState = "MENU";
+        battleResultRecorded = false;
         document.getElementById("overlay").style.display = "block";
-        openScreen('root-menu', false);
+        
+        // Go straight to layout/controls selection keeping the same active accounts!
+        selectMode(numPlayers, true);
+
         let banner = document.getElementById("test-mode-banner");
         if (banner) {
             banner.style.display = (testModeUnlocked || window.testModeUnlocked) ? "block" : "none";
@@ -230,17 +241,134 @@ function getGamepadInput(targetIndex) {
     };
 }
 
+// --- AUTHENTICATION & PROFILE HANDLERS ---
+let currentAuthTab = 'register';
+
+function switchAuthTab(tab) {
+    currentAuthTab = tab;
+    let tabReg = document.getElementById('tab-btn-register');
+    let tabLog = document.getElementById('tab-btn-login');
+    let hint = document.getElementById('auth-hint');
+    let submitBtn = document.getElementById('auth-submit-btn');
+    let err = document.getElementById('auth-error');
+    if (err) err.innerText = '';
+
+    if (tab === 'register') {
+        if (tabReg) tabReg.classList.add('active');
+        if (tabLog) tabLog.classList.remove('active');
+        if (hint) hint.innerText = "ЗАРЕГИСТРИРУЙСЯ, если у тебя еще нет профиля";
+        if (submitBtn) submitBtn.innerText = "СОЗДАТЬ АККАУНТ";
+    } else {
+        if (tabLog) tabLog.classList.add('active');
+        if (tabReg) tabReg.classList.remove('active');
+        if (hint) hint.innerText = "Если у тебя уже есть профиль, можешь ВОЙТИ и играть с него";
+        if (submitBtn) submitBtn.innerText = "ВОЙТИ В ИГРУ";
+    }
+}
+window.switchAuthTab = switchAuthTab;
+
+async function handleAuthSubmit() {
+    let nameInput = document.getElementById('auth-username');
+    let passInput = document.getElementById('auth-password');
+    let err = document.getElementById('auth-error');
+    let submitBtn = document.getElementById('auth-submit-btn');
+    if (!nameInput || !passInput || !err) return;
+
+    let name = nameInput.value.trim();
+    let pass = passInput.value;
+
+    let origText = submitBtn ? submitBtn.innerText : '';
+    if (submitBtn) {
+        submitBtn.innerText = "Подключение к базе...";
+        submitBtn.disabled = true;
+    }
+
+    try {
+        let res = (currentAuthTab === 'register') 
+            ? await registerUser(name, pass) 
+            : await loginUser(name, pass);
+
+        if (!res.success) {
+            err.innerText = res.message;
+            playSound('hitPlayer');
+            if (submitBtn) {
+                submitBtn.innerText = origText;
+                submitBtn.disabled = false;
+            }
+            return;
+        }
+
+        err.innerText = '';
+        nameInput.value = '';
+        passInput.value = '';
+        playSound('heal');
+        updateUserBadge();
+        openScreen('root-menu', false);
+    } catch(e) {
+        err.innerText = "Ошибка соединения: " + e.message;
+        playSound('hitPlayer');
+    } finally {
+        if (submitBtn) {
+            submitBtn.innerText = origText;
+            submitBtn.disabled = false;
+        }
+    }
+}
+window.handleAuthSubmit = handleAuthSubmit;
+
+function handleLogout() {
+    clearCurrentUser();
+    updateUserBadge();
+    menuHistory = [];
+    openScreen('auth-screen', false);
+    switchAuthTab('login');
+}
+window.handleLogout = handleLogout;
+
+function updateUserBadge() {
+    let badge = document.getElementById('user-badge');
+    let nameEl = document.getElementById('user-badge-name');
+    let adminBtn = document.getElementById('admin-panel-btn');
+    let curUser = getCurrentUser();
+    if (!badge || !nameEl) return;
+
+    if (curUser) {
+        nameEl.innerText = curUser;
+        let authScreen = document.getElementById('auth-screen');
+        badge.style.display = (authScreen && authScreen.style.display === 'block') ? 'none' : 'flex';
+        
+        // Show Admin Panel button if Timur ('РЫБа') is logged in
+        if (adminBtn) {
+            let isTimur = (curUser.toLowerCase() === 'рыба' || curUser.toLowerCase() === 'рыба' || curUser.toLowerCase() === 'admin');
+            adminBtn.style.display = isTimur ? 'block' : 'none';
+        }
+    } else {
+        badge.style.display = 'none';
+        if (adminBtn) adminBtn.style.display = 'none';
+    }
+}
+window.updateUserBadge = updateUserBadge;
+
 // --- MENU NAVIGATION & SCREENS STACK ---
 let menuHistory = [];
 
 function openScreen(screenId, pushHistory = true) {
+    let curUser = getCurrentUser();
+    if (!curUser && screenId !== 'auth-screen') {
+        screenId = 'auth-screen';
+        pushHistory = false;
+    }
+
     const allScreens = [
+        'auth-screen',
         'root-menu',
         'mode-select',
+        'p2-account-screen',
         'input-select',
         'hero-select',
         'badge-select',
         'achievements-menu',
+        'admin-screen',
         'settings-menu',
         'keybind-editor-menu'
     ];
@@ -262,11 +390,14 @@ function openScreen(screenId, pushHistory = true) {
     let targetEl = document.getElementById(screenId);
     if (targetEl) targetEl.style.display = 'block';
 
-    // Universal Back Button: visible on all sub-screens EXCEPT root-menu!
+    // Universal Back Button: visible on sub-screens EXCEPT root-menu and auth-screen!
     let backBtn = document.getElementById('menu-back-btn');
     if (backBtn) {
-        backBtn.style.display = (screenId === 'root-menu') ? 'none' : 'block';
+        backBtn.style.display = (screenId === 'root-menu' || screenId === 'auth-screen') ? 'none' : 'block';
     }
+
+    // User badge: show only if logged in and not on auth-screen
+    updateUserBadge();
 
     // Cancel mode L if returning to root menu
     if (screenId === 'root-menu' && secretMode) {
@@ -276,6 +407,13 @@ function openScreen(screenId, pushHistory = true) {
     // Dynamic renders when opening specific screens
     if (screenId === 'achievements-menu') {
         renderAchievements();
+    }
+    if (screenId === 'admin-screen') {
+        renderAdminScreen();
+    }
+    if (screenId === 'p2-account-screen') {
+        let hostEl = document.getElementById('p2-screen-p1-name');
+        if (hostEl) hostEl.innerText = getCurrentUser() || "Игрок 1";
     }
 }
 window.openScreen = openScreen;
@@ -316,13 +454,124 @@ function toggleSecretMobile() {
 }
 window.toggleSecretMobile = toggleSecretMobile;
 
-function selectMode(mode) {
-    numPlayers = mode;
+// --- PLAYER 2 AUTHENTICATION UI HANDLERS ---
+let currentP2AuthTab = 'login';
+
+function openP2AccountScreen() {
+    let p1Name = getCurrentUser() || "Игрок 1";
+    let hostEl = document.getElementById('p2-screen-p1-name');
+    if (hostEl) hostEl.innerText = p1Name;
+
+    let err = document.getElementById('p2-auth-error');
+    if (err) err.innerText = '';
+    let nameInput = document.getElementById('p2-auth-username');
+    let passInput = document.getElementById('p2-auth-password');
+    if (nameInput) nameInput.value = '';
+    if (passInput) passInput.value = '';
+
+    switchP2AuthTab('login');
+    openScreen('p2-account-screen');
+}
+window.openP2AccountScreen = openP2AccountScreen;
+
+function selectP2Guest() {
+    setP2User("Гость");
+    playSound('heal');
+    proceedToInputSelectDuo();
+}
+window.selectP2Guest = selectP2Guest;
+
+function switchP2AuthTab(tab) {
+    currentP2AuthTab = tab;
+    let tabLog = document.getElementById('p2-tab-btn-login');
+    let tabReg = document.getElementById('p2-tab-btn-reg');
+    let hint = document.getElementById('p2-auth-hint');
+    let submitBtn = document.getElementById('p2-auth-submit-btn');
+    let err = document.getElementById('p2-auth-error');
+    if (err) err.innerText = '';
+
+    if (tab === 'login') {
+        if (tabLog) tabLog.classList.add('active');
+        if (tabReg) tabReg.classList.remove('active');
+        if (hint) hint.innerText = "Войди под своим ником, чтобы победы шли в твой профиль";
+        if (submitBtn) submitBtn.innerText = "ВОЙТИ В СВОЙ АККАУНТ";
+    } else {
+        if (tabReg) tabReg.classList.add('active');
+        if (tabLog) tabLog.classList.remove('active');
+        if (hint) hint.innerText = "Создай новый аккаунт для Игрока 2 (пароль от 4 знаков)";
+        if (submitBtn) submitBtn.innerText = "СОЗДАТЬ И ВЫБРАТЬ";
+    }
+}
+window.switchP2AuthTab = switchP2AuthTab;
+
+async function handleP2AuthSubmit() {
+    let nameInput = document.getElementById('p2-auth-username');
+    let passInput = document.getElementById('p2-auth-password');
+    let err = document.getElementById('p2-auth-error');
+    let submitBtn = document.getElementById('p2-auth-submit-btn');
+    if (!nameInput || !passInput || !err) return;
+
+    let name = nameInput.value.trim();
+    let pass = passInput.value;
+
+    let origText = submitBtn ? submitBtn.innerText : '';
+    if (submitBtn) {
+        submitBtn.innerText = "Проверка...";
+        submitBtn.disabled = true;
+    }
+
+    try {
+        let res = (currentP2AuthTab === 'register')
+            ? await registerUserP2(name, pass)
+            : await loginUserP2(name, pass);
+
+        if (!res.success) {
+            err.innerText = res.message;
+            playSound('hitPlayer');
+            if (submitBtn) {
+                submitBtn.innerText = origText;
+                submitBtn.disabled = false;
+            }
+            return;
+        }
+
+        err.innerText = '';
+        playSound('heal');
+        proceedToInputSelectDuo();
+    } catch(e) {
+        err.innerText = "Ошибка: " + e.message;
+        playSound('hitPlayer');
+    } finally {
+        if (submitBtn) {
+            submitBtn.innerText = origText;
+            submitBtn.disabled = false;
+        }
+    }
+}
+window.handleP2AuthSubmit = handleP2AuthSubmit;
+
+function proceedToInputSelectDuo() {
+    numPlayers = 2;
     openScreen('input-select');
-    document.getElementById("input-1p").style.display = (mode === 1) ? "block" : "none"; 
-    document.getElementById("input-2p").style.display = (mode === 2) ? "block" : "none";
-    if (mode === 2) {
-        updateDuoSubOptions();
+    document.getElementById("input-1p").style.display = "none";
+    document.getElementById("input-2p").style.display = "block";
+    updateDuoSubOptions();
+}
+window.proceedToInputSelectDuo = proceedToInputSelectDuo;
+
+function selectMode(mode, keepP2 = false) {
+    numPlayers = mode;
+    if (mode === 1) {
+        setP2User(null);
+        openScreen('input-select');
+        document.getElementById("input-1p").style.display = "block"; 
+        document.getElementById("input-2p").style.display = "none";
+    } else {
+        if (keepP2 && getP2User()) {
+            proceedToInputSelectDuo();
+        } else {
+            openP2AccountScreen();
+        }
     }
 }
 window.selectMode = selectMode;
@@ -363,6 +612,11 @@ function setP2Device(dev) {
 window.setP2Device = setP2Device;
 
 function updateDuoSubOptions() {
+    let p1Lbl = document.getElementById('duo-p1-label');
+    if (p1Lbl) p1Lbl.innerText = getCurrentUser() || "Игрок 1";
+    let p2Lbl = document.getElementById('duo-p2-label');
+    if (p2Lbl) p2Lbl.innerText = getP2User() || "Гость";
+
     let container = document.getElementById('duo-sub-options');
     if (!container) return;
 
@@ -445,15 +699,82 @@ window.selectInput = selectInput;
 function renderAchievements() {
     let container = document.getElementById('achievements-content');
     if (!container) return;
-    let s = loadGameStats();
+    
+    let curUser = getCurrentUser();
+    let accs = loadAccounts();
+    let userAcc = curUser ? accs[curUser.toLowerCase()] : null;
+    let s = userAcc && userAcc.stats ? userAcc.stats : loadGameStats();
+    
     let totalWins = s.soloNormalWins + s.soloSecretWins + s.duoNormalWins + s.duoSecretWins;
     let totalLosses = s.soloNormalLosses + s.soloSecretLosses + s.duoNormalLosses + s.duoSecretLosses;
     let totalBattles = totalWins + totalLosses;
     let winRate = totalBattles > 0 ? Math.round((totalWins / totalBattles) * 100) : 0;
 
+    let userLabel = userAcc 
+        ? `Игрок: <b style="color: #00ffff; font-size: 18px;">${userAcc.name}</b>` 
+        : `Общая статистика игры`;
+
+    // Leaderboard across all accounts
+    let accList = Object.values(accs);
+    accList.sort((a, b) => {
+        let aW = (a.stats ? a.stats.soloNormalWins + a.stats.soloSecretWins + a.stats.duoNormalWins + a.stats.duoSecretWins : 0);
+        let bW = (b.stats ? b.stats.soloNormalWins + b.stats.soloSecretWins + b.stats.duoNormalWins + b.stats.duoSecretWins : 0);
+        return bW - aW;
+    });
+
+    let leaderboardHtml = '';
+    if (accList.length > 0) {
+        leaderboardHtml = `
+            <div class="leaderboard-container">
+                <div class="leaderboard-title">🏆 ТАБЛИЦА ЛИДЕРОВ (ПОБЕДЫ ДРУЗЕЙ)</div>
+                ${accList.map((acc, idx) => {
+                    let st = acc.stats || { soloNormalWins: 0, soloSecretWins: 0, duoNormalWins: 0, duoSecretWins: 0 };
+                    let w = st.soloNormalWins + st.soloSecretWins + st.duoNormalWins + st.duoSecretWins;
+                    let isMe = curUser && acc.name.toLowerCase() === curUser.toLowerCase();
+                    let medal = idx === 0 ? "🥇" : (idx === 1 ? "🥈" : (idx === 2 ? "🥉" : `${idx + 1}.`));
+                    return `
+                        <div class="leaderboard-row ${isMe ? 'me' : ''}">
+                            <span>${medal} <b>${acc.name}</b> ${isMe ? '<span style="color:#00ffff; font-size:11px;">(Вы)</span>' : ''}</span>
+                            <span style="color: #00ff66; font-weight: bold;">${w} побед</span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    // Co-op partners history
+    let partnersHtml = '';
+    let partnersMap = (userAcc && userAcc.coopPartners) ? userAcc.coopPartners : {};
+    let partnersList = Object.entries(partnersMap);
+    if (partnersList.length > 0) {
+        partnersList.sort((a, b) => (b[1].wins || 0) - (a[1].wins || 0));
+        partnersHtml = `
+            <div class="leaderboard-container">
+                <div class="leaderboard-title" style="color: #00e5ff;">🤝 НАПАРНИКИ В КООПЕРАТИВЕ</div>
+                ${partnersList.map(([pName, pData]) => {
+                    let w = pData.wins || 0;
+                    let b = pData.battles || 0;
+                    let isGuest = pName.toLowerCase() === 'гость' || pName.toLowerCase() === 'noname';
+                    return `
+                        <div class="leaderboard-row">
+                            <span>👤 <b>${pName}</b> ${isGuest ? '<span style="color:#aaa; font-size:11px;">(Гость)</span>' : ''}</span>
+                            <span style="color: #aaddff; font-size: 13px;">
+                                Боёв: <b>${b}</b> | Побед: <b style="color: #00ff66;">${w}</b>
+                            </span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
     container.innerHTML = `
-        <div style="margin-bottom: 15px; font-size: 14px; color: #aaddff;">
-            Всего боёв: <b>${totalBattles}</b> | Побед: <b style="color: #44ff44;">${totalWins}</b> | Винрейт: <b style="color: #ffcc00;">${winRate}%</b>
+        <div style="margin-bottom: 8px;">
+            ${userLabel}
+        </div>
+        <div style="margin-bottom: 15px; font-size: 13px; color: #aaddff;">
+            Боёв: <b>${totalBattles}</b> | Побед: <b style="color: #44ff44;">${totalWins}</b> | Винрейт: <b style="color: #ffcc00;">${winRate}%</b>
         </div>
         <div class="achieve-grid">
             <div class="achieve-card">
@@ -477,9 +798,89 @@ function renderAchievements() {
                 <div class="achieve-stat-line"><span>Поражений:</span><span class="achieve-stat-val loss">${s.duoSecretLosses}</span></div>
             </div>
         </div>
+        ${partnersHtml}
+        ${leaderboardHtml}
     `;
+
+    // Real-time background sync with Firebase so all players see updated ranks
+    if (!window._achieveSyncing) {
+        window._achieveSyncing = true;
+        syncAccountsFromFirebase().then(freshAccs => {
+            window._achieveSyncing = false;
+            let freshList = Object.values(freshAccs || {});
+            if (freshList.length !== accList.length) {
+                renderAchievements();
+            }
+        }).catch(() => { window._achieveSyncing = false; });
+    }
 }
 window.renderAchievements = renderAchievements;
+
+// --- IN-GAME ADMIN PANEL RENDERER ---
+async function renderAdminScreen() {
+    let listEl = document.getElementById('admin-cards-list');
+    if (!listEl) return;
+    listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 25px;">Загрузка данных из облака Firebase...</div>';
+
+    let accs = await syncAccountsFromFirebase();
+    let list = Object.values(accs || {});
+
+    if (list.length === 0) {
+        listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 25px;">В базе пока нет зарегистрированных игроков.</div>';
+        return;
+    }
+
+    list.forEach(a => {
+        let st = a.stats || { soloNormalWins: 0, soloSecretWins: 0, duoNormalWins: 0, duoSecretWins: 0 };
+        a._totalWins = (st.soloNormalWins || 0) + (st.soloSecretWins || 0) + (st.duoNormalWins || 0) + (st.duoSecretWins || 0);
+    });
+    list.sort((a, b) => b._totalWins - a._totalWins);
+
+    listEl.innerHTML = list.map((acc, idx) => {
+        let isOwner = (acc.name && (acc.name.toLowerCase() === 'рыба' || acc.name.toLowerCase() === 'admin'));
+        let regDate = acc.createdAt ? new Date(acc.createdAt).toLocaleDateString() : '—';
+        let medal = idx === 0 ? "🥇" : (idx === 1 ? "🥈" : (idx === 2 ? "🥉" : "🔹"));
+        return `
+            <div class="admin-card">
+                <div class="admin-card-row">
+                    <span style="font-weight: bold; color: ${isOwner ? '#ffd700' : '#ffffff'};">
+                        ${medal} <b>${acc.name}</b> ${isOwner ? '<span style="color:#ffd700; font-size:11px;">👑 (Создатель)</span>' : ''}
+                    </span>
+                    <span style="color: #4ade80; font-weight: bold;">🏆 ${acc._totalWins} побед</span>
+                </div>
+                <div class="admin-card-row">
+                    <span style="color: #94a3b8; font-size: 12px;">Пароль:</span>
+                    <span class="admin-pass-chip">${acc.password || '—'}</span>
+                </div>
+                <div class="admin-card-row" style="font-size: 11px; color: #64748b; margin-top: 4px;">
+                    <span>Регистрация: ${regDate}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+window.renderAdminScreen = renderAdminScreen;
+
+async function adminSendRosterToTelegram() {
+    let toast = document.getElementById('admin-toast');
+    if (toast) {
+        toast.style.display = 'block';
+        toast.style.color = '#00ffff';
+        toast.innerText = 'Отправка в Telegram...';
+    }
+    let res = await sendAllAccountsToTelegram();
+    if (toast) {
+        if (res.success) {
+            toast.style.color = '#00ff66';
+            toast.innerText = '✅ База отправлена в твой Telegram!';
+        } else {
+            toast.style.color = '#ff5566';
+            toast.innerText = 'Ошибка: ' + res.message;
+        }
+        setTimeout(() => { toast.style.display = 'none'; }, 3000);
+    }
+}
+window.adminSendRosterToTelegram = adminSendRosterToTelegram;
 
 // --- KEYBINDING EDITOR MANAGER ---
 let currentEditingScheme = null;
@@ -683,13 +1084,17 @@ function confirmResetAllData() {
         localStorage.removeItem(STATS_KEY);
         localStorage.removeItem('shelter_custom_controls');
         localStorage.removeItem('shelter_fire_unlocked');
+        localStorage.removeItem(ACCOUNTS_KEY);
+        localStorage.removeItem(CURRENT_USER_KEY);
     } catch(e){}
     window.fireHeroUnlocked = false;
     testModeUnlocked = false;
     window.testModeUnlocked = false;
     initControlsFromStorage();
     hideResetModal();
-    openScreen('root-menu', false);
+    updateUserBadge();
+    openScreen('auth-screen', false);
+    switchAuthTab('register');
     playSound('parry');
 }
 window.confirmResetAllData = confirmResetAllData;
@@ -848,7 +1253,7 @@ function assignAbility(abKey) {
 }
 window.assignAbility = assignAbility;
 
-// Restore unlocked Fire Hero from localStorage
+// Restore unlocked Fire Hero and check user authentication
 window.addEventListener('DOMContentLoaded', () => {
     try {
         if (localStorage.getItem('shelter_fire_unlocked') === 'true') {
@@ -863,5 +1268,24 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
     } catch(e){}
+
+    // Check user authentication & background sync cloud accounts
+    let curUser = getCurrentUser();
+    let accs = loadAccounts();
+    if (curUser && accs[curUser.toLowerCase()]) {
+        updateUserBadge();
+        openScreen('root-menu', false);
+    } else {
+        openScreen('auth-screen', false);
+        switchAuthTab('register');
+    }
+
+    // Cloud sync in background
+    syncAccountsFromFirebase().then(() => {
+        let updatedUser = getCurrentUser();
+        if (updatedUser) {
+            updateUserBadge();
+        }
+    }).catch(e => console.warn("Init sync failed:", e));
 });
 

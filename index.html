@@ -32,6 +32,28 @@
         <!-- Universal Red Back Button -->
         <button id="menu-back-btn" class="menu-back-btn" style="display: none;" onclick="menuGoBack()">← НАЗАД</button>
 
+        <!-- User Badge (Top-Right of Menu) -->
+        <div id="user-badge" style="display: none;">
+            <span>👤 <b id="user-badge-name">Игрок</b></span>
+            <span id="user-logout-btn" onclick="handleLogout()">[Выйти]</span>
+        </div>
+
+        <!-- 0. AUTH SCREEN (Register / Login) -->
+        <div id="auth-screen" style="display: none;">
+            <div style="font-size: 28px; color: #00e5ff; font-weight: bold; margin-bottom: 6px; letter-spacing: 2px;">УБЕЖИЩЕ</div>
+            <div class="auth-tabs">
+                <button id="tab-btn-register" class="auth-tab-btn active" onclick="switchAuthTab('register')">РЕГИСТРАЦИЯ</button>
+                <button id="tab-btn-login" class="auth-tab-btn" onclick="switchAuthTab('login')">ВОЙТИ</button>
+            </div>
+            <div id="auth-hint" class="auth-hint">ЗАРЕГИСТРИРУЙСЯ, если у тебя еще нет профиля</div>
+            <div class="auth-form" onkeydown="if(event.key==='Enter') handleAuthSubmit()">
+                <input type="text" id="auth-username" class="auth-input" placeholder="Имя игрока (никнейм)" maxlength="20" autocomplete="off">
+                <input type="password" id="auth-password" class="auth-input" placeholder="Пароль (от 4 символов)" maxlength="32">
+                <div id="auth-error" class="auth-error"></div>
+                <button id="auth-submit-btn" class="auth-submit-btn" onclick="handleAuthSubmit()">СОЗДАТЬ АККАУНТ</button>
+            </div>
+        </div>
+
         <!-- Test Mode Banner -->
         <div id="test-mode-banner" style="display: none; background: rgba(0, 45, 10, 0.9); border: 1px solid #00ff66; color: #00ff66; padding: 8px 14px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-radius: 6px; text-align: center; box-shadow: 0 0 12px rgba(0, 255, 100, 0.4);">
             🛠 ТЕСТОВЫЙ РЕЖИМ ВКЛЮЧЕН<br>
@@ -39,12 +61,13 @@
         </div>
 
         <!-- 1. ROOT MAIN MENU -->
-        <div id="root-menu">
+        <div id="root-menu" style="display: none;">
             <div style="font-size: 26px; margin-bottom: 20px; font-weight: bold; letter-spacing: 2px;">УБЕЖИЩЕ</div>
             <div class="menu-btn" onclick="openScreen('mode-select')" style="border-color: #00ffcc; color: #00ffcc;">ИГРАТЬ</div>
             <div class="menu-btn" onclick="openScreen('achievements-menu')" style="border-color: #ffbb00; color: #ffbb00;">ДОСТИЖЕНИЯ</div>
             <div class="menu-btn" onclick="openScreen('settings-menu')" style="border-color: #00bbff; color: #00bbff;">НАСТРОЙКИ</div>
-            <div class="menu-btn" onclick="showResetModal()" style="border-color: #ff3344; color: #ff5566; margin-top: 25px;">ПЕРЕЗАПУСТИТЬ ИГРУ</div>
+            <div id="admin-panel-btn" class="menu-btn" onclick="openScreen('admin-screen')" style="display: none; border-color: #ffd700; color: #ffd700; text-shadow: 0 0 8px rgba(255,215,0,0.5);">👑 ПАНЕЛЬ АДМИНА</div>
+            <div class="menu-btn" onclick="handleLogout()" style="border-color: #ff3344; color: #ff5566; margin-top: 25px;">ВЫЙТИ ИЗ АККАУНТА</div>
         </div>
 
         <!-- 2. MODE SELECT (1P / 2P) -->
@@ -54,6 +77,34 @@
             <div class="menu-btn" onclick="selectMode(2)">2 ИГРОКА</div>
             <div style="font-size: 12px; color: gray; margin-top: 15px;">(Подключите геймпад PS4/Xbox/Nintendo и нажмите любую кнопку)</div>
             <div class="menu-btn m-btn-l" id="mobile-l-btn-mode" style="display:none; margin-top:20px;" onclick="toggleSecretMobile()">АКТИВОВАТЬ РЕЖИМ [L]</div>
+        </div>
+
+        <!-- 2.5 PLAYER 2 ACCOUNT SELECT SCREEN -->
+        <div id="p2-account-screen" style="display: none; max-width: 440px; margin: 0 auto;">
+            <div style="font-size: 22px; margin-bottom: 6px; color: #ffdd00; font-weight: bold; letter-spacing: 1px;">ВТОРОЙ ИГРОК</div>
+            <div id="p2-host-info" style="font-size: 13px; color: #aaddff; margin-bottom: 16px;">
+                Игрок 1: <b style="color: #00ffff;" id="p2-screen-p1-name">—</b> (Устройство)
+            </div>
+
+            <div class="menu-btn" onclick="selectP2Guest()" style="border-color: #00ffaa; color: #00ffaa; margin-bottom: 16px;">
+                👤 Играть как Гость (Noname)
+            </div>
+
+            <div style="font-size: 12px; color: #888; margin: 8px 0 14px 0;">— ИЛИ ВОЙТИ В СВОЙ АККАУНТ —</div>
+
+            <div class="auth-tabs" style="margin-bottom: 14px;">
+                <button class="auth-tab-btn active" id="p2-tab-btn-login" onclick="switchP2AuthTab('login')">Вход</button>
+                <button class="auth-tab-btn" id="p2-tab-btn-reg" onclick="switchP2AuthTab('register')">Регистрация</button>
+            </div>
+
+            <div id="p2-auth-hint" class="auth-hint">Войди под своим ником, чтобы победы шли в твой профиль</div>
+
+            <input type="text" id="p2-auth-username" class="auth-input" placeholder="Имя игрока 2" maxlength="15" autocomplete="off">
+            <input type="password" id="p2-auth-password" class="auth-input" placeholder="Пароль" maxlength="20">
+
+            <div id="p2-auth-error" class="auth-error"></div>
+
+            <button id="p2-auth-submit-btn" class="auth-submit-btn" onclick="handleP2AuthSubmit()">ВОЙТИ В СВОЙ АККАУНТ</button>
         </div>
 
         <!-- 3. INPUT SELECT -->
@@ -69,13 +120,15 @@
                 <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px;">
                     <!-- Player 1 Box -->
                     <div style="background: rgba(0, 100, 255, 0.1); border: 1.5px solid #00aaff; border-radius: 6px; padding: 10px; width: 45%; min-width: 170px;">
-                        <div style="color: #00ddff; font-weight: bold; margin-bottom: 8px; font-size: 14px;">ИГРОК 1</div>
+                        <div style="color: #00ddff; font-weight: bold; margin-bottom: 4px; font-size: 14px;">ИГРОК 1</div>
+                        <div style="color: #aaddff; font-size: 11px; margin-bottom: 8px;">Профиль: <b id="duo-p1-label" style="color: #00ffff;">—</b></div>
                         <button id="p1-type-kb" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%;" onclick="setP1Device('KEYBOARD')">Клавиатура</button>
                         <button id="p1-type-gp" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%; border-color: #888; color: #888;" onclick="setP1Device('GAMEPAD')">Джойстик</button>
                     </div>
                     <!-- Player 2 Box -->
                     <div style="background: rgba(255, 200, 0, 0.1); border: 1.5px solid #ffcc00; border-radius: 6px; padding: 10px; width: 45%; min-width: 170px;">
-                        <div style="color: #ffdd44; font-weight: bold; margin-bottom: 8px; font-size: 14px;">ИГРОК 2</div>
+                        <div style="color: #ffdd44; font-weight: bold; margin-bottom: 4px; font-size: 14px;">ИГРОК 2</div>
+                        <div style="color: #ffeeaa; font-size: 11px; margin-bottom: 8px;">Профиль: <b id="duo-p2-label" style="color: #ffd700;">Гость</b> <a href="javascript:void(0)" onclick="openP2AccountScreen()" style="color: #00ffff; margin-left: 4px; font-size: 11px; text-decoration: underline;">[Сменить]</a></div>
                         <button id="p2-type-kb" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%;" onclick="setP2Device('KEYBOARD')">Клавиатура</button>
                         <button id="p2-type-gp" class="menu-btn" style="padding: 6px 10px; font-size: 13px; margin: 4px auto; width: 90%; border-color: #888; color: #888;" onclick="setP2Device('GAMEPAD')">Джойстик</button>
                     </div>
@@ -158,6 +211,20 @@
             </div>
         </div>
 
+        <!-- 10. ADMIN PANEL SCREEN -->
+        <div id="admin-screen" style="display: none; max-width: 550px; margin: 0 auto;">
+            <div style="font-size: 22px; margin-bottom: 6px; color: #ffd700; font-weight: bold; letter-spacing: 1px;">👑 ПАНЕЛЬ АДМИНИСТРАТОРА</div>
+            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 14px;">Облачная база игроков Firebase</div>
+
+            <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 14px;">
+                <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #00ffff; color: #00ffff;" onclick="renderAdminScreen()">🔄 Обновить</button>
+                <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #ffd700; color: #ffd700;" onclick="adminSendRosterToTelegram()">📤 В Telegram бота</button>
+            </div>
+
+            <div id="admin-toast" style="display: none; color: #00ff66; font-size: 12px; margin-bottom: 10px; font-weight: bold;"></div>
+            <div id="admin-cards-list" style="max-height: 250px; overflow-y: auto; text-align: left; padding: 4px;"></div>
+        </div>
+
         <!-- 9. RESET MODAL CONFIRMATION -->
         <div id="reset-modal">
             <div style="font-size: 22px; color: #ff3344; font-weight: bold; margin-bottom: 12px;">ВЫ УВЕРЕНЫ?</div>
@@ -178,11 +245,11 @@
     </div>
 
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=20"></script>
-    <script src="audio.js?v=20"></script>
-    <script src="controls.js?v=20"></script>
-    <script src="player.js?v=20"></script>
-    <script src="boss.js?v=20"></script>
-    <script src="game.js?v=20"></script>
+    <script src="constants.js?v=25"></script>
+    <script src="audio.js?v=25"></script>
+    <script src="controls.js?v=25"></script>
+    <script src="player.js?v=25"></script>
+    <script src="boss.js?v=25"></script>
+    <script src="game.js?v=25"></script>
 </body>
 </html>

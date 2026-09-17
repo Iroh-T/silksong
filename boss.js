@@ -106,16 +106,23 @@ function checkPhaseTransition() {
             if (bgm) bgm.pause();
             triggerVibration('l_mode_final'); 
             boss.state = "FREE_ROAM"; 
-            for (let i = 0; i < 40; i++) {
+            let origX = boss.x + 15;
+            let origY = boss.y + 25;
+            boss.x = -99999;
+            boss.y = -99999;
+            boss.vx = 0;
+            boss.vy = 0;
+            for (let i = 0; i < 50; i++) {
                 voidExplosions.push({
-                    x: boss.x + 15, 
-                    y: boss.y + 25, 
-                    vx: (Math.random() - 0.5) * 20, 
-                    vy: (Math.random() - 0.5) * 20, 
-                    timer: 60, 
+                    x: origX, 
+                    y: origY, 
+                    vx: (Math.random() - 0.5) * 22, 
+                    vy: (Math.random() - 0.5) * 22, 
+                    timer: 70, 
                     isWhite: Math.random() > 0.5
                 });
             }
+            playSound('hitBoss');
         } else if (!secretMode && boss.phase >= 3) {
             boss.state = "CINEMATIC_TIE_WAIT"; 
             boss.invuln = 9999; 
@@ -1380,7 +1387,7 @@ function drawRapier(b, isPhantom = false) {
 }
 
 function drawBoss() {
-    if (boss.state.startsWith("L_CLIMB") || boss.phase === 2.5) return;
+    if (boss.state.startsWith("L_CLIMB") || boss.phase === 2.5 || boss.state === "DEFEATED" || boss.state === "FREE_ROAM") return;
 
     if (boss.state === "L_HEAL" && boss.healOrbs) {
         let bCenterX = boss.x + boss.width / 2;
