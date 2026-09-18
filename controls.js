@@ -93,23 +93,38 @@ window.addEventListener("keydown", e => {
         }
     }
     
-    // Unlock Fire Hero (Key 4 in Menu)
-    if ((e.key === '4' || e.code === 'Digit4') && gameState === "MENU") {
+    // Secret unlock of Fire Hero (Key 4 ONLY in Mode Select or Input Select screens, never during hero selection!)
+    let modeScreen = document.getElementById("mode-select");
+    let inputScreen = document.getElementById("input-select");
+    let p2Screen = document.getElementById("p2-account-screen");
+    let canUnlockFire = (modeScreen && modeScreen.style.display === "block") || 
+                       (inputScreen && inputScreen.style.display === "block") ||
+                       (p2Screen && p2Screen.style.display === "block");
+    if ((e.key === '4' || e.code === 'Digit4') && gameState === "MENU" && canUnlockFire) {
         if (!window.fireHeroUnlocked) {
             window.fireHeroUnlocked = true; 
-            try { localStorage.setItem('shelter_fire_unlocked', 'true'); } catch(e){}
+            let curU = getCurrentUser();
+            if (curU) {
+                let accs = loadAccounts();
+                let u = accs[curU.toLowerCase()];
+                if (u) {
+                    u.fireHeroUnlocked = true;
+                    u.achievements = u.achievements || {};
+                    u.achievements['true_flame'] = Date.now();
+                    saveAccounts(accs);
+                    try {
+                        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(curU.toLowerCase())}/achievements.json`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(u.achievements)
+                        }).catch(()=>{});
+                    } catch(e){}
+                }
+            }
             playSound('slash');
             if (typeof unlockAchievement === 'function') unlockAchievement('true_flame');
             document.body.style.backgroundColor = "#2a0a0a";
-            let p1Ui = document.getElementById("p1-select-ui");
-            if (p1Ui && !document.getElementById("btn-hero-fire")) {
-                p1Ui.innerHTML += `<div id="btn-hero-fire" class="menu-btn" onclick="selectHero1('FIRE')" style="color: #ff5500; border-color: #ff5500;">5. Огонь</div>`;
-            }
-            let p2Text = document.getElementById("p2-options-text");
-            if (p2Text) {
-                p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff5500;'>5</b>-Огонь";
-            }
-            return; // Don't pick STAMINA on the keypress that reveals Fire
+            updateHeroSelectUI();
         }
     }
 
@@ -140,6 +155,7 @@ window.addEventListener("keydown", e => {
             return;
         }
         gameState = "MENU";
+        if (typeof sendPresencePing === 'function') sendPresencePing();
         battleResultRecorded = false;
         document.getElementById("overlay").style.display = "block";
         
@@ -315,6 +331,7 @@ async function handleAuthSubmit() {
         passInput.value = '';
         playSound('heal');
         updateUserBadge();
+        syncFireHeroState();
         openScreen('root-menu', false);
     } catch(e) {
         err.innerText = "Ошибка соединения: " + e.message;
@@ -328,8 +345,62 @@ async function handleAuthSubmit() {
 }
 window.handleAuthSubmit = handleAuthSubmit;
 
+function updateHeroSelectUI() {
+    let p1Ui = document.getElementById("p1-select-ui");
+    let fireBtn = document.getElementById("btn-hero-fire");
+    let p2Text = document.getElementById("p2-options-text");
+
+    if (window.fireHeroUnlocked) {
+        if (p1Ui && !document.getElementById("btn-hero-fire")) {
+            let div = document.createElement("div");
+            div.id = "btn-hero-fire";
+            div.className = "menu-btn";
+            div.setAttribute("onclick", "selectHero1('FIRE')");
+            div.style.color = "#ff5500";
+            div.style.borderColor = "#ff5500";
+            div.innerText = "5. Огонь";
+            p1Ui.appendChild(div);
+        }
+        if (p2Text) {
+            p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff5500;'>5</b>-Огонь";
+        }
+    } else {
+        if (fireBtn) {
+            fireBtn.remove();
+        }
+        if (p2Text) {
+            p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой";
+        }
+    }
+}
+window.updateHeroSelectUI = updateHeroSelectUI;
+
+function syncFireHeroState() {
+    let curUser = getCurrentUser();
+    let isUnlocked = false;
+    let accs = loadAccounts();
+    if (curUser) {
+        let u = accs[curUser.toLowerCase()];
+        if (u && (u.fireHeroUnlocked || (u.achievements && u.achievements['true_flame']))) {
+            isUnlocked = true;
+        }
+    }
+    let p2 = (typeof getP2User === 'function') ? getP2User() : null;
+    if (p2 && p2.toLowerCase() !== 'гость') {
+        let u2 = accs[p2.toLowerCase()];
+        if (u2 && (u2.fireHeroUnlocked || (u2.achievements && u2.achievements['true_flame']))) {
+            isUnlocked = true;
+        }
+    }
+    window.fireHeroUnlocked = isUnlocked;
+    updateHeroSelectUI();
+}
+window.syncFireHeroState = syncFireHeroState;
+
 function handleLogout() {
     clearCurrentUser();
+    window.fireHeroUnlocked = false;
+    updateHeroSelectUI();
     updateUserBadge();
     menuHistory = [];
     openScreen('auth-screen', false);
@@ -426,6 +497,9 @@ function openScreen(screenId, pushHistory = true) {
     if (screenId === 'p2-account-screen') {
         let hostEl = document.getElementById('p2-screen-p1-name');
         if (hostEl) hostEl.innerText = getCurrentUser() || "Игрок 1";
+    }
+    if (screenId === 'hero-select') {
+        syncFireHeroState();
     }
 }
 window.openScreen = openScreen;
@@ -809,11 +883,10 @@ function renderAchievements() {
         ? `Игрок: <b style="color: #00ffff; font-size: 18px;">${userAcc.name}</b>` 
         : `Общая статистика игры`;
 
-    // 1. Secret Achievements (ONLY completed are shown; fish_day is pinned prestigiously at top)
+    // 1. Achievements (ALL visible with funny descriptions, EXCEPT true_flame and whisper_of_void which stay secret ???)
     let userAchMap = (userAcc && userAcc.achievements) ? userAcc.achievements : {};
-    let unlockedAchs = ACHIEVEMENTS_DEF.filter(a => userAchMap[a.id]);
+    let unlockedCount = ACHIEVEMENTS_DEF.filter(a => userAchMap[a.id]).length;
     let hasFishDay = !!userAchMap['fish_day'];
-    let otherUnlocked = unlockedAchs.filter(a => a.id !== 'fish_day');
 
     let fishDayHtml = '';
     if (hasFishDay) {
@@ -828,41 +901,55 @@ function renderAchievements() {
         `;
     }
 
-    let achGridHtml = '';
-    if (otherUnlocked.length > 0) {
-        achGridHtml = `
-            <div class="achieve-grid" style="margin-top: 10px;">
-                ${otherUnlocked.map(a => `
-                    <div class="achieve-card unlocked-secret">
-                        <div class="achieve-card-title" style="color: #ffd700;">${a.title}</div>
-                        <div style="font-size: 12px; color: #cbd5e1; margin-top: 4px;">${a.desc}</div>
-                        <div style="font-size: 10px; color: #4ade80; margin-top: 6px; font-weight: bold;">✓ РАЗБЛОКИРОВАНО</div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-    }
+    let allAchsHtml = ACHIEVEMENTS_DEF.map(a => {
+        let isDone = !!userAchMap[a.id];
+        let isSecret = a.secret && !isDone;
 
-    let secretAchSection = '';
-    if (unlockedAchs.length === 0) {
-        secretAchSection = `
-            <div class="leaderboard-container" style="text-align: center; padding: 18px;">
-                <div class="leaderboard-title" style="color: #ffd700;">🎖️ СЕКРЕТНЫЕ ДОСТИЖЕНИЯ</div>
-                <div style="color: #94a3b8; font-size: 13px; font-style: italic; margin-top: 6px;">
-                    Секретные боевые достижения скрыты и ждут первооткрывателей!<br>
-                    Сражайтесь, побеждайте босса в разных режимах и условиях, чтобы раскрыть их.
+        if (isSecret) {
+            return `
+                <div class="achieve-card" style="border: 1.5px dashed rgba(168, 85, 247, 0.45); background: rgba(25, 15, 35, 0.6); opacity: 0.85;">
+                    <div class="achieve-card-title" style="color: #c084fc;">🔒 ??? СЕКРЕТНОЕ ЗАДАНИЕ ???</div>
+                    <div style="font-size: 12px; color: #a855f7; margin-top: 4px; font-style: italic;">Тайна Бездны пока скрыта... Ищи подсказки и тайные клавиши в меню!</div>
+                    <div style="font-size: 10px; color: #7e22ce; margin-top: 6px; font-weight: bold;">[СЕКРЕТНЫЙ РЕЖИМ]</div>
                 </div>
+            `;
+        }
+
+        if (isDone) {
+            let doneDate = typeof userAchMap[a.id] === 'number' ? new Date(userAchMap[a.id]).toLocaleDateString() : '';
+            return `
+                <div class="achieve-card unlocked-secret" style="border-color: #ffd700; background: rgba(30, 25, 10, 0.65);">
+                    <div class="achieve-card-title" style="color: #ffd700;">${a.title}</div>
+                    <div style="font-size: 12px; color: #cbd5e1; margin-top: 4px;">${a.desc}</div>
+                    <div style="font-size: 10px; color: #4ade80; margin-top: 6px; font-weight: bold; display: flex; justify-content: space-between;">
+                        <span>✅ ВЫПОЛНЕНО</span>
+                        <span style="color: #94a3b8; font-weight: normal;">${doneDate}</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            return `
+                <div class="achieve-card" style="border-color: rgba(255,255,255,0.12); background: rgba(15, 23, 42, 0.65);">
+                    <div class="achieve-card-title" style="color: #38bdf8;">${a.title}</div>
+                    <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">${a.desc}</div>
+                    <div style="font-size: 10px; color: #f59e0b; margin-top: 6px; font-weight: bold;">❌ ЕЩЁ НЕ ОСИЛИЛ</div>
+                </div>
+            `;
+        }
+    }).join('');
+
+    let achievementsSection = `
+        <div class="leaderboard-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 215, 0, 0.25); padding-bottom: 6px; margin-bottom: 12px;">
+                <div class="leaderboard-title" style="color: #ffd700; margin: 0;">📜 СПИСОК ВСЕХ ЗАДАНИЙ И ДОСТИЖЕНИЙ</div>
+                <div style="font-size: 13px; font-weight: bold; color: #4ade80;">Выполнено: ${unlockedCount} / ${ACHIEVEMENTS_DEF.length}</div>
             </div>
-        `;
-    } else {
-        secretAchSection = `
-            <div class="leaderboard-container">
-                <div class="leaderboard-title" style="color: #ffd700;">🎖️ ВЫПОЛНЕННЫЕ СЕКРЕТНЫЕ ДОСТИЖЕНИЯ (${unlockedAchs.length})</div>
-                ${fishDayHtml}
-                ${achGridHtml}
+            ${fishDayHtml}
+            <div class="achieve-grid" style="margin-top: 10px;">
+                ${allAchsHtml}
             </div>
-        `;
-    }
+        </div>
+    `;
 
     // 2. Visited Places / Networks
     let placesHtml = '';
@@ -960,7 +1047,7 @@ function renderAchievements() {
         <div style="margin-bottom: 15px; font-size: 13px; color: #aaddff;">
             Боёв: <b>${totalBattles}</b> | Побед: <b style="color: #44ff44;">${totalWins}</b> | Винрейт: <b style="color: #ffcc00;">${winRate}%</b>
         </div>
-        ${secretAchSection}
+        ${achievementsSection}
         ${placesHtml}
         <div class="achieve-grid" style="margin-top: 15px;">
             <div class="achieve-card">
@@ -1274,6 +1361,7 @@ function confirmResetAllData() {
         localStorage.removeItem(CURRENT_USER_KEY);
     } catch(e){}
     window.fireHeroUnlocked = false;
+    updateHeroSelectUI();
     testModeUnlocked = false;
     window.testModeUnlocked = false;
     initControlsFromStorage();
@@ -1439,21 +1527,89 @@ function assignAbility(abKey) {
 }
 window.assignAbility = assignAbility;
 
-// Restore unlocked Fire Hero and check user authentication
+// --- EASY BOSS MODE UI TOGGLER ---
+function updateEasyBossButtonUI() {
+    let btns = document.querySelectorAll('.easy-boss-btn');
+    let isEasy = !!(window.easyBossMode);
+    btns.forEach(btn => {
+        if (isEasy) {
+            btn.style.background = 'rgba(34, 197, 94, 0.25)';
+            btn.style.borderColor = '#22c55e';
+            btn.style.color = '#4ade80';
+            btn.style.boxShadow = '0 0 15px rgba(34, 197, 94, 0.4)';
+            btn.innerHTML = '🌿 Ослабление Босса: ВКЛЮЧЕНО (0.75x HP, урон -0.5)';
+        } else {
+            btn.style.background = 'rgba(30, 41, 59, 0.6)';
+            btn.style.borderColor = '#64748b';
+            btn.style.color = '#94a3b8';
+            btn.style.boxShadow = 'none';
+            btn.innerHTML = '🌱 Ослабление Босса: ВЫКЛ (Обычный)';
+        }
+    });
+}
+window.updateEasyBossButtonUI = updateEasyBossButtonUI;
+
+// --- CREATOR INTERACTION MODAL ---
+function openCreatorReactionModal() {
+    let m = document.getElementById('creator-reaction-modal');
+    if (m) m.style.display = 'flex';
+}
+window.openCreatorReactionModal = openCreatorReactionModal;
+
+function closeCreatorReactionModal() {
+    let m = document.getElementById('creator-reaction-modal');
+    if (m) m.style.display = 'none';
+}
+window.closeCreatorReactionModal = closeCreatorReactionModal;
+
+function showTutorialAlert(msg) {
+    let t = document.getElementById('screen-feedback-toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'screen-feedback-toast';
+        t.style.position = 'fixed';
+        t.style.bottom = '24px';
+        t.style.left = '50%';
+        t.style.transform = 'translateX(-50%)';
+        t.style.background = '#0f172a';
+        t.style.border = '2px solid #ffd700';
+        t.style.boxShadow = '0 0 20px rgba(255,215,0,0.4)';
+        t.style.color = '#fff';
+        t.style.padding = '12px 24px';
+        t.style.borderRadius = '24px';
+        t.style.fontSize = '14px';
+        t.style.fontWeight = 'bold';
+        t.style.zIndex = '9999';
+        t.style.pointerEvents = 'none';
+        t.style.transition = 'opacity 0.3s ease';
+        document.body.appendChild(t);
+    }
+    t.innerText = msg;
+    t.style.display = 'block';
+    t.style.opacity = '1';
+    clearTimeout(t._hideTimeout);
+    t._hideTimeout = setTimeout(() => {
+        t.style.opacity = '0';
+        setTimeout(() => { t.style.display = 'none'; }, 300);
+    }, 2800);
+}
+window.showTutorialAlert = showTutorialAlert;
+
+async function sendQuickReactionToCreator(reactionText) {
+    closeCreatorReactionModal();
+    if (typeof sendPlayerReaction === 'function') {
+        await sendPlayerReaction(reactionText);
+        showTutorialAlert("💌 Сообщение отправлено Создателю (РЫБе) в Telegram!");
+    }
+}
+window.sendQuickReactionToCreator = sendQuickReactionToCreator;
+
+// Sync Fire Hero unlock state based on user account and clean legacy browser key
 window.addEventListener('DOMContentLoaded', () => {
     try {
-        if (localStorage.getItem('shelter_fire_unlocked') === 'true') {
-            window.fireHeroUnlocked = true;
-            let p1Ui = document.getElementById("p1-select-ui");
-            if (p1Ui && !document.getElementById("btn-hero-fire")) {
-                p1Ui.innerHTML += `<div id="btn-hero-fire" class="menu-btn" onclick="selectHero1('FIRE')" style="color: #ff5500; border-color: #ff5500;">5. Огонь</div>`;
-            }
-            let p2Text = document.getElementById("p2-options-text");
-            if (p2Text) {
-                p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff5500;'>5</b>-Огонь";
-            }
-        }
+        localStorage.removeItem('shelter_fire_unlocked');
     } catch(e){}
+    syncFireHeroState();
 
     // Detect network and visited places
     if (typeof detectCurrentNetwork === 'function') {

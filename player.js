@@ -63,6 +63,15 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
     }
 
     if (p.invuln <= 0 || isBleed || bypassInvuln) {
+        if (typeof easyBossMode !== 'undefined' && easyBossMode && !isBleed && !isStaminaBleed) {
+            amount = Math.max(0.5, amount - 0.5);
+        }
+
+        if (p.isDashing && !isBleed) {
+            let curU = (p.id === 1) ? getCurrentUser() : getP2User();
+            if (curU) unlockAchievement('dash_into_danger', curU);
+        }
+
         if (p.glassDebuff && !isStaminaBleed && !(p.type === 'WATER' && p.stance === 'DEMON')) amount *= 2; 
         
         if (p.orangeHp > 0 && !isBleed && !isStaminaBleed) { let absorb = Math.min(p.orangeHp, amount); p.orangeHp -= absorb; amount -= absorb; }

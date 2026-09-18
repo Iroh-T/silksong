@@ -90,8 +90,15 @@ function buildAndStartGame() {
         platforms = [];
     }
 
+    if (typeof easyBossMode !== 'undefined' && easyBossMode) {
+        boss.maxHp = Math.round(boss.maxHp * 0.75);
+        phase2Hp = Math.round(phase2Hp * 0.75);
+        phase3Hp = Math.round(phase3Hp * 0.75);
+    }
+
     resetGameParams(); 
     gameState = "PLAYING";
+    if (typeof sendPresencePing === 'function') sendPresencePing();
 
     if (secretMode) {
         boss.state = "L_INTRO_FALL"; 
@@ -171,6 +178,7 @@ function buildAndStartTutorialGame() {
     boss.state = "INACTIVE";
 
     gameState = "PLAYING";
+    if (typeof sendPresencePing === 'function') sendPresencePing();
 }
 window.buildAndStartTutorialGame = buildAndStartTutorialGame;
 
@@ -741,6 +749,7 @@ function updateTutorial() {
         if (tutorialSubStep <= 0) {
             isTutorial = false;
             gameState = "MENU";
+            if (typeof sendPresencePing === 'function') sendPresencePing();
             let overlay = document.getElementById("overlay");
             if (overlay) overlay.style.display = "flex";
         }
@@ -763,6 +772,7 @@ function update() {
     if (players.some(p => p.hp <= 0 && (!p.isDowned || p.downedTimer <= 0))) { 
         gameState = "GAMEOVER"; 
         if (typeof recordBattleResult === 'function') recordBattleResult(false);
+        if (typeof sendPresencePing === 'function') sendPresencePing();
     }
 
     // Camera follow
@@ -927,8 +937,16 @@ function update() {
     currentGravity = globalWindMode === "UP" ? 0.3 : (globalWindMode === "DOWN" ? 0.9 : GRAVITY);
     jumpMod = globalWindMode === "UP" ? 1.3 : (globalWindMode === "DOWN" ? 0.6 : 1);
 
+    if (typeof worldGravityTimer !== 'undefined' && worldGravityTimer > 0) {
+        worldGravityTimer--;
+        currentGravity *= (typeof worldGravityMod !== 'undefined' ? worldGravityMod : 1.0);
+        jumpMod *= 1.3;
+        if (worldGravityTimer <= 0) worldGravityMod = 1.0;
+    }
+
     updatePlayers();
     updateProjectiles();
+    updateWorldEvents();
     if (typeof isTutorial !== 'undefined' && isTutorial) {
         updateTutorial();
     } else {
@@ -2011,7 +2029,144 @@ function drawTutorialHUD() {
         ctx.fillText(`Тренировочный Манекен: ${Math.max(0, Math.ceil(boss.hp))} / 7 HP`, GAME_WIDTH / 2, bBarY + 22);
     }
 
+    drawWorldEvents();
     ctx.restore();
+}
+
+function updateWorldEvents() {
+    // 1. Update active world message timer
+    if (typeof activeWorldMessage !== 'undefined' && activeWorldMessage) {
+        activeWorldMessage.timer--;
+        if (activeWorldMessage.timer <= 0) {
+            activeWorldMessage = null;
+        }
+    }
+
+    // 2. Update falling AirDrop crystals
+    if (typeof worldEventCrystals !== 'undefined') {
+        for (let i = worldEventCrystals.length - 1; i >= 0; i--) {
+            let c = worldEventCrystals[i];
+            c.y += c.vy;
+            if (c.y > FLOOR - 15) {
+                c.y = FLOOR - 15;
+                c.vy = 0;
+            }
+            c.timer--;
+            if (c.timer <= 0) {
+                worldEventCrystals.splice(i, 1);
+                continue;
+            }
+            for (let p of players) {
+                if (p.hp > 0 && Math.hypot((p.x + 15) - c.x, (p.y + 25) - c.y) < 35) {
+                    p.hp = Math.min(p.maxHp, p.hp + (c.healAmount || 2));
+                    if (typeof playSound === 'function') playSound('heal');
+                    if (typeof voidExplosions !== 'undefined') {
+                        voidExplosions.push({ x: c.x, y: c.y, timer: 20, isWhite: false, isOrange: true, r: 50 });
+                    }
+                    worldEventCrystals.splice(i, 1);
+                    break;
+                }
+            }
+        }
+    }
+
+    // 3. Update meteors
+    if (typeof worldMeteors !== 'undefined') {
+        for (let i = worldMeteors.length - 1; i >= 0; i--) {
+            let m = worldMeteors[i];
+            m.x += m.vx;
+            m.y += m.vy;
+            m.timer--;
+            if (m.y >= FLOOR - 10 || m.timer <= 0) {
+                if (typeof applyPhysicsPushToLeaves === 'function') {
+                    applyPhysicsPushToLeaves(m.x, m.y, 8);
+                }
+                worldMeteors.splice(i, 1);
+            }
+        }
+    }
+
+    // 4. Update Boss Rage
+    if (typeof worldBossRageTimer !== 'undefined' && worldBossRageTimer > 0) {
+        worldBossRageTimer--;
+        if (typeof boss !== 'undefined' && boss && boss.state !== 'DEFEATED' && typeof voidExplosions !== 'undefined') {
+            if (Math.random() < 0.25) {
+                voidExplosions.push({
+                    x: boss.x + Math.random() * boss.width,
+                    y: boss.y + Math.random() * boss.height,
+                    timer: 10,
+                    isWhite: false,
+                    isOrange: true,
+                    r: 25
+                });
+            }
+        }
+    }
+}
+
+function drawWorldEvents() {
+    if (typeof worldEventCrystals !== 'undefined') {
+        for (let c of worldEventCrystals) {
+            ctx.save();
+            ctx.shadowColor = '#22c55e';
+            ctx.shadowBlur = 16;
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            let pulse = Math.sin(Date.now() / 90) * 3;
+            ctx.arc(c.x, c.y, 14 + pulse, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('💚', c.x, c.y + 5);
+            ctx.restore();
+        }
+    }
+
+    if (typeof worldMeteors !== 'undefined') {
+        for (let m of worldMeteors) {
+            ctx.save();
+            ctx.shadowColor = m.color || '#ffd700';
+            ctx.shadowBlur = 12;
+            ctx.fillStyle = m.color || '#ffd700';
+            ctx.beginPath();
+            ctx.arc(m.x, m.y, m.size || 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    if (typeof activeWorldMessage !== 'undefined' && activeWorldMessage) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        let alpha = Math.min(1, activeWorldMessage.timer / 30);
+        ctx.globalAlpha = alpha;
+
+        let bw = Math.min(GAME_WIDTH - 40, 680), bh = 66;
+        let bx = GAME_WIDTH / 2 - bw / 2, by = 40;
+        
+        ctx.fillStyle = 'rgba(11, 15, 25, 0.94)';
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = 'rgba(255, 215, 0, 0.8)';
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 10);
+        else ctx.rect(bx, by, bw, bh);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = 'bold 12px Arial';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText('👑 ' + (activeWorldMessage.sender || 'РЫБА (СОЗДАТЕЛЬ)').toUpperCase(), GAME_WIDTH / 2, by + 22);
+
+        ctx.font = 'bold 15px Arial';
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#00ffff';
+        ctx.shadowBlur = 8;
+        ctx.fillText('« ' + activeWorldMessage.text + ' »', GAME_WIDTH / 2, by + 47);
+        ctx.restore();
+    }
 }
 
 // Fixed timestep loop

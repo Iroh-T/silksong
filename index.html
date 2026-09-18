@@ -66,6 +66,7 @@
             <div class="menu-btn" onclick="openScreen('mode-select')" style="border-color: #00ffcc; color: #00ffcc;">ИГРАТЬ</div>
             <div class="menu-btn" onclick="openScreen('achievements-menu')" style="border-color: #ffbb00; color: #ffbb00;">ДОСТИЖЕНИЯ</div>
             <div class="menu-btn" onclick="openScreen('settings-menu')" style="border-color: #00bbff; color: #00bbff;">НАСТРОЙКИ</div>
+            <div class="menu-btn" onclick="openCreatorReactionModal()" style="border-color: #ffd700; color: #ffd700; text-shadow: 0 0 8px rgba(255,215,0,0.4);">💌 Привет Создателю (РЫБе)</div>
             <div id="admin-panel-btn" class="menu-btn" onclick="openScreen('admin-screen')" style="display: none; border-color: #ffd700; color: #ffd700; text-shadow: 0 0 8px rgba(255,215,0,0.5);">👑 ПАНЕЛЬ АДМИНА</div>
             <div class="menu-btn" onclick="handleLogout()" style="border-color: #ff3344; color: #ff5566; margin-top: 25px;">ВЫЙТИ ИЗ АККАУНТА</div>
         </div>
@@ -144,6 +145,7 @@
         <!-- 4. HERO SELECT -->
         <div id="hero-select" style="display: none;">
             <div style="margin-bottom: 15px; font-size: 24px;">ВЫБОР ГЕРОЕВ</div>
+            <div class="menu-btn easy-boss-btn" onclick="toggleEasyBossMode()" style="margin-bottom: 14px; background: rgba(30, 41, 59, 0.6); border-color: #64748b; color: #94a3b8; font-size: 13px;">🌱 Ослабление Босса: ВЫКЛ (Обычный)</div>
             <div id="p1-select-ui">
                 <div style="color: cyan;"><b>ИГРОК 1:</b></div>
                 <div class="menu-btn" onclick="selectHero1('WATER')" style="color: #3366ff; border-color: #3366ff;">1. Вода</div>
@@ -182,7 +184,8 @@
             </div>
 
             <div id="badge-list" style="display: none;"></div>
-            <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 30px; background: #004400; border-color: lime; color: lime;">В БОЙ!</div>
+            <div class="menu-btn easy-boss-btn" onclick="toggleEasyBossMode()" style="margin-top: 20px; margin-bottom: 6px; background: rgba(30, 41, 59, 0.6); border-color: #64748b; color: #94a3b8; font-size: 13px;">🌱 Ослабление Босса: ВЫКЛ (Обычный)</div>
+            <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 10px; background: #004400; border-color: lime; color: lime;">В БОЙ!</div>
         </div>
 
         <!-- 6. ACHIEVEMENTS MENU -->
@@ -273,12 +276,38 @@
         </div>
     </div>
 
+    <!-- Creator Reaction Modal -->
+    <div id="creator-reaction-modal" style="display: none; position: fixed; inset: 0; background: rgba(5, 10, 20, 0.88); backdrop-filter: blur(8px); z-index: 1060; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #0f172a; border: 2px solid #ffd700; box-shadow: 0 0 35px rgba(255,215,0,0.35); border-radius: 12px; max-width: 440px; width: 100%; padding: 24px; text-align: center; color: #e2e8f0; position: relative;">
+            <div onclick="closeCreatorReactionModal()" style="position: absolute; top: 12px; right: 16px; font-size: 20px; color: #64748b; cursor: pointer;">✕</div>
+            <div style="font-size: 36px; margin-bottom: 6px;">💌</div>
+            <div style="font-size: 19px; font-weight: bold; color: #ffd700; margin-bottom: 6px; letter-spacing: 1px;">ПРИВЕТ СОЗДАТЕЛЮ</div>
+            <div style="font-size: 13px; color: #94a3b8; line-height: 1.4; margin-bottom: 18px;">
+                Отправь мгновенную весточку РЫБе прямо в его Telegram!
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button class="menu-btn" style="border-color: #ff5533; color: #ff8866; margin: 0; padding: 10px; font-size: 13px;" onclick="sendQuickReactionToCreator('🔥 Игра просто огонь!')">
+                    🔥 «Игра просто огонь!»
+                </button>
+                <button class="menu-btn" style="border-color: #00ffff; color: #00ffff; margin: 0; padding: 10px; font-size: 13px;" onclick="sendQuickReactionToCreator('⚔️ Я бросаю тебе вызов в кооперативе!')">
+                    ⚔️ «Я бросаю тебе вызов в кооперативе!»
+                </button>
+                <button class="menu-btn" style="border-color: #a855f7; color: #d8b4fe; margin: 0; padding: 10px; font-size: 13px;" onclick="sendQuickReactionToCreator('😱 Босс слишком жесткий, спасите!')">
+                    😱 «Босс слишком жесткий, спасите!»
+                </button>
+                <button class="menu-btn" style="border-color: #22c55e; color: #4ade80; margin: 0; padding: 10px; font-size: 13px;" onclick="sendQuickReactionToCreator('💡 У меня есть идея для нового обновления!')">
+                    💡 «У меня есть идея для нового обновления!»
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=29"></script>
-    <script src="audio.js?v=29"></script>
-    <script src="controls.js?v=29"></script>
-    <script src="player.js?v=29"></script>
-    <script src="boss.js?v=29"></script>
-    <script src="game.js?v=30"></script>
+    <script src="constants.js?v=32"></script>
+    <script src="audio.js?v=32"></script>
+    <script src="controls.js?v=32"></script>
+    <script src="player.js?v=32"></script>
+    <script src="boss.js?v=32"></script>
+    <script src="game.js?v=32"></script>
 </body>
 </html>
