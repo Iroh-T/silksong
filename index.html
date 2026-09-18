@@ -218,15 +218,60 @@
         <!-- 10. ADMIN PANEL SCREEN -->
         <div id="admin-screen" style="display: none; max-width: 550px; margin: 0 auto;">
             <div style="font-size: 22px; margin-bottom: 6px; color: #ffd700; font-weight: bold; letter-spacing: 1px;">👑 ПАНЕЛЬ АДМИНИСТРАТОРА</div>
-            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 14px;">Облачная база игроков Firebase</div>
+            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 12px;">Управление миром & База игроков</div>
 
-            <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 14px;">
-                <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #00ffff; color: #00ffff;" onclick="renderAdminScreen()">🔄 Обновить</button>
-                <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #ffd700; color: #ffd700;" onclick="adminSendRosterToTelegram()">📤 В Telegram бота</button>
+            <!-- In-game Admin Tabs -->
+            <div style="display: flex; gap: 6px; justify-content: center; margin-bottom: 14px; flex-wrap: wrap;">
+                <button class="menu-btn" id="ig-tab-btn-world" onclick="switchInGameAdminTab('world')" style="padding: 6px 12px; font-size: 12px; border-color: #ffd700; color: #ffd700; background: rgba(255,215,0,0.15); margin: 0;">⚡ Режим Бога & Трансляция</button>
+                <button class="menu-btn" id="ig-tab-btn-players" onclick="switchInGameAdminTab('players')" style="padding: 6px 12px; font-size: 12px; border-color: #64748b; color: #94a3b8; margin: 0;">👥 База игроков</button>
+                <button class="menu-btn" id="ig-tab-btn-chat" onclick="switchInGameAdminTab('chat')" style="padding: 6px 12px; font-size: 12px; border-color: #64748b; color: #94a3b8; margin: 0;">💌 Чат с игроками</button>
             </div>
 
-            <div id="admin-toast" style="display: none; color: #00ff66; font-size: 12px; margin-bottom: 10px; font-weight: bold;"></div>
-            <div id="admin-cards-list" style="max-height: 250px; overflow-y: auto; text-align: left; padding: 4px;"></div>
+            <!-- VIEW 1: World Control & Broadcast -->
+            <div id="ig-admin-world-view">
+                <!-- Broadcast Box -->
+                <div style="background: rgba(15, 23, 42, 0.85); border: 1.5px solid #ffd700; border-radius: 8px; padding: 12px; margin-bottom: 14px; text-align: left;">
+                    <div style="font-size: 13px; font-weight: bold; color: #ffd700; margin-bottom: 4px;">📢 Трансляция сообщения на экраны:</div>
+                    <div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px;">Текст сразу появится золотым баннером у всех игроков онлайн!</div>
+                    <input type="text" id="ig-broadcast-input" placeholder="Например: Внимание! Сейчас будет метеоритный дождь!" style="width: 100%; padding: 8px 10px; background: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; font-size: 12px; box-sizing: border-box; margin-bottom: 8px;">
+                    <button class="menu-btn" style="width: 100%; margin: 0; padding: 8px; font-size: 12px; border-color: #ffd700; color: #ffd700;" onclick="sendInGameBroadcast()">🚀 Отправить всем на экран</button>
+                </div>
+
+                <!-- God Mode Actions -->
+                <div style="background: rgba(15, 23, 42, 0.85); border: 1.5px solid rgba(0,255,255,0.4); border-radius: 8px; padding: 12px; margin-bottom: 14px; text-align: left;">
+                    <div style="font-size: 13px; font-weight: bold; color: #00ffff; margin-bottom: 4px;">⚡ Интерактив на арене (Режим Богов):</div>
+                    <div style="font-size: 11px; color: #94a3b8; margin-bottom: 10px;">Мгновенно активирует событие в бою:</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <button class="menu-btn" style="margin: 0; padding: 8px 6px; font-size: 11px; border-color: #22c55e; color: #4ade80;" onclick="triggerInGameWorldEvent('AIRDROP')">🎁 Сбросить 3 сферы хила</button>
+                        <button class="menu-btn" style="margin: 0; padding: 8px 6px; font-size: 11px; border-color: #00ffff; color: #00ffff;" onclick="triggerInGameWorldEvent('LOW_GRAVITY')">🎈 Лунная гравитация (15с)</button>
+                        <button class="menu-btn" style="margin: 0; padding: 8px 6px; font-size: 11px; border-color: #ffd700; color: #ffd700;" onclick="triggerInGameWorldEvent('METEOR')">🌠 Звездный дождь</button>
+                        <button class="menu-btn" style="margin: 0; padding: 8px 6px; font-size: 11px; border-color: #ef4444; color: #f87171;" onclick="triggerInGameWorldEvent('BOSS_RAGE')">🔥 Ярость Босса (x1.5 ск.)</button>
+                    </div>
+                </div>
+
+                <a href="admin.html" target="_blank" class="menu-btn" style="display: block; text-decoration: none; border-color: #38bdf8; color: #38bdf8; padding: 8px; font-size: 12px; margin-top: 10px;">🌐 Открыть отдельную веб-панель (admin.html) ↗</a>
+            </div>
+
+            <!-- VIEW 2: Players Base -->
+            <div id="ig-admin-players-view" style="display: none;">
+                <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 12px;">
+                    <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #00ffff; color: #00ffff;" onclick="renderAdminScreen()">🔄 Обновить базу</button>
+                    <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #ffd700; color: #ffd700;" onclick="adminSendRosterToTelegram()">📤 В Telegram бота</button>
+                </div>
+                <div id="admin-cards-list" style="max-height: 250px; overflow-y: auto; text-align: left; padding: 4px;"></div>
+            </div>
+
+            <!-- VIEW 3: Player Feedback Chat -->
+            <div id="ig-admin-chat-view" style="display: none;">
+                <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 12px;">
+                    <button class="menu-btn" style="margin: 0; padding: 6px 12px; font-size: 12px; border-color: #00ffff; color: #00ffff;" onclick="loadInGameFeedback()">🔄 Обновить чат</button>
+                    <button class="menu-btn" style="margin: 0; padding: 6px 12px; font-size: 12px; border-color: #ef4444; color: #f87171;" onclick="clearInGameFeedback()">🗑️ Очистить</button>
+                </div>
+                <div id="ig-feedback-list" style="max-height: 250px; overflow-y: auto; text-align: left; padding: 4px;"></div>
+            </div>
+
+            <div id="admin-toast" style="display: none; color: #00ff66; font-size: 12px; margin-top: 10px; font-weight: bold;"></div>
+            <button class="menu-btn" style="margin-top: 16px; border-color: #64748b; color: #94a3b8; padding: 6px 16px; font-size: 12px;" onclick="menuGoBack()">← Назад в меню</button>
         </div>
     </div>
     
@@ -303,11 +348,11 @@
     </div>
 
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=32"></script>
-    <script src="audio.js?v=32"></script>
-    <script src="controls.js?v=32"></script>
-    <script src="player.js?v=32"></script>
-    <script src="boss.js?v=32"></script>
-    <script src="game.js?v=32"></script>
+    <script src="constants.js?v=34"></script>
+    <script src="audio.js?v=34"></script>
+    <script src="controls.js?v=34"></script>
+    <script src="player.js?v=34"></script>
+    <script src="boss.js?v=34"></script>
+    <script src="game.js?v=34"></script>
 </body>
 </html>

@@ -90,10 +90,17 @@ function buildAndStartGame() {
         platforms = [];
     }
 
-    if (typeof easyBossMode !== 'undefined' && easyBossMode) {
+    let isEasyBoss = !!(typeof easyBossMode !== 'undefined' && easyBossMode) || !!window.easyBossMode;
+    if (isEasyBoss) {
         boss.maxHp = Math.round(boss.maxHp * 0.75);
         phase2Hp = Math.round(phase2Hp * 0.75);
         phase3Hp = Math.round(phase3Hp * 0.75);
+        activeWorldMessage = {
+            text: `🌿 ОСЛАБЛЕНИЕ БОССА: ВКЛЮЧЕНО (HP: ${boss.maxHp}, УРОН: -50%)`,
+            sender: 'Система',
+            timer: 200,
+            maxTimer: 200
+        };
     }
 
     resetGameParams(); 
@@ -1877,8 +1884,14 @@ function draw() {
                 ctx.strokeRect(GAME_WIDTH/2 - 200, 375, barW, 10);
                 ctx.restore();
             }
-            ctx.fillStyle = "white"; ctx.font = "12px Arial"; 
-            ctx.fillText(`Фаза: ${boss.phase}`, GAME_WIDTH/2 - 20, 385); 
+            ctx.save();
+            ctx.font = "bold 12px Arial"; 
+            ctx.textAlign = "center";
+            let isEasy = !!(typeof easyBossMode !== 'undefined' && easyBossMode) || !!window.easyBossMode;
+            let easyBadge = isEasy ? "  [🌿 Ослаблен: 0.75x HP, урон -50%]" : "";
+            ctx.fillStyle = isEasy ? "#4ade80" : "#ffffff";
+            ctx.fillText(`Фаза: ${boss.phase}  |  ${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp} HP${easyBadge}`, GAME_WIDTH/2, 385);
+            ctx.restore();
         }
 
         // Test Mode HUD Indicator (Corner)

@@ -657,7 +657,14 @@ async function sendAllAccountsToTelegram() {
             body: JSON.stringify({
                 chat_id: TG_ADMIN_CHAT_ID,
                 text: lines.join('\n'),
-                parse_mode: 'HTML'
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "⚡ Панель Создателя & Режим Бога", web_app: { url: "https://iroh-t.github.io/silksong/admin.html" } }
+                        ]
+                    ]
+                }
             })
         });
         let json = await res.json();

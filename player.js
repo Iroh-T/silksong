@@ -64,7 +64,7 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
 
     if (p.invuln <= 0 || isBleed || bypassInvuln) {
         if (typeof easyBossMode !== 'undefined' && easyBossMode && !isBleed && !isStaminaBleed) {
-            amount = Math.max(0.5, amount - 0.5);
+            amount = Math.max(0.25, amount * 0.5);
         }
 
         if (p.isDashing && !isBleed) {

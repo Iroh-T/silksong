@@ -73,8 +73,16 @@ window.addEventListener("keydown", e => {
         }
     }
 
-    // In-game Test Mode hotkeys (only works if unlocked via '7' before game)
-    if (gameState === "PLAYING" && (testModeUnlocked || window.testModeUnlocked)) {
+    // In-game Test / Creator hotkeys
+    let curU = getCurrentUser() || '';
+    let isCreatorUser = (curU.toLowerCase() === 'рыба' || curU.toLowerCase() === 'admin');
+    if (gameState === "PLAYING" && (testModeUnlocked || window.testModeUnlocked || isCreatorUser)) {
+        if (e.key === '7' || e.code === 'Digit7') {
+            if (typeof triggerInGameWorldEvent === 'function') triggerInGameWorldEvent('AIRDROP');
+        }
+        if (e.key === '8' || e.code === 'Digit8') {
+            if (typeof triggerInGameWorldEvent === 'function') triggerInGameWorldEvent('LOW_GRAVITY');
+        }
         if (e.key === '9' || e.code === 'Digit9') {
             godModeActive = !godModeActive;
             window.godModeActive = godModeActive;
@@ -492,14 +500,15 @@ function openScreen(screenId, pushHistory = true) {
         renderAchievements();
     }
     if (screenId === 'admin-screen') {
-        renderAdminScreen();
+        if (typeof switchInGameAdminTab === 'function') switchInGameAdminTab('world');
     }
     if (screenId === 'p2-account-screen') {
         let hostEl = document.getElementById('p2-screen-p1-name');
         if (hostEl) hostEl.innerText = getCurrentUser() || "Игрок 1";
     }
-    if (screenId === 'hero-select') {
+    if (screenId === 'hero-select' || screenId === 'badge-select') {
         syncFireHeroState();
+        if (typeof updateEasyBossButtonUI === 'function') updateEasyBossButtonUI();
     }
 }
 window.openScreen = openScreen;
@@ -1155,6 +1164,145 @@ async function adminSendRosterToTelegram() {
 }
 window.adminSendRosterToTelegram = adminSendRosterToTelegram;
 
+function switchInGameAdminTab(tab) {
+    let wView = document.getElementById('ig-admin-world-view');
+    let pView = document.getElementById('ig-admin-players-view');
+    let cView = document.getElementById('ig-admin-chat-view');
+    let wBtn = document.getElementById('ig-tab-btn-world');
+    let pBtn = document.getElementById('ig-tab-btn-players');
+    let cBtn = document.getElementById('ig-tab-btn-chat');
+
+    if (wView) wView.style.display = (tab === 'world') ? 'block' : 'none';
+    if (pView) pView.style.display = (tab === 'players') ? 'block' : 'none';
+    if (cView) cView.style.display = (tab === 'chat') ? 'block' : 'none';
+
+    if (wBtn) {
+        wBtn.style.borderColor = (tab === 'world') ? '#ffd700' : '#64748b';
+        wBtn.style.color = (tab === 'world') ? '#ffd700' : '#94a3b8';
+        wBtn.style.background = (tab === 'world') ? 'rgba(255,215,0,0.15)' : 'transparent';
+    }
+    if (pBtn) {
+        pBtn.style.borderColor = (tab === 'players') ? '#00ffff' : '#64748b';
+        pBtn.style.color = (tab === 'players') ? '#00ffff' : '#94a3b8';
+        pBtn.style.background = (tab === 'players') ? 'rgba(0,255,255,0.15)' : 'transparent';
+    }
+    if (cBtn) {
+        cBtn.style.borderColor = (tab === 'chat') ? '#a855f7' : '#64748b';
+        cBtn.style.color = (tab === 'chat') ? '#d8b4fe' : '#94a3b8';
+        cBtn.style.background = (tab === 'chat') ? 'rgba(168,85,247,0.15)' : 'transparent';
+    }
+
+    if (tab === 'players') {
+        renderAdminScreen();
+    } else if (tab === 'chat') {
+        loadInGameFeedback();
+    }
+}
+window.switchInGameAdminTab = switchInGameAdminTab;
+
+async function sendInGameBroadcast() {
+    let input = document.getElementById('ig-broadcast-input');
+    let text = input ? input.value.trim() : '';
+    if (!text) {
+        showTutorialAlert("Введите текст сообщения!");
+        return;
+    }
+    try {
+        let payload = {
+            type: 'MESSAGE',
+            text: text,
+            sender: 'РЫБа (Создатель)',
+            timestamp: Date.now()
+        };
+        await fetch(`${FIREBASE_URL}/worldEvent.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        showTutorialAlert("📢 Сообщение транслируется всем игрокам!");
+        if (typeof triggerLocalWorldEvent === 'function') triggerLocalWorldEvent(payload);
+        if (input) input.value = '';
+    } catch(e) {
+        showTutorialAlert("Ошибка отправки: " + e.message);
+    }
+}
+window.sendInGameBroadcast = sendInGameBroadcast;
+
+async function triggerInGameWorldEvent(eventType) {
+    let names = {
+        'AIRDROP': 'Сброс 3 сфер хила',
+        'LOW_GRAVITY': 'Лунная гравитация',
+        'METEOR': 'Звездный дождь',
+        'BOSS_RAGE': 'Ярость Босса'
+    };
+    try {
+        let payload = {
+            type: eventType,
+            sender: 'РЫБа (Создатель)',
+            timestamp: Date.now()
+        };
+        await fetch(`${FIREBASE_URL}/worldEvent.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        showTutorialAlert(`⚡ Событие «${names[eventType] || eventType}» запущено!`);
+        if (typeof triggerLocalWorldEvent === 'function') triggerLocalWorldEvent(payload);
+    } catch(e) {
+        showTutorialAlert("Ошибка запуска: " + e.message);
+    }
+}
+window.triggerInGameWorldEvent = triggerInGameWorldEvent;
+
+async function loadInGameFeedback() {
+    let container = document.getElementById('ig-feedback-list');
+    if (!container) return;
+    container.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 15px;">Загрузка сообщений игроков...</div>';
+
+    try {
+        let res = await fetch(`${FIREBASE_URL}/playerFeedback.json`);
+        let data = await res.json();
+        if (!data) {
+            container.innerHTML = '<div style="color: #64748b; text-align: center; padding: 15px;">Пока нет сообщений от игроков.</div>';
+            return;
+        }
+
+        let list = Object.entries(data).map(([id, val]) => ({ id, ...val }));
+        list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        container.innerHTML = list.map(item => {
+            let timeStr = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : '—';
+            return `
+                <div class="admin-card" style="border-left: 3px solid #ffd700; margin-bottom: 8px;">
+                    <div class="admin-card-row">
+                        <span style="color: #ffd700; font-weight: bold; font-size: 13px;">👤 ${item.user || 'Аноним'}</span>
+                        <span style="color: #64748b; font-size: 11px;">${timeStr}</span>
+                    </div>
+                    <div style="font-size: 11px; color: #aaddff; margin-bottom: 4px;">📱 Гаджет: ${item.device || 'Устройство'}</div>
+                    <div style="color: #ffffff; font-size: 13px; background: rgba(0,0,0,0.3); padding: 5px 8px; border-radius: 4px;">
+                        «${item.text || ''}»
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch(e) {
+        container.innerHTML = `<div style="color: #ef4444; padding: 10px;">Ошибка: ${e.message}</div>`;
+    }
+}
+window.loadInGameFeedback = loadInGameFeedback;
+
+async function clearInGameFeedback() {
+    if (!confirm("Очистить ленту сообщений игроков?")) return;
+    try {
+        await fetch(`${FIREBASE_URL}/playerFeedback.json`, { method: 'DELETE' });
+        showTutorialAlert("🗑️ Лента сообщений очищена!");
+        loadInGameFeedback();
+    } catch(e) {
+        showTutorialAlert("Ошибка: " + e.message);
+    }
+}
+window.clearInGameFeedback = clearInGameFeedback;
+
 // --- KEYBINDING EDITOR MANAGER ---
 let currentEditingScheme = null;
 let rebindingTarget = null;
@@ -1404,6 +1552,7 @@ window.getSlotsForHero = getSlotsForHero;
 function prepBadgeMenu() {
     document.getElementById("hero-select").style.display = "none";
     document.getElementById("badge-select").style.display = "block";
+    if (typeof updateEasyBossButtonUI === 'function') updateEasyBossButtonUI();
 
     let titleTeam = document.getElementById("team-slot-title");
     let slotTeam = document.getElementById("slot-team");
