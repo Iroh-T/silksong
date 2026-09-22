@@ -511,6 +511,7 @@
                 updateTopStats();
                 renderCards(currentAccounts);
                 renderDevicesView();
+                flushTelegramQueueAdmin();
             } catch(e) {
                 console.warn("Load error:", e);
                 if (pContainer && pContainer.children.length === 0) {
@@ -958,6 +959,32 @@
             } catch(e) {
                 showToast("Ошибка сети: " + e.message);
             }
+        }
+
+        async function flushTelegramQueueAdmin() {
+            try {
+                let res = await fetch(`${FIREBASE_URL}/telegramQueue.json`);
+                let queue = await res.json();
+                if (!queue) return;
+                for (let qId in queue) {
+                    let item = queue[qId];
+                    if (!item || !item.text) continue;
+                    try {
+                        let sent = await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                chat_id: TG_ADMIN_CHAT_ID,
+                                text: item.text + `\n<i>[Доставлено из очереди облака]</i>`,
+                                parse_mode: 'HTML'
+                            })
+                        });
+                        if (sent.ok) {
+                            await fetch(`${FIREBASE_URL}/telegramQueue/${qId}.json`, { method: 'DELETE' });
+                        }
+                    } catch(e) {}
+                }
+            } catch(e) {}
         }
 
         function switchAdminTab(tab) {

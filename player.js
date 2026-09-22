@@ -12,6 +12,8 @@ function applyBadgesToPlayer(p, isP1) {
     if (p.badges.includes('sharp')) p.hasSharpening = true;
     if (p.badges.includes('bracelet')) p.recoilResist = true;
     if (p.badges.includes('sneakers')) { p.speedMod = 1.33; p.hasSneakers = true; p.runTimer = 0; } else { p.speedMod = 1; p.hasSneakers = false; p.runTimer = 0; }
+    if (p.badges.includes('shield')) p.hasAegisShield = true;
+    if (p.badges.includes('fish_scale')) { p.maxHp += 1; p.hp = p.maxHp; p.hasFishScale = true; }
     if (p.inputType === 'TOUCH') { p.dmgDealtMod += 0.5; p.isMobile = true; } else { p.isMobile = false; }
 }
 
@@ -63,6 +65,24 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
     }
 
     if (p.invuln <= 0 || isBleed || bypassInvuln) {
+        // Shield Badge: Blocks the first incoming attack cleanly!
+        if (p.badges && p.badges.includes('shield') && p.hasAegisShield && !isBleed && !isStaminaBleed) {
+            p.hasAegisShield = false;
+            p.invuln = 50;
+            playSound('parry');
+            triggerShake(6, 12);
+            triggerVibration('clash');
+            voidExplosions.push({ x: p.x + p.width/2, y: p.y + p.height/2, timer: 20, isWhite: true, isOrange: false, r: 55 });
+            return;
+        }
+
+        // Thorns Badge: Inflicts 1.5 retribution damage to the boss when player is hit
+        if (p.badges && p.badges.includes('thorns') && !isBleed && !isStaminaBleed && amount > 0) {
+            tryDamageBoss(1.5, p);
+            triggerShake(5, 10);
+            voidExplosions.push({ x: p.x + p.width/2, y: p.y + p.height/2, timer: 18, isWhite: false, isOrange: true, r: 60 });
+        }
+
         if (typeof easyBossMode !== 'undefined' && easyBossMode && !isBleed && !isStaminaBleed) {
             amount = Math.max(0.25, amount * 0.5);
         }
@@ -129,6 +149,17 @@ function recordHit(p) {
     if (p && p.hasSharpening && Math.random() < 0.08 && boss.heroBleedTimer <= 0) { 
         boss.heroBleedTimer = 60; 
         boss.heroBleedTicks = 2; 
+    }
+    if (p && p.badges && p.badges.includes('vampire')) {
+        p.vampireHits = (p.vampireHits || 0) + 1;
+        if (p.vampireHits >= 6) {
+            p.vampireHits = 0;
+            if (p.hp < p.maxHp) {
+                p.hp = Math.min(p.maxHp, p.hp + 1);
+                playSound('heal');
+                voidExplosions.push({ x: p.x + 15, y: p.y + 25, timer: 15, isWhite: true, isOrange: false, r: 35 });
+            }
+        }
     }
 }
 
@@ -579,6 +610,20 @@ function updatePlayers() {
             p.speed = (kDash ? dashSpd : baseSpd) * p.speedMod;
             p.isDashing = kDash;
 
+            // Dash Strike Badge: Dashing through boss inflicts 1.5 damage
+            if (kDash && p.badges && p.badges.includes('dash_strike')) {
+                if (!p.dashStrikeCooldown) p.dashStrikeCooldown = 0;
+                if (p.dashStrikeCooldown <= 0 && rectIntersect(p, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
+                    p.dashStrikeCooldown = 35;
+                    tryDamageBoss(1.5, p);
+                    playSound('slash');
+                    triggerShake(6, 12);
+                    triggerVibration('attack');
+                    voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y + boss.height/2, timer: 16, isWhite: true, isOrange: false, r: 55 });
+                }
+            }
+            if (p.dashStrikeCooldown > 0) p.dashStrikeCooldown--;
+
             // Dash Backstab Shadow Teleport for Water Demon & Earth facing boss
             if (kDash && !p.prevDashKey) {
                 if ((p.type === 'WATER' && p.stance === 'DEMON') || p.type === 'EARTH') {
@@ -655,7 +700,8 @@ function updatePlayers() {
                 else if (p.x >= ARENA_W - p.width - 5 && kRight && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = 1; p.facingRight = false; }
             }
             
-            if (!p.isUnderFloor && (p.y > camY + GAME_HEIGHT + 150 || p.y > FLOOR + 250)) {
+            let isFallingTransition = (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120);
+            if (!isFallingTransition && !p.isUnderFloor && (p.y > camY + GAME_HEIGHT + 150 || p.y > FLOOR + 250)) {
                 if (isClimbPhase && p.invuln > 0) {
                     // Во время подъема по платформам при неуязвимости (например, после SA2) игрок не получает урон от бездны!
                     p.x = p.lastSafeX || (ARENA_W / 2); 
@@ -731,6 +777,7 @@ function updatePlayers() {
                             sharedHeals--;
                         }
                         p.isHealing = false; p.isAoEHealing = false; p.isFieryHealing = false; p.healTimer = 0;
+                        if (p.badges && p.badges.includes('shield')) p.hasAegisShield = true;
                     }
                 }
             } else {
@@ -935,6 +982,11 @@ function updatePlayers() {
                 if (!kSpec) p.prevAttackKey = kAttack;
                 if (p.type === 'FIRE') p.prevDashKey = kDash;
                 p.vy += currentGravity; 
+                // Feather Badge: Glide slowly in air when Jump is held
+                if (p.badges && p.badges.includes('feather') && kJump && p.vy > 1.2 && !onFloor && !onPlatform && !onWall) {
+                    p.vy = 1.2;
+                    if (Math.random() < 0.2) applyPhysicsPushToLeaves(p.x + 15, p.y + p.height, 2);
+                }
                 let maxWallSlide = globalWindMode === "DOWN" ? 8 : 2; 
                 if (onWall && p.vy > maxWallSlide) p.vy = maxWallSlide; 
             }
@@ -1190,6 +1242,31 @@ function drawPlayer(p) {
     }
     
     ctx.shadowBlur = 0; 
+
+    // Aegis Shield Badge Visual Bubble
+    if (p.hasAegisShield && !p.isDowned) {
+        ctx.save();
+        let t = Date.now() / 250;
+        let pulseR = 30 + Math.sin(t) * 2;
+        ctx.strokeStyle = "rgba(0, 225, 255, 0.85)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(p.x + p.width/2, p.y + p.height/2, pulseR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(0, 225, 255, 0.12)";
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Fish Scale Badge Crown
+    if (p.hasFishScale && !p.isDowned) {
+        ctx.save();
+        ctx.fillStyle = "#ffd700";
+        ctx.font = "14px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("👑", p.x + p.width / 2, p.y - 6);
+        ctx.restore();
+    }
 
     // Healing Auras
     if (p.isAoEHealing || p.isFieryHealing) { 

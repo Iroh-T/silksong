@@ -5,6 +5,11 @@ function buildAndStartGame() {
     if (typeof stopMenuMusic === 'function') stopMenuMusic();
     let overlay = document.getElementById("overlay");
     if (overlay) overlay.style.display = "none"; 
+    let isTouch = (p1InputType === 'TOUCH' || (numPlayers === 2 && p2InputType === 'TOUCH'));
+    let mobUi = document.getElementById("mobile-ui");
+    if (mobUi) mobUi.style.display = isTouch ? "flex" : "none";
+    let ctrlCont = document.getElementById("controls-container");
+    if (ctrlCont) ctrlCont.style.display = isTouch ? "none" : "block";
     players = [];
     isTutorial = false;
     
@@ -84,6 +89,11 @@ function buildAndStartGame() {
         for (let p of players) { p.maxHp += 2; p.hp += 2; } 
     }
 
+    // Battery Badge: +1 maximum heal charge for the team
+    if (players.some(p => p.badges && p.badges.includes('battery'))) {
+        maxSharedHeals = Math.min(6, maxSharedHeals + 1);
+    }
+
     if (!secretMode) {
         platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10 } ];
     } else {
@@ -114,6 +124,10 @@ function buildAndStartGame() {
         boss.color = "#aaaaaa";
         for (let p of players) { p.y = -200; p.vy = 5; }
     }
+
+    if (window.isBroadcasting) {
+        sendTelegramNotification(`🔴 <b>${getCurrentUser() || 'РЫБа'} начал прямую трансляцию боя!</b>\n⏰ <i>${new Date().toLocaleTimeString()}</i>`);
+    }
 }
 window.buildAndStartGame = buildAndStartGame;
 
@@ -122,6 +136,11 @@ function buildAndStartTutorialGame() {
     if (typeof stopMenuMusic === 'function') stopMenuMusic();
     let overlay = document.getElementById("overlay");
     if (overlay) overlay.style.display = "none"; 
+    let isTouch = (p1InputType === 'TOUCH');
+    let mobUi = document.getElementById("mobile-ui");
+    if (mobUi) mobUi.style.display = isTouch ? "flex" : "none";
+    let ctrlCont = document.getElementById("controls-container");
+    if (ctrlCont) ctrlCont.style.display = isTouch ? "none" : "block";
     players = [];
     
     secretMode = false;
@@ -203,6 +222,7 @@ function resetGameParams() {
         p.invigBrews = Object.values(p.abilities).includes('invig') ? 3 : 0;
         if (p.type === 'STAMINA') { p.stamina = 5; p.isCharging = false; p.chargeTimer = 0; p.chargeProjectiles = []; } 
         if (p.type === 'FIRE') { p.isParrying = false; p.parryTimer = 0; p.orangeHp = 0; p.orangeHpTimer = 0; p.isFieryHealing = false; p.fireDashTimer = 0; }
+        if (p.badges && p.badges.includes('shield')) p.hasAegisShield = true;
     }
     if (players.length > 0) players[0].x = ARENA_W/2 - 50; 
     if (players.length > 1) players[1].x = ARENA_W/2 + 50;
@@ -766,6 +786,111 @@ function updateTutorial() {
 function update() {
     if (gameState !== "PLAYING") return;
 
+    // 1. Update flying emoji reactions
+    if (window.flyingReactions && window.flyingReactions.length > 0) {
+        for (let i = window.flyingReactions.length - 1; i >= 0; i--) {
+            let r = window.flyingReactions[i];
+            r.x += r.vx;
+            r.y += r.vy;
+            r.opacity -= 0.012;
+            if (r.opacity <= 0) {
+                window.flyingReactions.splice(i, 1);
+            }
+        }
+    }
+
+    // 2. Spectator Mode Update (Receives stream from host)
+    if (window.spectatorMode) {
+        let bs = window.broadcastState;
+        if (bs && bs.p) {
+            if (players.length === 0) {
+                players.push(createPlayer(1, bs.p.type || 'WATER', {}, 'SPECTATOR', bs.p.x));
+            }
+            let p = players[0];
+            p.x = bs.p.x;
+            p.y = bs.p.y;
+            p.vx = bs.p.vx;
+            p.vy = bs.p.vy;
+            p.hp = bs.p.hp;
+            p.maxHp = bs.p.maxHp;
+            p.facingRight = bs.p.facingRight;
+            p.attackType = bs.p.attackType;
+            p.attackTimer = bs.p.attackTimer;
+            p.isHealing = bs.p.isHealing;
+            p.isAoEHealing = bs.p.isAoEHealing;
+            p.isFieryHealing = bs.p.isFieryHealing;
+            p.isDashing = bs.p.isDashing;
+            p.hasAegisShield = bs.p.hasAegisShield;
+            p.hasFishScale = bs.p.hasFishScale;
+            p.color = bs.p.color || p.color;
+            p.type = bs.p.type || p.type;
+        }
+        if (bs && bs.boss) {
+            boss.x = bs.boss.x;
+            boss.y = bs.boss.y;
+            boss.vx = bs.boss.vx;
+            boss.vy = bs.boss.vy;
+            boss.hp = bs.boss.hp;
+            boss.maxHp = bs.boss.maxHp;
+            boss.state = bs.boss.state;
+            boss.color = bs.boss.color;
+            boss.phase = bs.boss.phase;
+        }
+        if (bs && bs.cam) {
+            camX = bs.cam.x;
+            camY = bs.cam.y;
+        }
+        if (bs) {
+            secretMode = !!bs.secretMode;
+            if (bs.floor !== undefined) FLOOR = bs.floor;
+        }
+        return;
+    }
+
+    // 3. Host Broadcast Streaming
+    if (window.isBroadcasting && players.length > 0) {
+        let p = players[0];
+        let snapshot = {
+            p: {
+                x: Math.round(p.x),
+                y: Math.round(p.y),
+                vx: Math.round(p.vx * 10) / 10,
+                vy: Math.round(p.vy * 10) / 10,
+                hp: p.hp,
+                maxHp: p.maxHp,
+                facingRight: p.facingRight,
+                attackType: p.attackType,
+                attackTimer: p.attackTimer,
+                isHealing: p.isHealing,
+                isAoEHealing: p.isAoEHealing,
+                isFieryHealing: p.isFieryHealing,
+                isDashing: p.isDashing,
+                hasAegisShield: !!p.hasAegisShield,
+                hasFishScale: !!p.hasFishScale,
+                color: p.color,
+                type: p.type
+            },
+            boss: {
+                x: Math.round(boss.x),
+                y: Math.round(boss.y),
+                vx: Math.round(boss.vx * 10) / 10,
+                vy: Math.round(boss.vy * 10) / 10,
+                hp: boss.hp,
+                maxHp: boss.maxHp,
+                state: boss.state,
+                color: boss.color,
+                phase: boss.phase
+            },
+            cam: {
+                x: Math.round(camX),
+                y: Math.round(camY)
+            },
+            secretMode: secretMode,
+            floor: FLOOR
+        };
+        pushBroadcastSnapshot(snapshot);
+    }
+
     if (!isTutorial) {
         if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") { 
             checkPhaseTransition(); 
@@ -773,6 +898,7 @@ function update() {
 
         if (boss.state === "FREE_ROAM" || boss.state === "DEFEATED") {
             if (typeof recordBattleResult === 'function') recordBattleResult(true);
+            if (window.isBroadcasting) stopBroadcast();
         }
     }
 
@@ -780,6 +906,7 @@ function update() {
         gameState = "GAMEOVER"; 
         if (typeof recordBattleResult === 'function') recordBattleResult(false);
         if (typeof sendPresencePing === 'function') sendPresencePing();
+        if (window.isBroadcasting) stopBroadcast();
     }
 
     // Camera follow
@@ -799,10 +926,12 @@ function update() {
         } else {
             camX = 0;
         }
-        camY += (ay - GAME_HEIGHT/2 - camY) * 0.1;
+        let isFallingTransition = (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120);
+        let lerpY = isFallingTransition ? 0.35 : 0.1;
+        camY += (ay - GAME_HEIGHT/2 - camY) * lerpY;
         let minCamY = -2000;
         if (camY < minCamY) camY = minCamY;
-        let maxCamY = FLOOR - GAME_HEIGHT + 100;
+        let maxCamY = isFallingTransition ? 99999 : (FLOOR - GAME_HEIGHT + 100);
         if (camY > maxCamY && maxCamY > 0) camY = maxCamY;
     } else { 
         camX = 0; camY = 0; 
@@ -968,8 +1097,8 @@ function update() {
 }
 
 function drawBackground() {
-    let bgTop = (boss.phase >= 2.5 || boss.state.startsWith("L_CLIMB") || secretMode) ? -2000 : 0;
-    ctx.fillStyle = secretMode ? (window.fireHeroUnlocked ? "#150505" : "#111") : (globalWindMode === "DOWN" ? "#1a100c" : "#2e1a12"); 
+    let bgTop = (boss.phase >= 2.5 || boss.state.startsWith("L_CLIMB") || secretMode) ? -6000 : 0;
+    ctx.fillStyle = secretMode ? "#111" : (globalWindMode === "DOWN" ? "#1a100c" : "#2e1a12"); 
     ctx.fillRect(0, bgTop, ARENA_W, FLOOR - bgTop);
     
     if (!secretMode) { 
@@ -1001,7 +1130,25 @@ function drawBackground() {
         ctx.fillStyle = "#4a3022"; ctx.fillRect(lx + 5, ly + 65, 150, 6);
     }
 
-    ctx.fillStyle = secretMode ? (window.fireHeroUnlocked ? "#1a0000" : "#000") : "#22110a"; 
+    // Speedlines during the 2-second abyss free-fall
+    if (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(168, 85, 247, 0.4)";
+        ctx.lineWidth = 2;
+        let t = boss.transitionTimer;
+        for (let i = 0; i < 28; i++) {
+            let sx = (i * 37 + (t * 11)) % ARENA_W;
+            let sy = ((i * 73 - (t * 26)) % (GAME_HEIGHT + 350)) + camY - 50;
+            let slen = 50 + (i % 5) * 30;
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx, sy + slen);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    ctx.fillStyle = secretMode ? "#000" : "#22110a"; 
     ctx.fillRect(0, FLOOR, ARENA_W, ARENA_H > FLOOR ? ARENA_H : 2000);
 
     if (!boss.state.startsWith("L_CLIMB")) {
@@ -1894,6 +2041,60 @@ function draw() {
             ctx.restore();
         }
 
+        // HUD for Abyss Falling & 10-Platform Climb
+        if (boss.state === "L_CLIMB_TRANSITION" || boss.state.startsWith("L_CLIMB")) {
+            ctx.save();
+            ctx.textAlign = "center";
+            if (boss.transitionTimer < 120) {
+                // Free fall
+                ctx.font = "bold 20px Arial";
+                ctx.fillStyle = "#c084fc";
+                ctx.shadowColor = "rgba(168, 85, 247, 0.8)";
+                ctx.shadowBlur = 12;
+                ctx.fillText("↓ ПАДЕНИЕ В БЕЗДНУ ↓", GAME_WIDTH / 2, 45);
+                ctx.font = "13px Arial";
+                ctx.fillStyle = "#e9d5ff";
+                let depthMeters = Math.round(boss.transitionTimer * 18);
+                ctx.fillText(`Глубина погружения: ${depthMeters} м`, GAME_WIDTH / 2, 68);
+            } else {
+                // Climbing 10 platforms
+                let currentPlatNum = 1;
+                for (let p of players) {
+                    if (p.highestPlatReached) currentPlatNum = Math.max(currentPlatNum, p.highestPlatReached);
+                }
+                ctx.font = "bold 18px Arial";
+                ctx.fillStyle = "#ffd700";
+                ctx.shadowColor = "rgba(255, 215, 0, 0.8)";
+                ctx.shadowBlur = 10;
+                ctx.fillText("▲ ПОДЪЕМ НА ВЕРШИНУ ▲", GAME_WIDTH / 2, 42);
+                ctx.font = "bold 13px Arial";
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+                ctx.shadowBlur = 4;
+                ctx.fillText(`Платформы: [ ${currentPlatNum} / 10 ]  —  Доберитесь до 10-й платформы!`, GAME_WIDTH / 2, 64);
+            }
+            ctx.restore();
+        }
+
+        if (boss.phase === 3 && boss.phase3AnnouncementTimer > 0) {
+            boss.phase3AnnouncementTimer--;
+            let alpha = Math.min(1, boss.phase3AnnouncementTimer / 30);
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.textAlign = "center";
+            ctx.font = "bold 26px Arial";
+            ctx.fillStyle = "#ffd700";
+            ctx.shadowColor = "rgba(255, 215, 0, 0.9)";
+            ctx.shadowBlur = 15;
+            ctx.fillText("⚔️ ФАЗА 3: ВЕРШИНА БЕЗДНЫ ⚔️", GAME_WIDTH / 2, 110);
+            ctx.font = "bold 14px Arial";
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+            ctx.shadowBlur = 6;
+            ctx.fillText("Босс вернулся во всей своей мощи!", GAME_WIDTH / 2, 135);
+            ctx.restore();
+        }
+
         // Test Mode HUD Indicator (Corner)
         if (testModeUnlocked || window.testModeUnlocked) {
             ctx.save();
@@ -2178,6 +2379,20 @@ function drawWorldEvents() {
         ctx.shadowColor = '#00ffff';
         ctx.shadowBlur = 8;
         ctx.fillText('« ' + activeWorldMessage.text + ' »', GAME_WIDTH / 2, by + 47);
+        ctx.restore();
+    }
+
+    // Render flying stream reactions (floating emojis)
+    if (window.flyingReactions && window.flyingReactions.length > 0) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        for (let r of window.flyingReactions) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, r.opacity));
+            ctx.font = `${Math.round(26 * r.scale)}px sans-serif`;
+            let screenX = r.x - camX;
+            let screenY = r.y - camY;
+            ctx.fillText(r.emoji, screenX, screenY);
+        }
         ctx.restore();
     }
 }

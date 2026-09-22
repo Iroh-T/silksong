@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Убежище</title>
-    <link rel="stylesheet" href="style.css?v=29">
+    <link rel="stylesheet" href="style.css?v=40">
 </head>
 <body>
     <audio id="lModeMusic" src="lost_lace.mp3" loop></audio>
@@ -12,17 +12,37 @@
     <h2>Убежище</h2>
     
     <div class="game-wrapper">
-        <canvas id="gameCanvas"></canvas>
-        <div id="void-vignette"></div>
+        <div class="screen-frame">
+            <canvas id="gameCanvas"></canvas>
+            <div id="void-vignette"></div>
+            
+            <!-- Spectator HUD Overlay -->
+            <div id="spectator-hud" style="display: none; position: absolute; inset: 0; pointer-events: none; z-index: 15;">
+                <div style="position: absolute; top: 12px; left: 16px; display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.75); border: 1px solid #ff0055; padding: 6px 14px; border-radius: 20px; pointer-events: auto; box-shadow: 0 0 12px rgba(255,0,85,0.4);">
+                    <span class="live-pulse-dot" style="width: 8px; height: 8px;"></span>
+                    <span style="font-size: 12px; font-weight: bold; color: #fff;" id="spectator-host-title">🔴 В ЭФИРЕ: РЫБа</span>
+                </div>
+                <div style="position: absolute; top: 12px; right: 16px; pointer-events: auto;">
+                    <button class="menu-btn" style="margin: 0; padding: 6px 14px; font-size: 12px; border-color: #ff4466; color: #ff6688; background: rgba(0,0,0,0.85);" onclick="stopWatchingBroadcast()">✕ Выйти в меню</button>
+                </div>
+                <div style="position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; pointer-events: auto; background: rgba(10, 15, 30, 0.85); border: 1px solid rgba(255,255,255,0.25); padding: 6px 16px; border-radius: 30px; backdrop-filter: blur(6px); box-shadow: 0 0 15px rgba(0,0,0,0.6);">
+                    <button class="spectator-reaction-btn" onclick="sendBroadcastReaction('🔥')">🔥</button>
+                    <button class="spectator-reaction-btn" onclick="sendBroadcastReaction('❤️')">❤️</button>
+                    <button class="spectator-reaction-btn" onclick="sendBroadcastReaction('👏')">👏</button>
+                    <button class="spectator-reaction-btn" onclick="sendBroadcastReaction('😱')">😱</button>
+                    <button class="spectator-reaction-btn" onclick="sendBroadcastReaction('👑')">👑</button>
+                </div>
+            </div>
+        </div>
         <div id="mobile-ui">
             <div id="joy-base"><div id="joy-stick"></div></div>
             <div class="m-btn-group">
-                <div class="m-btn" id="m-dash" style="border-color: orange;">DASH</div>
-                <div class="m-btn" id="m-spec" style="border-color: yellow;">SPEC</div>
-                <div class="m-btn" id="m-stance" style="border-color: #d000ff; color: #d000ff;">S</div>
-                <div class="m-btn" id="m-atk" style="border-color: red;">ATK</div>
-                <div class="m-btn" id="m-jmp" style="border-color: white;">JMP</div>
-                <div class="m-btn" id="m-heal" style="border-color: lime;">HEAL</div>
+                <div class="m-btn" id="m-dash" style="border-color: #f59e0b; color: #fbbf24;">DASH</div>
+                <div class="m-btn" id="m-spec" style="border-color: #eab308; color: #fde047;">SPEC</div>
+                <div class="m-btn" id="m-stance" style="border-color: #c084fc; color: #e9d5ff;">S</div>
+                <div class="m-btn" id="m-atk" style="border-color: #ef4444; color: #f87171;">ATK</div>
+                <div class="m-btn" id="m-jmp" style="border-color: #ffffff; color: #ffffff;">JMP</div>
+                <div class="m-btn" id="m-heal" style="border-color: #22c55e; color: #4ade80;">HEAL</div>
                 <div class="m-btn m-btn-l" id="m-light" style="display:none;">L</div>
             </div>
         </div>
@@ -63,6 +83,19 @@
         <!-- 1. ROOT MAIN MENU -->
         <div id="root-menu" style="display: none;">
             <div style="font-size: 26px; margin-bottom: 20px; font-weight: bold; letter-spacing: 2px;">УБЕЖИЩЕ</div>
+
+            <!-- Prominent Live Broadcast Tab / Card -->
+            <div id="live-broadcast-banner" class="live-broadcast-card" style="display: none;" onclick="startWatchingBroadcast()">
+                <div class="live-banner-content">
+                    <span class="live-pulse-dot"></span>
+                    <div class="live-banner-info">
+                        <div class="live-banner-title">ИДЁТ ПРЯМАЯ ТРАНСЛЯЦИЯ</div>
+                        <div class="live-banner-host" id="live-broadcast-host-name">от РЫБа</div>
+                    </div>
+                    <button class="live-watch-btn" onclick="event.stopPropagation(); startWatchingBroadcast()">СМОТРЕТЬ 👁️</button>
+                </div>
+            </div>
+
             <div class="menu-btn" onclick="openScreen('mode-select')" style="border-color: #00ffcc; color: #00ffcc;">ИГРАТЬ</div>
             <div class="menu-btn" onclick="openScreen('achievements-menu')" style="border-color: #ffbb00; color: #ffbb00;">ДОСТИЖЕНИЯ</div>
             <div class="menu-btn" onclick="openScreen('settings-menu')" style="border-color: #00bbff; color: #00bbff;">НАСТРОЙКИ</div>
@@ -185,7 +218,13 @@
 
             <div id="badge-list" style="display: none;"></div>
             <div class="menu-btn easy-boss-btn" onclick="toggleEasyBossMode()" style="margin-top: 20px; margin-bottom: 6px; background: rgba(30, 41, 59, 0.6); border-color: #64748b; color: #94a3b8; font-size: 13px;">🌱 Ослабление Босса: ВЫКЛ (Обычный)</div>
-            <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 10px; background: #004400; border-color: lime; color: lime;">В БОЙ!</div>
+            <div style="text-align: center; margin: 4px auto 6px auto;">
+                <button id="broadcast-toggle-btn" class="subtle-stream-btn" onclick="toggleBroadcastMode()" title="Транслировать бой другим игрокам онлайн">
+                    <span class="subtle-stream-dot" id="broadcast-dot"></span>
+                    <span id="broadcast-btn-text">Трансляция боя: ВЫКЛ</span>
+                </button>
+            </div>
+            <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 8px; background: #004400; border-color: lime; color: lime;">В БОЙ!</div>
         </div>
 
         <!-- 6. ACHIEVEMENTS MENU -->
@@ -348,11 +387,11 @@
     </div>
 
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=34"></script>
-    <script src="audio.js?v=34"></script>
-    <script src="controls.js?v=34"></script>
-    <script src="player.js?v=34"></script>
-    <script src="boss.js?v=34"></script>
-    <script src="game.js?v=34"></script>
+    <script src="constants.js?v=40"></script>
+    <script src="audio.js?v=40"></script>
+    <script src="controls.js?v=40"></script>
+    <script src="player.js?v=40"></script>
+    <script src="boss.js?v=40"></script>
+    <script src="game.js?v=40"></script>
 </body>
 </html>

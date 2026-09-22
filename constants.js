@@ -235,11 +235,11 @@ function clearCurrentUser() {
 const TG_BOT_TOKEN = '8425811496:AAHkIJ_d1Ax4VyLvyKq4hWoWJfsC6SCYk-Q';
 const TG_ADMIN_CHAT_ID = '6465929018';
 
-function sendTelegramNotification(text) {
+async function sendTelegramNotification(text) {
+    if (!TG_BOT_TOKEN || !TG_ADMIN_CHAT_ID) return;
+    let url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`;
     try {
-        if (!TG_BOT_TOKEN || !TG_ADMIN_CHAT_ID) return;
-        let url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`;
-        fetch(url, {
+        let res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -247,14 +247,205 @@ function sendTelegramNotification(text) {
                 text: text,
                 parse_mode: 'HTML'
             })
-        }).catch(err => {
-            console.warn("TG notification failed:", err);
         });
-    } catch(e) {
-        console.warn("TG error:", e);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+    } catch(err) {
+        console.warn("TG direct notification failed, saving to Firebase queue:", err);
+        // Fallback: save to Firebase queue so it is guaranteed to be delivered!
+        try {
+            fetch(`${FIREBASE_URL}/telegramQueue.json`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: text,
+                    createdAt: Date.now()
+                })
+            }).catch(()=>{});
+        } catch(e) {}
     }
 }
 window.sendTelegramNotification = sendTelegramNotification;
+
+// Flush any pending notifications in queue when connected
+async function flushTelegramQueue() {
+    try {
+        let res = await fetch(`${FIREBASE_URL}/telegramQueue.json`);
+        let queue = await res.json();
+        if (!queue) return;
+        for (let qId in queue) {
+            let item = queue[qId];
+            if (!item || !item.text) continue;
+            try {
+                let sent = await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: TG_ADMIN_CHAT_ID,
+                        text: item.text + `\n<i>[Доставлено из очереди облака]</i>`,
+                        parse_mode: 'HTML'
+                    })
+                });
+                if (sent.ok) {
+                    await fetch(`${FIREBASE_URL}/telegramQueue/${qId}.json`, { method: 'DELETE' });
+                }
+            } catch(e) {}
+        }
+    } catch(e) {}
+}
+window.flushTelegramQueue = flushTelegramQueue;
+setTimeout(flushTelegramQueue, 2500);
+
+// --- LIVE BROADCAST SYSTEM ("FREE GUY / KEYS STREAM") ---
+window.isBroadcasting = false;
+window.spectatorMode = false;
+window.broadcastState = null;
+window.currentActiveStream = null;
+window.flyingReactions = [];
+
+function toggleBroadcastMode() {
+    window.isBroadcasting = !window.isBroadcasting;
+    if (typeof updateBroadcastButtonUI === 'function') {
+        updateBroadcastButtonUI();
+    }
+}
+window.toggleBroadcastMode = toggleBroadcastMode;
+
+function updateBroadcastButtonUI() {
+    let btn = document.getElementById("broadcast-toggle-btn");
+    let txt = document.getElementById("broadcast-btn-text");
+    if (!btn || !txt) return;
+    if (window.isBroadcasting) {
+        btn.classList.add("active");
+        txt.innerHTML = '<span style="color: #ff3344; font-weight: bold;">🔴 ВКЛ (Прямой эфир)</span>';
+    } else {
+        btn.classList.remove("active");
+        txt.innerHTML = 'Трансляция боя: ВЫКЛ';
+    }
+}
+window.updateBroadcastButtonUI = updateBroadcastButtonUI;
+
+// Host sending stream frame (~20 times/sec)
+let lastBroadcastPushTime = 0;
+async function pushBroadcastSnapshot(snapshot) {
+    if (!window.isBroadcasting) return;
+    let now = Date.now();
+    if (now - lastBroadcastPushTime < 45) return;
+    lastBroadcastPushTime = now;
+    try {
+        let payload = {
+            active: true,
+            host: getCurrentUser() || 'РЫБа',
+            updatedAt: now,
+            ...snapshot
+        };
+        fetch(`${FIREBASE_URL}/liveBroadcast.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(()=>{});
+    } catch(e){}
+}
+window.pushBroadcastSnapshot = pushBroadcastSnapshot;
+
+function stopBroadcast() {
+    if (window.isBroadcasting) {
+        try {
+            fetch(`${FIREBASE_URL}/liveBroadcast.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: false, host: getCurrentUser() || 'РЫБа', updatedAt: Date.now() })
+            }).catch(()=>{});
+        } catch(e){}
+    }
+    window.isBroadcasting = false;
+    updateBroadcastButtonUI();
+}
+window.stopBroadcast = stopBroadcast;
+
+// Polling for live broadcast in main menu
+async function checkLiveBroadcast() {
+    if (gameState === 'PLAYING' && window.isBroadcasting) return;
+    try {
+        let res = await fetch(`${FIREBASE_URL}/liveBroadcast.json`);
+        let data = await res.json();
+        let banner = document.getElementById("live-broadcast-banner");
+        let hostLabel = document.getElementById("live-broadcast-host-name");
+        
+        let isLive = data && data.active && (Date.now() - (data.updatedAt || 0) < 10000);
+        let curUser = getCurrentUser() || 'Гость';
+        if (isLive && data.host === curUser && window.isBroadcasting) {
+            isLive = false;
+        }
+
+        if (isLive) {
+            window.currentActiveStream = data;
+            if (hostLabel) hostLabel.innerText = `от ${data.host}`;
+            if (banner && gameState === 'MENU') banner.style.display = "block";
+        } else {
+            window.currentActiveStream = null;
+            if (banner) banner.style.display = "none";
+            if (window.spectatorMode && (!data || !data.active)) {
+                if (typeof onBroadcastEnded === 'function') onBroadcastEnded();
+            }
+        }
+        
+        if (window.spectatorMode && isLive) {
+            window.broadcastState = data;
+        }
+    } catch(e){}
+}
+window.checkLiveBroadcast = checkLiveBroadcast;
+setInterval(checkLiveBroadcast, 2500);
+
+// Reactions
+function sendBroadcastReaction(emoji) {
+    if (!emoji) return;
+    spawnFlyingReaction(emoji);
+    try {
+        fetch(`${FIREBASE_URL}/liveBroadcast/reactions.json`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ emoji: emoji, time: Date.now(), from: getCurrentUser() || 'Гость' })
+        }).catch(()=>{});
+    } catch(e){}
+}
+window.sendBroadcastReaction = sendBroadcastReaction;
+
+function spawnFlyingReaction(emoji) {
+    window.flyingReactions.push({
+        emoji: emoji,
+        x: (typeof ARENA_W !== 'undefined' ? ARENA_W/2 : 500) + (Math.random() - 0.5) * 400,
+        y: (typeof FLOOR !== 'undefined' ? FLOOR - 20 : 330),
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: -2.5 - Math.random() * 2,
+        opacity: 1,
+        scale: 1 + Math.random() * 0.4
+    });
+}
+window.spawnFlyingReaction = spawnFlyingReaction;
+
+let lastReactionCheckTime = Date.now();
+async function pollBroadcastReactions() {
+    if (!window.isBroadcasting && !window.spectatorMode) return;
+    try {
+        let res = await fetch(`${FIREBASE_URL}/liveBroadcast/reactions.json?orderBy="time"&startAt=${lastReactionCheckTime}&limitToLast=10`);
+        let data = await res.json();
+        if (data) {
+            let maxTime = lastReactionCheckTime;
+            for (let id in data) {
+                let r = data[id];
+                if (r && r.time > lastReactionCheckTime) {
+                    if (r.from !== (getCurrentUser() || 'Гость')) {
+                        spawnFlyingReaction(r.emoji);
+                    }
+                    if (r.time > maxTime) maxTime = r.time;
+                }
+            }
+            lastReactionCheckTime = maxTime;
+        }
+    } catch(e){}
+}
+setInterval(pollBroadcastReactions, 1500);
 
 // Background sync with Firebase Realtime Database
 async function syncAccountsFromFirebase() {
@@ -501,11 +692,21 @@ async function registerUser(name, password) {
     }
 
     let lowerKey = cleanName.toLowerCase();
+
+    // 👑 Защита имени Создателя:
+    // Никому нельзя зарегистрироваться под вариациями имени "рыба"
+    if (lowerKey === 'рыба') {
+        return { success: false, message: "Имя «РЫБа» принадлежит Создателю игры! Назваться им нельзя." };
+    }
+    if (lowerKey === 'admin' || lowerKey === 'гость' || lowerKey === 'noname') {
+        return { success: false, message: `Имя '${cleanName}' зарезервировано, выберите другое!` };
+    }
+
     let accs = loadAccounts();
 
-    // Check local accounts
+    // Check local accounts (независимо от регистра)
     if (accs[lowerKey]) {
-        return { success: false, message: "Такое имя уже есть, придумай другое!" };
+        return { success: false, message: "Такое имя уже есть (независимо от регистра), войдите или выберите другое!" };
     }
 
     // Check Firebase Realtime Database to prevent duplicate usernames across devices
@@ -578,8 +779,18 @@ async function loginUser(name, password) {
     if (!cleanName) {
         return { success: false, message: "Введите имя игрока!" };
     }
-    let accs = loadAccounts();
     let lowerKey = cleanName.toLowerCase();
+
+    // 👑 Исключение для Создателя:
+    // Имя создателя пишется строго «РЫБа»!
+    if (lowerKey === 'рыба' && cleanName !== 'РЫБа') {
+        return { 
+            success: false, 
+            message: "Имя Создателя пишется строго «РЫБа» (с заглавными Р, Ы, Б и маленькой а)!" 
+        };
+    }
+
+    let accs = loadAccounts();
     let acc = accs[lowerKey];
 
     // If not found in local cache, query Firebase Cloud Database!
@@ -1091,8 +1302,18 @@ async function loginUserP2(name, password) {
         return { success: true, user: { name: "Гость" } };
     }
 
-    let accs = loadAccounts();
     let lowerKey = cleanName.toLowerCase();
+
+    // 👑 Исключение для Создателя:
+    // Имя создателя пишется строго «РЫБа»!
+    if (lowerKey === 'рыба' && cleanName !== 'РЫБа') {
+        return { 
+            success: false, 
+            message: "Имя Создателя пишется строго «РЫБа» (с заглавными Р, Ы, Б и маленькой а)!" 
+        };
+    }
+
+    let accs = loadAccounts();
     let acc = accs[lowerKey];
 
     // Check Firebase if not in local cache
@@ -1130,18 +1351,24 @@ async function registerUserP2(name, password) {
     if (cleanName.length < 2) {
         return { success: false, message: "Имя должно быть не короче 2 символов!" };
     }
-    if (cleanName.toLowerCase() === 'гость' || cleanName.toLowerCase() === 'noname') {
-        return { success: false, message: "Имя 'Гость' зарезервировано, придумайте другое!" };
+    let lowerKey = cleanName.toLowerCase();
+
+    // 👑 Защита имени Создателя:
+    // Никому нельзя зарегистрироваться под вариациями имени "рыба"
+    if (lowerKey === 'рыба') {
+        return { success: false, message: "Имя «РЫБа» принадлежит Создателю игры! Назваться им нельзя." };
+    }
+    if (lowerKey === 'гость' || lowerKey === 'noname' || lowerKey === 'admin') {
+        return { success: false, message: "Имя зарезервировано, придумайте другое!" };
     }
     if (!password || password.length < 4) {
         return { success: false, message: "Пароль должен содержать от 4 символов!" };
     }
 
-    let lowerKey = cleanName.toLowerCase();
     let accs = loadAccounts();
 
     if (accs[lowerKey]) {
-        return { success: false, message: "Такое имя уже есть, войдите или придумайте другое!" };
+        return { success: false, message: "Такое имя уже есть (независимо от регистра), войдите или придумайте другое!" };
     }
 
     try {
@@ -1448,6 +1675,13 @@ const badgesDict = {
     'generator': { id: 'generator', name: 'Генератор (1 заряд за 2 сек)', teamAllowed: false },
     'bracelet': { id: 'bracelet', name: 'Тяжелый браслет (Отдача / 2)', teamAllowed: false },
     'sneakers': { id: 'sneakers', name: 'Кроссовки (+33% ск., -заряд/3с)', teamAllowed: false },
+    'shield': { id: 'shield', name: 'Щит Бездны (Блокирует 1 удар)', teamAllowed: true },
+    'vampire': { id: 'vampire', name: 'Жажда крови (Хил 1 HP за 6 ударов)', teamAllowed: false },
+    'dash_strike': { id: 'dash_strike', name: 'Громовой рывок (Дэш наносит урон)', teamAllowed: false },
+    'feather': { id: 'feather', name: 'Перо ветра (Парение при прыжке)', teamAllowed: true },
+    'thorns': { id: 'thorns', name: 'Шипы ярости (Удар боссу при ранении)', teamAllowed: false },
+    'battery': { id: 'battery', name: 'Энергоячейка (+1 макс. заряд хила)', teamAllowed: true },
+    'fish_scale': { id: 'fish_scale', name: 'Чешуя РЫБы (+1 макс. HP, корона)', teamAllowed: true },
     'none':  { id: 'none', name: '[Пусто]', teamAllowed: 'both' }
 };
 

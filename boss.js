@@ -192,6 +192,9 @@ function startPhase3Transition() {
     boss.halfHpSeqDone = false;
     boss.saLines = null;
     boss.climbSaTimer = 0;
+    boss.abyssLanded = false;
+    boss.startFloor = FLOOR;
+    boss.phase3AnnouncementTimer = 0;
     boss.x = -99999;
     boss.y = -99999; 
     boss.vx = 0; 
@@ -202,10 +205,15 @@ function startPhase3Transition() {
     airTraps = []; airComboTraps = []; scarf.active = false; looms = []; voidPortals = []; chaosBalls = [];
     platforms = [];
 
-    // 3. Пол исчезает, игроки падают секунду на нижний уровень
-    FLOOR += 500;
-    triggerShake(15, 25);
-    playSound('hitBoss');
+    // 3. Пол исчезает, герои падают 2 секунды (120 кадров) в глубины темной бездны!
+    FLOOR += 10000;
+    triggerShake(16, 25);
+    playSound('break');
+
+    for (let p of players) {
+        p.vy = Math.max(p.vy, 4);
+        p.invuln = 140; // Неуязвимость на время падения
+    }
 
     // Спавним платформы по центру поля зрения игрока
     let targetX = (players && players[0]) ? players[0].x : ARENA_W / 2;
@@ -221,16 +229,60 @@ function updatePhase3Transition() {
     boss.invuln = 99999;
     boss.transitionTimer++;
 
-    // Через 1.5 секунды (90 кадров) появляются платформы одна за другой (задержка 0.40с = 24 кадра)
-    if (boss.transitionTimer >= 90) {
+    // === 1. СВОБОДНОЕ ПАДЕНИЕ В БЕЗДНУ (Ровно 2 секунды = 120 кадров) ===
+    if (boss.transitionTimer < 120) {
+        let lowestY = Math.max(...players.map(p => p.y));
+        FLOOR = Math.max(boss.startFloor + 6000, lowestY + 2000);
+
+        // Ограничиваем скорость падения для плавного кинематографичного полета
+        for (let p of players) {
+            if (p.vy > 20) p.vy = 20;
+            p.invuln = 30;
+        }
+
+        // Завывание бездны и сотрясение от скорости
+        if (boss.transitionTimer % 25 === 0) {
+            playSound('wind');
+        }
+        if (boss.transitionTimer % 20 === 0) {
+            triggerShake(2, 6);
+        }
+        return;
+    }
+
+    // === 2. ПРИЗЕМЛЕНИЕ НА ДНО БЕЗДНЫ (Ровно на 120-м кадре = 2.0 секунды) ===
+    if (boss.transitionTimer === 120) {
+        boss.abyssLanded = true;
+        let groundY = Math.max(...players.map(p => p.y + p.height));
+        FLOOR = Math.round(groundY);
+        boss.abyssFloor = FLOOR;
+
+        for (let p of players) {
+            p.y = FLOOR - p.height;
+            p.vy = 0;
+            p.lastSafeX = p.x;
+            p.lastSafeY = p.y;
+            p.jumps = 0;
+        }
+
+        // Мощный удар о дно бездны со спецэффектами
+        playSound('hitBoss');
+        triggerShake(20, 30);
+        triggerVibration('slam');
+        voidExplosions.push({ x: boss.climbCenterX, y: FLOOR - 20, timer: 30, isWhite: true, isOrange: false, r: 140 });
+        applyPhysicsPushToLeaves(boss.climbCenterX, FLOOR - 30, 25);
+    }
+
+    // === 3. ПОЯВЛЕНИЕ 10 ПЛАТФОРМ ДЛЯ ПОДЪЕМА НАВЕРХ ===
+    if (boss.transitionTimer > 120) {
         boss.climbPlatTimer++;
-        if (boss.climbPlatTimer >= 24 && boss.climbPlatCount < 10) {
+        if (boss.climbPlatTimer >= 10 && boss.climbPlatCount < 10) {
             boss.climbPlatTimer = 0;
             boss.climbPlatCount++;
             let i = boss.climbPlatCount; // 1 to 10
             let stepY = 85;
-            let platY = FLOOR - (i * stepY);
-            let platW = (i === 10) ? 320 : 180;
+            let platY = boss.abyssFloor - (i * stepY);
+            let platW = (i === 10) ? 340 : 180;
             let offset = (i === 1 || i === 10) ? 0 : ((i % 2 === 0) ? -130 : 130);
             let platX = boss.climbCenterX + offset - platW / 2;
             platX = Math.min(Math.max(platX, 20), ARENA_W - platW - 20);
@@ -242,38 +294,24 @@ function updatePhase3Transition() {
         }
     }
 
-    // --- SA 2 АТАКИ ВО ВРЕМЯ ПОДЪЕМА ПО ПЛАТФОРМАМ ---
-    // Честная цепочка SA2 лучей с достаточным временем для прыжков по платформам
-    if (boss.transitionTimer > 120 && !boss.saLines && !activeCinematic) {
+    // === 4. SA 2 АТАКИ ВО ВРЕМЯ ПОДЪЕМА ПО ПЛАТФОРМАМ ===
+    if (boss.transitionTimer > 180 && !boss.saLines && !activeCinematic) {
         if (!boss.climbSaTimer) boss.climbSaTimer = 0;
         boss.climbSaTimer++;
-        if (boss.climbSaTimer >= 180) { // каждые ~3 секунды, честное окно для паркура
+        if (boss.climbSaTimer >= 180) { // каждые ~3 секунды
             boss.climbSaTimer = 0;
             let step = boss.climbSaStep || 0;
 
-            if (step === 0) {
-                // 1. SA2 (одиночный случайный луч через весь экран)
-                boss.saLines = [ createRandomSaLine("SA2") ];
-            } else if (step === 1) {
-                // 2. SA2 (одиночный случайный луч)
-                boss.saLines = [ createRandomSaLine("SA2") ];
-            } else if (step === 2) {
-                // 3. 2*SA2 (2 случайных луча SA2 одновременно)
-                boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
-            } else if (step === 3) {
-                // 4. SA2 (одиночный случайный луч SA2)
-                boss.saLines = [ createRandomSaLine("SA2") ];
-            } else if (step === 4) {
-                // 5. 2*SA2 (2 случайных луча SA2 одновременно)
-                boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
-            } else if (step === 5) {
-                // 6. 3*SA2 (3 случайных луча SA2 одновременно)
-                boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
-            }
+            if (step === 0) boss.saLines = [ createRandomSaLine("SA2") ];
+            else if (step === 1) boss.saLines = [ createRandomSaLine("SA2") ];
+            else if (step === 2) boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
+            else if (step === 3) boss.saLines = [ createRandomSaLine("SA2") ];
+            else if (step === 4) boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
+            else if (step === 5) boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
 
             boss.climbSaStep = (step + 1) % 6;
             boss.saLinesState = "WINDUP";
-            boss.saLinesTimer = 55; // ~0.9с предупреждение пунктиром
+            boss.saLinesTimer = 55;
         }
     }
 
@@ -301,7 +339,7 @@ function updatePhase3Transition() {
                         let lineAngle = Math.atan2(l.y2 - l.y1, l.x2 - l.x1);
                         triggerCinematic(l.type, p, true, lineAngle);
                         p.saHit = true;
-                        boss.saLines = null; // Очищаем луч сразу, чтобы остальные лучи не ударили повторно
+                        boss.saLines = null;
                         triggerShake(15, 20);
                         triggerVibration('sa_hit');
                         break;
@@ -312,7 +350,7 @@ function updatePhase3Transition() {
         }
     }
 
-    // Проверяем, наступил ли игрок на 10-ю платформу
+    // === 5. ПРОВЕРКА ДОСТИЖЕНИЯ 10-Й ПЛАТФОРМЫ (ВЕРШИНА) ===
     let topPlat = platforms.find(p => p.num === 10);
     if (topPlat) {
         let reachedTop = players.some(p => !p.isDowned && p.hp > 0 && (
@@ -333,7 +371,7 @@ function updatePhase3Transition() {
                 p.lastSafeY = FLOOR - p.height;
             }
 
-            // 3. Только сейчас появляется босс и начинается 3 фаза!
+            // 3. Босс появляется и начинается 3 фаза!
             boss.phase = 3;
             boss.hp = phase3Hp;
             boss.damageBonus = 0.5;
@@ -348,6 +386,7 @@ function updatePhase3Transition() {
             boss.vy = 0;
             boss.saLines = null;
             boss.climbSaTimer = 0;
+            boss.phase3AnnouncementTimer = 180;
 
             // Боевые платформы для 3 фазы:
             let cX = boss.climbCenterX;
@@ -367,8 +406,10 @@ function updatePhase3Transition() {
                 bgm.play().catch(e => console.log(e));
             }
 
-            triggerShake(15, 20);
+            triggerShake(18, 25);
             playSound('parry');
+            playSound('demonRoar');
+            voidExplosions.push({ x: boss.x + boss.width / 2, y: boss.y + boss.height / 2, timer: 30, isWhite: true, isOrange: false, r: 150 });
         }
     }
 }

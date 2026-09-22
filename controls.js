@@ -23,27 +23,77 @@ function tryEscapeTie() {
     return escaped; 
 }
 
+// Map for hardware keyboards on iPad / Android / bilingual layouts
+const KEY_CODE_FALLBACK = {
+    'z': 'KeyZ', 'x': 'KeyX', 'c': 'KeyC', 'v': 'KeyV',
+    'a': 'KeyA', 's': 'KeyS', 'd': 'KeyD', 'w': 'KeyW',
+    'q': 'KeyQ', 'e': 'KeyE', 'r': 'KeyR', 'f': 'KeyF',
+    't': 'KeyT', 'l': 'KeyL', 'k': 'KeyK', 'j': 'KeyJ',
+    '1': 'Digit1', '2': 'Digit2', '3': 'Digit3', '4': 'Digit4', '5': 'Digit5',
+    '6': 'Digit6', '7': 'Digit7', '8': 'Digit8', '9': 'Digit9', '0': 'Digit0',
+    // Russian layout mapping to physical QWERTY Key codes:
+    'я': 'KeyZ', 'ч': 'KeyX', 'с': 'KeyC', 'м': 'KeyV',
+    'ф': 'KeyA', 'ы': 'KeyS', 'в': 'KeyD', 'ц': 'KeyW',
+    'й': 'KeyQ', 'у': 'KeyE', 'к': 'KeyR', 'а': 'KeyF',
+    'е': 'KeyT', 'д': 'KeyL', 'л': 'KeyK', 'о': 'KeyJ',
+    // Special / navigation
+    ' ': 'Space', 'space': 'Space',
+    'arrowleft': 'ArrowLeft', 'arrowright': 'ArrowRight',
+    'arrowup': 'ArrowUp', 'arrowdown': 'ArrowDown',
+    ',': 'Comma', 'б': 'Comma',
+    '.': 'Period', 'ю': 'Period',
+    '/': 'Slash',
+    ';': 'Semicolon', 'ж': 'Semicolon',
+    "'": 'Quote', 'э': 'Quote'
+};
+
+function normalizeKeyCode(e) {
+    if (e.code && e.code !== 'Unidentified') return e.code;
+    if (e.key) {
+        let k = e.key.toLowerCase();
+        if (KEY_CODE_FALLBACK[k]) return KEY_CODE_FALLBACK[k];
+    }
+    return e.code || e.key || '';
+}
+
+function setKeyStatus(e, isDown) {
+    let resolvedCode = normalizeKeyCode(e);
+    if (resolvedCode) keys[resolvedCode] = isDown;
+    if (e.code) keys[e.code] = isDown;
+    if (e.key) {
+        keys[e.key] = isDown;
+        keys[e.key.toLowerCase()] = isDown;
+        let k = e.key.toLowerCase();
+        if (KEY_CODE_FALLBACK[k]) {
+            keys[KEY_CODE_FALLBACK[k]] = isDown;
+        }
+    }
+}
+
 // Keyboard events
 window.addEventListener("keydown", e => { 
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
         return; // Don't trigger game hotkeys or preventDefault when typing in inputs
     }
 
-    if (e.code === "Space" && e.target === document.body) e.preventDefault();
+    let code = normalizeKeyCode(e);
+    if ((code === "Space" || code === "ArrowUp" || code === "ArrowDown") && e.target === document.body) {
+        e.preventDefault();
+    }
     
     // Key rebinding listener takes absolute precedence if active
     if (window.rebindingActive && window.currentRebindCallback) {
         e.preventDefault();
-        window.currentRebindCallback(e.code);
+        window.currentRebindCallback(code);
         return;
     }
 
-    keys[e.code] = true; 
+    setKeyStatus(e, true); 
     initAudio(); 
     tryEscapeTie(); 
     
     // Secret mode (L): ONLY active on Mode Select or Input Select!
-    if (e.code === 'KeyL' && gameState === "MENU") {
+    if ((code === 'KeyL' || e.key === 'l' || e.key === 'L' || e.key === 'д' || e.key === 'Д') && gameState === "MENU") {
         let modeScreen = document.getElementById("mode-select");
         let inputScreen = document.getElementById("input-select");
         let p2Screen = document.getElementById("p2-account-screen");
@@ -54,7 +104,7 @@ window.addEventListener("keydown", e => {
             secretMode = true; 
             playSound('heal'); 
             if (typeof unlockAchievement === 'function') unlockAchievement('whisper_of_void');
-            document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#000";
+            document.body.style.backgroundColor = "#000000";
             let ml = document.getElementById("m-light");
             if (ml && document.getElementById("mobile-ui").style.display === "flex") {
                 ml.style.display = "flex";
@@ -63,7 +113,7 @@ window.addEventListener("keydown", e => {
     }
     
     // Test Mode Unlock in Menu (Key 7)
-    if ((e.key === '7' || e.code === 'Digit7') && gameState === "MENU") {
+    if ((e.key === '7' || code === 'Digit7') && gameState === "MENU") {
         testModeUnlocked = !testModeUnlocked;
         window.testModeUnlocked = testModeUnlocked;
         playSound(testModeUnlocked ? 'parry' : 'hitPlayer');
@@ -77,13 +127,13 @@ window.addEventListener("keydown", e => {
     let curU = getCurrentUser() || '';
     let isCreatorUser = (curU.toLowerCase() === 'рыба' || curU.toLowerCase() === 'admin');
     if (gameState === "PLAYING" && (testModeUnlocked || window.testModeUnlocked || isCreatorUser)) {
-        if (e.key === '7' || e.code === 'Digit7') {
+        if (e.key === '7' || code === 'Digit7') {
             if (typeof triggerInGameWorldEvent === 'function') triggerInGameWorldEvent('AIRDROP');
         }
-        if (e.key === '8' || e.code === 'Digit8') {
+        if (e.key === '8' || code === 'Digit8') {
             if (typeof triggerInGameWorldEvent === 'function') triggerInGameWorldEvent('LOW_GRAVITY');
         }
-        if (e.key === '9' || e.code === 'Digit9') {
+        if (e.key === '9' || code === 'Digit9') {
             godModeActive = !godModeActive;
             window.godModeActive = godModeActive;
             playSound(godModeActive ? 'parry' : 'hitPlayer');
@@ -91,7 +141,7 @@ window.addEventListener("keydown", e => {
                 flagCheatUsage('Режим Бога [9]');
             }
         }
-        if (e.key === '0' || e.code === 'Digit0') {
+        if (e.key === '0' || code === 'Digit0') {
             megaDamageActive = !megaDamageActive;
             window.megaDamageActive = megaDamageActive;
             playSound(megaDamageActive ? 'slash' : 'hitBoss');
@@ -108,7 +158,7 @@ window.addEventListener("keydown", e => {
     let canUnlockFire = (modeScreen && modeScreen.style.display === "block") || 
                        (inputScreen && inputScreen.style.display === "block") ||
                        (p2Screen && p2Screen.style.display === "block");
-    if ((e.key === '4' || e.code === 'Digit4') && gameState === "MENU" && canUnlockFire) {
+    if ((e.key === '4' || code === 'Digit4') && gameState === "MENU" && canUnlockFire) {
         if (!window.fireHeroUnlocked) {
             window.fireHeroUnlocked = true; 
             let curU = getCurrentUser();
@@ -157,7 +207,7 @@ window.addEventListener("keydown", e => {
 
     // Restart key [R] (from Game Over or Boss Defeat straight to layout selection with saved accounts!)
     let isGameOverOrWon = (gameState === "GAMEOVER" || (gameState === "PLAYING" && (boss.state === "DEFEATED" || boss.state === "FREE_ROAM")));
-    if (isGameOverOrWon && (e.code === "KeyR" || e.key === "r" || e.key === "к" || e.key === "К")) {
+    if (isGameOverOrWon && (code === "KeyR" || e.key === "r" || e.key === "R" || e.key === "к" || e.key === "К")) {
         if (typeof isTutorial !== 'undefined' && isTutorial) {
             buildAndStartTutorialGame();
             return;
@@ -177,7 +227,7 @@ window.addEventListener("keydown", e => {
     }
 });
 
-window.addEventListener("keyup", e => keys[e.code] = false);
+window.addEventListener("keyup", e => setKeyStatus(e, false));
 window.addEventListener("mousedown", e => { 
     if (e.button === 0) keys['MouseLeft'] = true; 
     if (e.button === 2) keys['MouseRight'] = true; 
@@ -430,7 +480,7 @@ function updateUserBadge() {
         
         // Show Admin Panel button if Timur ('РЫБа') is logged in
         if (adminBtn) {
-            let isTimur = (curUser.toLowerCase() === 'рыба' || curUser.toLowerCase() === 'рыба' || curUser.toLowerCase() === 'admin');
+            let isTimur = (curUser === 'РЫБа' || curUser.toLowerCase() === 'admin');
             adminBtn.style.display = isTimur ? 'block' : 'none';
         }
     } else {
@@ -481,6 +531,13 @@ function openScreen(screenId, pushHistory = true) {
     let targetEl = document.getElementById(screenId);
     if (targetEl) targetEl.style.display = 'block';
 
+    if (screenId !== 'hero-select') {
+        let mobUi = document.getElementById("mobile-ui");
+        if (mobUi) mobUi.style.display = 'none';
+        let ctrlCont = document.getElementById("controls-container");
+        if (ctrlCont) ctrlCont.style.display = 'block';
+    }
+
     // Universal Back Button: visible on sub-screens EXCEPT root-menu and auth-screen!
     let backBtn = document.getElementById('menu-back-btn');
     if (backBtn) {
@@ -493,6 +550,10 @@ function openScreen(screenId, pushHistory = true) {
     // Cancel mode L if returning to root menu
     if (screenId === 'root-menu' && secretMode) {
         cancelSecretMode();
+    } else if (secretMode) {
+        document.body.style.backgroundColor = "#000000";
+    } else if (screenId === 'root-menu' || screenId === 'mode-select' || screenId === 'input-select' || screenId === 'settings-menu' || screenId === 'achievements-menu') {
+        document.body.style.backgroundColor = "#0a0a0a";
     }
 
     // Dynamic renders when opening specific screens
@@ -530,7 +591,7 @@ window.menuGoBack = menuGoBack;
 
 function cancelSecretMode() {
     secretMode = false;
-    document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#0a0a0a";
+    document.body.style.backgroundColor = "#0a0a0a";
     let ml = document.getElementById("m-light");
     if (ml) ml.style.display = "none";
     let lMusic = document.getElementById("lModeMusic");
@@ -543,7 +604,7 @@ window.cancelSecretMode = cancelSecretMode;
 function toggleSecretMobile() {
     secretMode = true; 
     playSound('heal'); 
-    document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#000";
+    document.body.style.backgroundColor = "#000000";
     let ml = document.getElementById("m-light");
     if (ml) ml.style.display = "flex";
 }
@@ -846,10 +907,17 @@ function selectInput(in1, in2) {
     if (in1 === 'TOUCH' || in2 === 'TOUCH') {
         let mobUi = document.getElementById("mobile-ui");
         if (mobUi) mobUi.style.display = "flex";
+        let ctrlCont = document.getElementById("controls-container");
+        if (ctrlCont) ctrlCont.style.display = "none";
         if (!secretMode) {
             let lBtn = document.getElementById("mobile-l-btn-input");
             if (lBtn) lBtn.style.display = "block";
         }
+    } else {
+        let mobUi = document.getElementById("mobile-ui");
+        if (mobUi) mobUi.style.display = "none";
+        let ctrlCont = document.getElementById("controls-container");
+        if (ctrlCont) ctrlCont.style.display = "block";
     }
 }
 window.selectInput = selectInput;
@@ -1544,8 +1612,7 @@ function checkDuoStart() {
 window.checkDuoStart = checkDuoStart;
 
 function getSlotsForHero(type) { 
-    if (type === 'STAMINA' || type === 'EARTH') return 3;
-    return 2; // WATER, AIR, FIRE
+    return 3;
 }
 window.getSlotsForHero = getSlotsForHero;
 
@@ -1553,6 +1620,7 @@ function prepBadgeMenu() {
     document.getElementById("hero-select").style.display = "none";
     document.getElementById("badge-select").style.display = "block";
     if (typeof updateEasyBossButtonUI === 'function') updateEasyBossButtonUI();
+    if (typeof updateBroadcastButtonUI === 'function') updateBroadcastButtonUI();
 
     let titleTeam = document.getElementById("team-slot-title");
     let slotTeam = document.getElementById("slot-team");
@@ -1796,4 +1864,58 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }).catch(e => console.warn("Init sync failed:", e));
 });
+
+// --- SPECTATOR CONTROLS ---
+function startWatchingBroadcast() {
+    if (!window.currentActiveStream) {
+        showTutorialAlert("Трансляция ещё не началась или уже завершилась!");
+        return;
+    }
+    initAudio();
+    window.spectatorMode = true;
+    window.broadcastState = window.currentActiveStream;
+    
+    // Hide menus
+    let ov = document.getElementById("overlay");
+    if (ov) ov.style.display = "none";
+    let mobUi = document.getElementById("mobile-ui");
+    if (mobUi) mobUi.style.display = "none";
+    let ctrlCont = document.getElementById("controls-container");
+    if (ctrlCont) ctrlCont.style.display = "none";
+    
+    // Show spectator HUD
+    let specHud = document.getElementById("spectator-hud");
+    if (specHud) specHud.style.display = "block";
+    let titleEl = document.getElementById("spectator-host-title");
+    if (titleEl) {
+        let hostName = window.currentActiveStream.host || 'РЫБа';
+        titleEl.innerText = `🔴 В ЭФИРЕ: ${hostName}`;
+    }
+
+    gameState = "PLAYING";
+}
+window.startWatchingBroadcast = startWatchingBroadcast;
+
+function stopWatchingBroadcast() {
+    window.spectatorMode = false;
+    window.broadcastState = null;
+    
+    let specHud = document.getElementById("spectator-hud");
+    if (specHud) specHud.style.display = "none";
+    
+    let ov = document.getElementById("overlay");
+    if (ov) ov.style.display = "block";
+    
+    gameState = "MENU";
+    if (typeof openScreen === 'function') {
+        openScreen('root-menu', false);
+    }
+}
+window.stopWatchingBroadcast = stopWatchingBroadcast;
+
+function onBroadcastEnded() {
+    showTutorialAlert("🏆 Бой завершён! Трансляция окончена.");
+    stopWatchingBroadcast();
+}
+window.onBroadcastEnded = onBroadcastEnded;
 

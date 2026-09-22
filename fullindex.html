@@ -412,6 +412,13 @@
         'generator': { id: 'generator', name: 'Генератор (1 заряд за 2 сек)', teamAllowed: false },
         'bracelet': { id: 'bracelet', name: 'Тяжелый браслет (Отдача / 2)', teamAllowed: false },
         'sneakers': { id: 'sneakers', name: 'Кроссовки (+33% ск., -заряд/3с)', teamAllowed: false },
+        'shield': { id: 'shield', name: 'Щит Бездны (Блокирует 1 удар)', teamAllowed: true },
+        'vampire': { id: 'vampire', name: 'Жажда крови (Хил 1 HP за 6 ударов)', teamAllowed: false },
+        'dash_strike': { id: 'dash_strike', name: 'Громовой рывок (Дэш наносит урон)', teamAllowed: false },
+        'feather': { id: 'feather', name: 'Перо ветра (Парение при прыжке)', teamAllowed: true },
+        'thorns': { id: 'thorns', name: 'Шипы ярости (Удар боссу при ранении)', teamAllowed: false },
+        'battery': { id: 'battery', name: 'Энергоячейка (+1 макс. заряд хила)', teamAllowed: true },
+        'fish_scale': { id: 'fish_scale', name: 'Чешуя РЫБы (+1 макс. HP, корона)', teamAllowed: true },
         'none':  { id: 'none', name: '[Пусто]', teamAllowed: 'both' }
     };
     
@@ -536,7 +543,7 @@
             let canActivateL = (modeScreen && modeScreen.style.display === "block") || 
                                (inputScreen && inputScreen.style.display === "block");
             if (canActivateL && !secretMode) {
-                secretMode = true; playSound('heal'); document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#000";
+                secretMode = true; playSound('heal'); document.body.style.backgroundColor = "#000000";
                 let ml = document.getElementById("m-light");
                 if (ml && document.getElementById("mobile-ui").style.display === "flex") {
                     ml.style.display = "flex";
@@ -687,7 +694,7 @@
 
     function cancelSecretMode() {
         secretMode = false;
-        document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#0a0a0a";
+        document.body.style.backgroundColor = "#0a0a0a";
         let ml = document.getElementById("m-light");
         if (ml) ml.style.display = "none";
         let lMusic = document.getElementById("lModeMusic");
@@ -698,7 +705,7 @@
 
     function toggleSecretMobile() {
         secretMode = true; playSound('heal'); 
-        document.body.style.backgroundColor = window.fireHeroUnlocked ? "#2a0a0a" : "#000";
+        document.body.style.backgroundColor = "#000000";
         let ml = document.getElementById("m-light");
         if (ml) ml.style.display = "flex";
     }
@@ -1049,7 +1056,7 @@
 
     function selectHero1(type) { p1HeroSelection = type; if (numPlayers === 1) { Object.assign(configAbilities.p1, defaultAbilities[type]); prepBadgeMenu(); } else { document.getElementById('p1-status').innerText = "Игрок 1 Готов!"; checkDuoStart(); } }
     function checkDuoStart() { if (p1HeroSelection && p2HeroSelection) { Object.assign(configAbilities.p1, defaultAbilities[p1HeroSelection]); Object.assign(configAbilities.p2, defaultAbilities[p2HeroSelection]); prepBadgeMenu(); } }
-    function getSlotsForHero(type) { return (type === 'WATER' || type === 'AIR') ? 2 : 3; }
+    function getSlotsForHero(type) { return 3; }
 
     function prepBadgeMenu() {
         document.getElementById("hero-select").style.display = "none";
@@ -1142,6 +1149,8 @@
         if (p.badges.includes('sharp')) p.hasSharpening = true;
         if (p.badges.includes('bracelet')) p.recoilResist = true;
         if (p.badges.includes('sneakers')) { p.speedMod = 1.33; p.hasSneakers = true; p.runTimer = 0; } else { p.speedMod = 1; p.hasSneakers = false; p.runTimer = 0; }
+        if (p.badges.includes('shield')) p.hasAegisShield = true;
+        if (p.badges.includes('fish_scale')) { p.maxHp += 1; p.hp = p.maxHp; p.hasFishScale = true; }
         if (p.inputType === 'TOUCH') { p.dmgDealtMod += 0.5; p.isMobile = true; } else { p.isMobile = false; }
     }
 
@@ -1199,6 +1208,11 @@
 
         if (secretMode) { for (let p of players) { p.maxHp += 2; p.hp += 2; } }
 
+        // Battery Badge: +1 maximum heal charge for the team
+        if (players.some(p => p.badges && p.badges.includes('battery'))) {
+            maxSharedHeals = Math.min(6, maxSharedHeals + 1);
+        }
+
         if (!secretMode) {
             platforms = [ {x: 420, y: FLOOR - 100, w: 160, h: 10} ];
         } else {
@@ -1238,6 +1252,7 @@
             p.invigBrews = Object.values(p.abilities).includes('invig') ? 3 : 0;
             if(p.type === 'STAMINA') { p.stamina = 5; p.isCharging = false; p.chargeTimer = 0; p.chargeProjectiles = []; } 
             if(p.type === 'FIRE') { p.isParrying = false; p.parryTimer = 0; p.orangeHp = 0; p.orangeHpTimer = 0; p.isFieryHealing = false; p.fireDashTimer = 0; }
+            if (p.badges && p.badges.includes('shield')) p.hasAegisShield = true;
         }
         if(players.length > 0) players[0].x = ARENA_W/2 - 50; if(players.length > 1) players[1].x = ARENA_W/2 + 50;
         sharedHeals = maxSharedHeals; sharedHitCount = 0; windStreams = []; airBlades = []; playerDaggers = []; blackDaggers = []; p2Traps = []; phantoms = []; airTraps = []; airComboTraps = []; scarf.active = false; clashFlash = null; activeCinematic = null; globalWindMode = "NONE"; globalWindTimer = 0; globalWindCooldown = 0; voidExplosions = []; voidPortals = []; looms = []; chaosBalls = []; screamRings = [];
@@ -1282,6 +1297,24 @@
         }
 
         if (p.invuln <= 0 || isBleed || bypassInvuln) {
+            // Shield Badge: Blocks the first incoming attack cleanly!
+            if (p.badges && p.badges.includes('shield') && p.hasAegisShield && !isBleed && !isStaminaBleed) {
+                p.hasAegisShield = false;
+                p.invuln = 50;
+                playSound('parry');
+                triggerShake(6, 12);
+                triggerVibration('clash');
+                voidExplosions.push({ x: p.x + p.width/2, y: p.y + p.height/2, timer: 20, isWhite: true, isOrange: false, r: 55 });
+                return;
+            }
+
+            // Thorns Badge: Inflicts 1.5 retribution damage to the boss when player is hit
+            if (p.badges && p.badges.includes('thorns') && !isBleed && !isStaminaBleed && amount > 0) {
+                tryDamageBoss(1.5, p);
+                triggerShake(5, 10);
+                voidExplosions.push({ x: p.x + p.width/2, y: p.y + p.height/2, timer: 18, isWhite: false, isOrange: true, r: 60 });
+            }
+
             if (p.glassDebuff && !isStaminaBleed) amount *= 2; 
             
             if (p.orangeHp > 0 && !isBleed && !isStaminaBleed) { let absorb = Math.min(p.orangeHp, amount); p.orangeHp -= absorb; amount -= absorb; }
@@ -1312,6 +1345,17 @@
             playSound('leaf'); 
         }
         if (p && p.hasSharpening && Math.random() < 0.08 && boss.heroBleedTimer <= 0) { boss.heroBleedTimer = 60; boss.heroBleedTicks = 2; }
+        if (p && p.badges && p.badges.includes('vampire')) {
+            p.vampireHits = (p.vampireHits || 0) + 1;
+            if (p.vampireHits >= 6) {
+                p.vampireHits = 0;
+                if (p.hp < p.maxHp) {
+                    p.hp = Math.min(p.maxHp, p.hp + 1);
+                    playSound('heal');
+                    voidExplosions.push({ x: p.x + 15, y: p.y + 25, timer: 15, isWhite: true, isOrange: false, r: 35 });
+                }
+            }
+        }
     }
 
     function tryDamageBoss(dmg, sourcePlayer) {
@@ -1455,6 +1499,9 @@
         boss.halfHpSeqDone = false;
         boss.saLines = null;
         boss.climbSaTimer = 0;
+        boss.abyssLanded = false;
+        boss.startFloor = FLOOR;
+        boss.phase3AnnouncementTimer = 0;
         boss.x = -99999;
         boss.y = -99999; 
         boss.vx = 0; 
@@ -1464,9 +1511,14 @@
         airTraps = []; airComboTraps = []; scarf.active = false; looms = []; voidPortals = []; chaosBalls = [];
         platforms = [];
 
-        FLOOR += 500;
-        triggerShake(15, 25);
-        playSound('hitBoss');
+        FLOOR += 10000;
+        triggerShake(16, 25);
+        playSound('break');
+
+        for (let p of players) {
+            p.vy = Math.max(p.vy, 4);
+            p.invuln = 140;
+        }
 
         let targetX = (players && players[0]) ? players[0].x : ARENA_W / 2;
         boss.climbCenterX = Math.min(Math.max(targetX, 240), ARENA_W - 240);
@@ -1480,15 +1532,53 @@
         boss.invuln = 99999;
         boss.transitionTimer++;
 
-        if (boss.transitionTimer >= 90) {
+        // 1. Free fall for exactly 2 seconds (120 frames)
+        if (boss.transitionTimer < 120) {
+            let lowestY = Math.max(...players.map(p => p.y));
+            FLOOR = Math.max(boss.startFloor + 6000, lowestY + 2000);
+
+            for (let p of players) {
+                if (p.vy > 20) p.vy = 20;
+                p.invuln = 30;
+            }
+
+            if (boss.transitionTimer % 25 === 0) playSound('wind');
+            if (boss.transitionTimer % 20 === 0) triggerShake(2, 6);
+            return;
+        }
+
+        // 2. Landing at abyss floor
+        if (boss.transitionTimer === 120) {
+            boss.abyssLanded = true;
+            let groundY = Math.max(...players.map(p => p.y + p.height));
+            FLOOR = Math.round(groundY);
+            boss.abyssFloor = FLOOR;
+
+            for (let p of players) {
+                p.y = FLOOR - p.height;
+                p.vy = 0;
+                p.lastSafeX = p.x;
+                p.lastSafeY = p.y;
+                p.jumps = 0;
+            }
+
+            playSound('hitBoss');
+            triggerShake(20, 30);
+            triggerVibration('slam');
+            voidExplosions.push({ x: boss.climbCenterX, y: FLOOR - 20, timer: 30, isWhite: true, isOrange: false, r: 140 });
+            applyPhysicsPushToLeaves(boss.climbCenterX, FLOOR - 30, 25);
+        }
+
+        // 3. Spawning 10 platforms
+        if (boss.transitionTimer > 120) {
             boss.climbPlatTimer++;
-            if (boss.climbPlatTimer >= 24 && boss.climbPlatCount < 10) {
+            if (boss.climbPlatTimer >= 10 && boss.climbPlatCount < 10) {
                 boss.climbPlatTimer = 0;
                 boss.climbPlatCount++;
                 let i = boss.climbPlatCount;
                 let stepY = 85;
-                let platY = FLOOR - (i * stepY);
-                let platW = (i === 10) ? 320 : 180;
+                let platY = boss.abyssFloor - (i * stepY);
+                let platW = (i === 10) ? 340 : 180;
                 let offset = (i === 1 || i === 10) ? 0 : ((i % 2 === 0) ? -130 : 130);
                 let platX = boss.climbCenterX + offset - platW / 2;
                 platX = Math.min(Math.max(platX, 20), ARENA_W - platW - 20);
@@ -1500,26 +1590,20 @@
             }
         }
 
-        if (boss.transitionTimer > 120 && !boss.saLines && !activeCinematic) {
+        // 4. SA2 attacks during climb
+        if (boss.transitionTimer > 180 && !boss.saLines && !activeCinematic) {
             if (!boss.climbSaTimer) boss.climbSaTimer = 0;
             boss.climbSaTimer++;
             if (boss.climbSaTimer >= 180) {
                 boss.climbSaTimer = 0;
                 let step = boss.climbSaStep || 0;
 
-                if (step === 0) {
-                    boss.saLines = [ createRandomSaLine("SA2") ];
-                } else if (step === 1) {
-                    boss.saLines = [ createRandomSaLine("SA2") ];
-                } else if (step === 2) {
-                    boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
-                } else if (step === 3) {
-                    boss.saLines = [ createRandomSaLine("SA2") ];
-                } else if (step === 4) {
-                    boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
-                } else if (step === 5) {
-                    boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
-                }
+                if (step === 0) boss.saLines = [ createRandomSaLine("SA2") ];
+                else if (step === 1) boss.saLines = [ createRandomSaLine("SA2") ];
+                else if (step === 2) boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
+                else if (step === 3) boss.saLines = [ createRandomSaLine("SA2") ];
+                else if (step === 4) boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
+                else if (step === 5) boss.saLines = [ createRandomSaLine("SA2"), createRandomSaLine("SA2"), createRandomSaLine("SA2") ];
 
                 boss.climbSaStep = (step + 1) % 6;
                 boss.saLinesState = "WINDUP";
@@ -1592,6 +1676,7 @@
                 boss.vy = 0;
                 boss.saLines = null;
                 boss.climbSaTimer = 0;
+                boss.phase3AnnouncementTimer = 180;
 
                 let cX = boss.climbCenterX;
                 platforms = [
@@ -1609,8 +1694,10 @@
                     bgm.play().catch(e => console.log(e));
                 }
 
-                triggerShake(15, 20);
+                triggerShake(18, 25);
                 playSound('parry');
+                playSound('demonRoar');
+                voidExplosions.push({ x: boss.x + boss.width / 2, y: boss.y + boss.height / 2, timer: 30, isWhite: true, isOrange: false, r: 150 });
             }
         }
     }
@@ -1692,11 +1779,13 @@
             let ax = 0, ay = 0, c = 0;
             for (let p of players) { if (p.hp > 0 && !p.isDowned) { ax += p.x; ay += p.y; c++; } }
             if (c > 0) { ax /= c; ay /= c; }
-            camX += (ax - GAME_WIDTH/2 - camX) * 0.1; camY += (ay - GAME_HEIGHT/2 - camY) * 0.1;
+            let isFallingTransition = (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120);
+            let lerpY = isFallingTransition ? 0.35 : 0.1;
+            camX += (ax - GAME_WIDTH/2 - camX) * 0.1; camY += (ay - GAME_HEIGHT/2 - camY) * lerpY;
             if (camX < 0) camX = 0; if (camX > ARENA_W - GAME_WIDTH) camX = ARENA_W - GAME_WIDTH;
             let minCamY = -2000;
             if (camY < minCamY) camY = minCamY;
-            let maxCamY = FLOOR - GAME_HEIGHT + 100;
+            let maxCamY = isFallingTransition ? 99999 : (FLOOR - GAME_HEIGHT + 100);
             if (camY > maxCamY && maxCamY > 0) camY = maxCamY;
         } else { camX = 0; camY = 0; }
 
@@ -1991,6 +2080,20 @@
                 p.speed = (kDash ? dashSpd : baseSpd) * p.speedMod;
                 p.isDashing = kDash;
 
+                // Dash Strike Badge: Dashing through boss inflicts 1.5 damage
+                if (kDash && p.badges && p.badges.includes('dash_strike')) {
+                    if (!p.dashStrikeCooldown) p.dashStrikeCooldown = 0;
+                    if (p.dashStrikeCooldown <= 0 && rectIntersect(p, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
+                        p.dashStrikeCooldown = 35;
+                        tryDamageBoss(1.5, p);
+                        playSound('slash');
+                        triggerShake(6, 12);
+                        triggerVibration('attack');
+                        voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y + boss.height/2, timer: 16, isWhite: true, isOrange: false, r: 55 });
+                    }
+                }
+                if (p.dashStrikeCooldown > 0) p.dashStrikeCooldown--;
+
                 if (p.type === 'WATER' && kDash && kUp && p.tpCooldown <= 0 && sharedHeals >= 0.5 && (numPlayers === 1 || secretMode) && p.overheatTimer<=0) { 
                     sharedHeals -= 0.5; p.tpCooldown = 420; p.tpDebuffTimer = 180; p.purpleHp = 2; p.x = Math.random() * (ARENA_W - p.width); playSound('teleport'); applyPhysicsPushToLeaves(p.x, p.y, 20); 
                 }
@@ -2040,7 +2143,8 @@
                 if (p.x <= 5 && kLeft && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = -1; p.facingRight = true; } 
                 else if (p.x >= ARENA_W - p.width - 5 && kRight && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = 1; p.facingRight = false; }
                 
-                if (!p.isUnderFloor && (p.y > camY + GAME_HEIGHT + 150 || p.y > FLOOR + 250)) {
+                let isFallingTransition = (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120);
+                if (!isFallingTransition && !p.isUnderFloor && (p.y > camY + GAME_HEIGHT + 150 || p.y > FLOOR + 250)) {
                     if (isClimbPhase && p.invuln > 0) {
                         p.x = p.lastSafeX || (ARENA_W / 2); 
                         p.y = p.lastSafeY !== undefined ? p.lastSafeY : (FLOOR - 50); 
@@ -2073,7 +2177,7 @@
                         let baseAmt = p.type === 'EARTH' ? 2 : (p.type === 'AIR' || p.type === 'STAMINA' ? 2.5 : 3);
                         let amt = baseAmt - 0.75;
                         if (p.healTimer === half) { p.hp = Math.min(p.maxHp, p.hp + amt); playSound('heal'); if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2); }
-                        if (p.healTimer >= 120) { p.hp = Math.min(p.maxHp, p.hp + amt); if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2); if(p.type!=='FIRE') sharedHeals--; p.isHealing = false; p.healTimer = 0; }
+                        if (p.healTimer >= 120) { p.hp = Math.min(p.maxHp, p.hp + amt); if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2); if(p.type!=='FIRE') sharedHeals--; p.isHealing = false; p.healTimer = 0; if (p.badges && p.badges.includes('shield')) p.hasAegisShield = true; }
                     } else {
                         let targetTime = p.isAoEHealing ? 240 : p.healFramesTotal;
                         if (p.healTimer >= targetTime) { 
@@ -2095,6 +2199,7 @@
                             }
                             if (p.type !== 'FIRE') sharedHeals--; 
                             p.isHealing = false; p.isAoEHealing = false; p.isFieryHealing = false; p.healTimer = 0;
+                            if (p.badges && p.badges.includes('shield')) p.hasAegisShield = true;
                         }
                     }
                 } else {
@@ -2196,7 +2301,13 @@
                     }
                     if (!kSpec) p.prevAttackKey = kAttack;
                     if (p.type === 'FIRE') p.prevDashKey = kDash;
-                    p.vy += currentGravity; let maxWallSlide = globalWindMode === "DOWN" ? 8 : 2; if (onWall && p.vy > maxWallSlide) p.vy = maxWallSlide; 
+                    p.vy += currentGravity; 
+                    // Feather Badge: Glide slowly in air when Jump is held
+                    if (p.badges && p.badges.includes('feather') && kJump && p.vy > 1.2 && !onFloor && !onPlatform && !onWall) {
+                        p.vy = 1.2;
+                        if (Math.random() < 0.2) applyPhysicsPushToLeaves(p.x + 15, p.y + p.height, 2);
+                    }
+                    let maxWallSlide = globalWindMode === "DOWN" ? 8 : 2; if (onWall && p.vy > maxWallSlide) p.vy = maxWallSlide; 
                 }
             }
 
@@ -2915,8 +3026,9 @@
     }
 
     function drawBackground() {
-        ctx.fillStyle = secretMode ? (window.fireHeroUnlocked ? "#150505" : "#111") : (globalWindMode === "DOWN" ? "#1a100c" : "#2e1a12"); 
-        ctx.fillRect(0, 0, ARENA_W, FLOOR);
+        let bgTop = (boss.phase >= 2.5 || boss.state.startsWith("L_CLIMB") || secretMode) ? -6000 : 0;
+        ctx.fillStyle = secretMode ? "#111" : (globalWindMode === "DOWN" ? "#1a100c" : "#2e1a12"); 
+        ctx.fillRect(0, bgTop, ARENA_W, FLOOR - bgTop);
         
         if (!secretMode) { 
             ctx.fillStyle = "rgba(255, 250, 220, 0.08)";
@@ -2947,14 +3059,33 @@
             ctx.fillStyle = "#4a3022"; ctx.fillRect(lx + 5, ly + 65, 150, 6);
         }
 
-        ctx.fillStyle = secretMode ? (window.fireHeroUnlocked ? "#1a0000" : "#000") : "#22110a"; 
+        // Speedlines during the 2-second abyss free-fall
+        if (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120) {
+            ctx.save();
+            ctx.strokeStyle = "rgba(168, 85, 247, 0.4)";
+            ctx.lineWidth = 2;
+            let t = boss.transitionTimer;
+            for (let i = 0; i < 28; i++) {
+                let sx = (i * 37 + (t * 11)) % ARENA_W;
+                let sy = ((i * 73 - (t * 26)) % (GAME_HEIGHT + 350)) + camY - 50;
+                let slen = 50 + (i % 5) * 30;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(sx, sy + slen);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        ctx.fillStyle = secretMode ? "#000" : "#22110a"; 
         ctx.fillRect(0, FLOOR, ARENA_W, ARENA_H > FLOOR ? ARENA_H : 2000);
 
-        ctx.strokeStyle = secretMode ? "#555" : "#111"; 
-        ctx.lineWidth = 4; ctx.beginPath(); 
-        
-        ctx.moveTo(0, FLOOR); ctx.lineTo(ARENA_W, FLOOR);
-        ctx.stroke();
+        if (!boss.state.startsWith("L_CLIMB")) {
+            ctx.strokeStyle = secretMode ? "#555" : "#111"; 
+            ctx.lineWidth = 4; ctx.beginPath(); 
+            ctx.moveTo(0, FLOOR); ctx.lineTo(ARENA_W, FLOOR);
+            ctx.stroke();
+        }
         
         for (let p of platforms) {
             ctx.fillStyle = secretMode ? "#444" : "#4a3022";
@@ -3626,6 +3757,31 @@
                     
                     ctx.shadowBlur = 0; 
 
+                    // Aegis Shield Badge Visual Bubble
+                    if (p.hasAegisShield && !p.isDowned) {
+                        ctx.save();
+                        let t = Date.now() / 250;
+                        let pulseR = 30 + Math.sin(t) * 2;
+                        ctx.strokeStyle = "rgba(0, 225, 255, 0.85)";
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.arc(p.x + p.width/2, p.y + p.height/2, pulseR, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.fillStyle = "rgba(0, 225, 255, 0.12)";
+                        ctx.fill();
+                        ctx.restore();
+                    }
+
+                    // Fish Scale Badge Crown
+                    if (p.hasFishScale && !p.isDowned) {
+                        ctx.save();
+                        ctx.fillStyle = "#ffd700";
+                        ctx.font = "14px Arial";
+                        ctx.textAlign = "center";
+                        ctx.fillText("👑", p.x + p.width / 2, p.y - 6);
+                        ctx.restore();
+                    }
+
                     if (p.isAoEHealing || p.isFieryHealing) { ctx.beginPath(); ctx.arc(p.x + 15, p.y + 25, 50, 0, Math.PI*2); ctx.fillStyle = p.isFieryHealing ? "rgba(255, 100, 0, 0.3)" : "rgba(0, 150, 255, 0.3)"; ctx.fill(); }
                     if (p.tied && boss.state !== "SCARF_PULL" && !boss.state.startsWith("CINEMATIC")) { ctx.strokeStyle = "cyan"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x, p.y + 10); ctx.lineTo(p.x + 30, p.y + 20); ctx.moveTo(p.x, p.y + 30); ctx.lineTo(p.x + 30, p.y + 40); ctx.stroke(); ctx.fillStyle = "cyan"; ctx.font = "12px Arial"; ctx.fillText((secretMode ? 7 : 5) - p.tieClicks, p.x - 10, p.y - 10); }
 
@@ -3734,12 +3890,64 @@
 
         if (gameState === "PLAYING") {
             drawMasks(); 
-            if (!activeCinematic && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM" && boss.state !== "L_CLIMB_START" && boss.state !== "L_CLIMB_ACTIVE") { 
+            if (!activeCinematic && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM" && !boss.state.startsWith("L_CLIMB")) { 
                 ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(GAME_WIDTH/2 - 200, 375, 400, 10); 
                 ctx.fillStyle = boss.heroBleedTimer > 0 ? "#ff00aa" : "red"; 
                 ctx.fillRect(GAME_WIDTH/2 - 200, 375, (Math.max(0, boss.hp) / boss.maxHp) * 400, 10); 
                 ctx.fillStyle = "white"; ctx.font = "12px Arial"; 
                 ctx.fillText(`Фаза: ${boss.phase}`, GAME_WIDTH/2 - 20, 385); 
+            }
+
+            // HUD for Abyss Falling & 10-Platform Climb
+            if (boss.state === "L_CLIMB_TRANSITION" || boss.state.startsWith("L_CLIMB")) {
+                ctx.save();
+                ctx.textAlign = "center";
+                if (boss.transitionTimer < 120) {
+                    ctx.font = "bold 20px Arial";
+                    ctx.fillStyle = "#c084fc";
+                    ctx.shadowColor = "rgba(168, 85, 247, 0.8)";
+                    ctx.shadowBlur = 12;
+                    ctx.fillText("↓ ПАДЕНИЕ В БЕЗДНУ ↓", GAME_WIDTH / 2, 45);
+                    ctx.font = "13px Arial";
+                    ctx.fillStyle = "#e9d5ff";
+                    let depthMeters = Math.round(boss.transitionTimer * 18);
+                    ctx.fillText(`Глубина погружения: ${depthMeters} м`, GAME_WIDTH / 2, 68);
+                } else {
+                    let currentPlatNum = 1;
+                    for (let p of players) {
+                        if (p.highestPlatReached) currentPlatNum = Math.max(currentPlatNum, p.highestPlatReached);
+                    }
+                    ctx.font = "bold 18px Arial";
+                    ctx.fillStyle = "#ffd700";
+                    ctx.shadowColor = "rgba(255, 215, 0, 0.8)";
+                    ctx.shadowBlur = 10;
+                    ctx.fillText("▲ ПОДЪЕМ НА ВЕРШИНУ ▲", GAME_WIDTH / 2, 42);
+                    ctx.font = "bold 13px Arial";
+                    ctx.fillStyle = "#ffffff";
+                    ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+                    ctx.shadowBlur = 4;
+                    ctx.fillText(`Платформы: [ ${currentPlatNum} / 10 ]  —  Доберитесь до 10-й платформы!`, GAME_WIDTH / 2, 64);
+                }
+                ctx.restore();
+            }
+
+            if (boss.phase === 3 && boss.phase3AnnouncementTimer > 0) {
+                boss.phase3AnnouncementTimer--;
+                let alpha = Math.min(1, boss.phase3AnnouncementTimer / 30);
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.textAlign = "center";
+                ctx.font = "bold 26px Arial";
+                ctx.fillStyle = "#ffd700";
+                ctx.shadowColor = "rgba(255, 215, 0, 0.9)";
+                ctx.shadowBlur = 15;
+                ctx.fillText("⚔️ ФАЗА 3: ВЕРШИНА БЕЗДНЫ ⚔️", GAME_WIDTH / 2, 110);
+                ctx.font = "bold 14px Arial";
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+                ctx.shadowBlur = 6;
+                ctx.fillText("Босс вернулся во всей своей мощи!", GAME_WIDTH / 2, 135);
+                ctx.restore();
             }
         } else if (gameState === "GAMEOVER") { 
             ctx.fillStyle = "red"; ctx.font = "40px Arial"; ctx.textAlign = "center"; ctx.fillText("ВЫ ПОГИБЛИ", GAME_WIDTH/2, 180); 
