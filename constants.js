@@ -42,6 +42,40 @@ let globalWindMode = "NONE", globalWindTimer = 0, globalWindCooldown = 0;
 let freezeFrames = 0;
 let screamRings = [];
 let platforms = [];
+let loomThreads = [];
+let lightAmuletWaves = [];
+let battleAnnouncements = [];
+let waterRopes = [];
+let slowMoTimer = 0;
+
+function distToSegment(p, v, w) {
+    let l2 = (w.x - v.x) * (w.x - v.x) + (w.y - v.y) * (w.y - v.y);
+    if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+    let t = Math.max(0, Math.min(1, ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2));
+    let proj = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
+    return Math.hypot(p.x - proj.x, p.y - proj.y);
+}
+
+function lineSegmentsIntersect(p1, p2, p3, p4) {
+    function ccw(A, B, C) {
+        return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x);
+    }
+    return (ccw(p1, p3, p4) !== ccw(p2, p3, p4)) && (ccw(p1, p2, p3) !== ccw(p1, p2, p4));
+}
+
+function segmentIntersectsRect(rect, p1, p2) {
+    if (!p1 || !p2) return false;
+    if (p1.x >= rect.x && p1.x <= rect.x + rect.width && p1.y >= rect.y && p1.y <= rect.y + rect.height) return true;
+    if (p2.x >= rect.x && p2.x <= rect.x + rect.width && p2.y >= rect.y && p2.y <= rect.y + rect.height) return true;
+    let rTop1 = { x: rect.x, y: rect.y }, rTop2 = { x: rect.x + rect.width, y: rect.y };
+    let rBot1 = { x: rect.x, y: rect.y + rect.height }, rBot2 = { x: rect.x + rect.width, y: rect.y + rect.height };
+    let rLeft1 = { x: rect.x, y: rect.y }, rLeft2 = { x: rect.x, y: rect.y + rect.height };
+    let rRight1 = { x: rect.x + rect.width, y: rect.y }, rRight2 = { x: rect.x + rect.width, y: rect.y + rect.height };
+    return lineSegmentsIntersect(p1, p2, rTop1, rTop2) ||
+           lineSegmentsIntersect(p1, p2, rBot1, rBot2) ||
+           lineSegmentsIntersect(p1, p2, rLeft1, rLeft2) ||
+           lineSegmentsIntersect(p1, p2, rRight1, rRight2);
+}
 
 let touchInputs = { left: false, right: false, up: false, down: false, jump: false, atk: false, dash: false, spec: false, heal: false, light: false };
 let screenShake = { timer: 0, mag: 0, dirX: 0, dirY: 0 };
@@ -63,7 +97,7 @@ let boss = {
     directAttackHit: false, comboCount: 0, heroBleedTimer: 0, heroBleedTicks: 0, 
     superQueue: [], sa1Arr: [], hunterInfected: 0, infectedTimer: 0, voidWindDisabled: 0,
     sa1Count: 0, saLines: null, saLinesState: "", saLinesTimer: 0,
-    climbPlatCount: 0, climbPlatTimer: 0, lightStunDone: false, lightInfected: 0,
+    climbPlatCount: 0, climbPlatTimer: 0, lightStunDone: false, lightInfected: 0, lightInfectedDmgRed: 0.5,
     bossBurnTimer: 0, bossBurnTicks: 0, duelSpacingTimer: 0,
     halfHpSeqDone: false, halfHpSeqActive: false, climbSaStep: 0,
     healCooldown: 0, healOrbs: []
@@ -95,7 +129,7 @@ const DEFAULT_CONTROLS = {
     SCHEME_1: {
         left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown',
         jump: 'KeyZ', attack: 'KeyX', heal: 'KeyA', dash: 'KeyC', special: 'KeyF',
-        light: 'KeyL', stance: 'KeyS'
+        light: 'ShiftLeft', stance: 'KeyS'
     },
     SCHEME_2: {
         left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
@@ -774,6 +808,29 @@ async function registerUser(name, password) {
     return { success: true, user: newAcc };
 }
 
+function getHomoglyphVariants(str) {
+    const map = {
+        'c': 'с', 'с': 'c',
+        'a': 'а', 'а': 'a',
+        'e': 'е', 'е': 'e',
+        'o': 'о', 'о': 'o',
+        'p': 'р', 'р': 'p',
+        'x': 'х', 'х': 'x',
+        'y': 'у', 'у': 'y'
+    };
+    let variants = new Set();
+    if (str && map[str[0]]) {
+        variants.add(map[str[0]] + str.slice(1));
+    }
+    let toLatin = str.replace(/[саеорху]/g, m => ({ 'с':'c', 'а':'a', 'е':'e', 'о':'o', 'р':'p', 'х':'x', 'у':'y' }[m] || m));
+    variants.add(toLatin);
+    let toCyrillic = str.replace(/[caeopxy]/g, m => ({ 'c':'с', 'a':'а', 'e':'е', 'o':'о', 'p':'р', 'x':'х', 'y':'у' }[m] || m));
+    variants.add(toCyrillic);
+    variants.delete(str);
+    return Array.from(variants);
+}
+window.getHomoglyphVariants = getHomoglyphVariants;
+
 async function loginUser(name, password) {
     let cleanName = (name || '').trim();
     if (!cleanName) {
@@ -804,6 +861,36 @@ async function loginUser(name, password) {
                 saveAccounts(accs);
             }
         } catch(e) {}
+    }
+
+    // Auto-fallback for Latin/Cyrillic lookalike letters (например, русская 'с' и английская 'c')
+    if (!acc) {
+        let variants = getHomoglyphVariants(lowerKey);
+        for (let altKey of variants) {
+            if (accs[altKey]) {
+                acc = accs[altKey];
+                break;
+            }
+            try {
+                let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(altKey)}.json`);
+                let cloudAcc = await res.json();
+                if (cloudAcc) {
+                    acc = cloudAcc;
+                    accs[altKey] = cloudAcc;
+                    accs[lowerKey] = cloudAcc;
+                    saveAccounts(accs);
+                    // Also alias in Firebase so next time it's instant everywhere
+                    try {
+                        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(cloudAcc)
+                        }).catch(()=>{});
+                    } catch(e){}
+                    break;
+                }
+            } catch(e) {}
+        }
     }
 
     if (!acc) {
@@ -1067,6 +1154,28 @@ function toggleEasyBossMode() {
 window.easyBossMode = easyBossMode;
 window.toggleEasyBossMode = toggleEasyBossMode;
 
+// --- CHALLENGES (УСЛОЖНЕНИЯ) ---
+let activeChallenges = {
+    hp3: false,
+    limitedHeal: false,
+    bossSpeed: false
+};
+window.activeChallenges = activeChallenges;
+
+function toggleChallenge(key) {
+    if (activeChallenges.hasOwnProperty(key)) {
+        activeChallenges[key] = !activeChallenges[key];
+        if (typeof updateChallengesUI === 'function') {
+            updateChallengesUI();
+        }
+    }
+    return activeChallenges[key];
+}
+window.toggleChallenge = toggleChallenge;
+
+let sharedHealPoints = 12;
+const MAX_HEAL_POINTS = 12;
+
 // --- ACHIEVEMENTS DEFINITIONS ---
 const ACHIEVEMENTS_DEF = [
     { id: 'fish_day', title: '👑 «РЫБНЫЙ ДЕНЬ» 🐟', desc: 'Сыграть в одной команде с Создателем игры (РЫБой)!', prestigious: true },
@@ -1225,13 +1334,75 @@ async function sendPlayerReaction(reactionText) {
 }
 window.sendPlayerReaction = sendPlayerReaction;
 
+function showAchievementToast(title) {
+    if (typeof playSound === 'function') {
+        try { playSound('parry'); } catch(e){}
+        setTimeout(() => { try { playSound('leaf'); } catch(e){} }, 150);
+    }
+    
+    // In-game world message banner
+    activeWorldMessage = {
+        text: `🏆 ДОСТИЖЕНИЕ: ${title}`,
+        sender: 'Убежище',
+        timer: 300,
+        maxTimer: 300
+    };
+
+    // DOM toast banner
+    try {
+        let toast = document.getElementById('achievement-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'achievement-toast';
+            toast.style.cssText = `
+                position: fixed;
+                top: 24px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, rgba(20, 20, 35, 0.95), rgba(40, 30, 10, 0.95));
+                border: 2px solid #ffd700;
+                box-shadow: 0 0 25px rgba(255, 215, 0, 0.6), inset 0 0 10px rgba(255, 215, 0, 0.3);
+                border-radius: 10px;
+                padding: 12px 24px;
+                color: #ffffff;
+                font-family: Arial, sans-serif;
+                text-align: center;
+                z-index: 99999;
+                pointer-events: none;
+                transition: all 0.4s ease;
+            `;
+            document.body.appendChild(toast);
+        }
+        toast.innerHTML = `
+            <div style="font-size: 11px; text-transform: uppercase; color: #ffd700; letter-spacing: 2px; margin-bottom: 4px; font-weight: bold;">🏆 ДОСТИЖЕНИЕ РАЗБЛОКИРОВАНО!</div>
+            <div style="font-size: 16px; font-weight: bold; color: #ffffff;">${title}</div>
+        `;
+        toast.style.opacity = '1';
+        toast.style.display = 'block';
+        toast.style.top = '24px';
+        
+        setTimeout(() => {
+            if (toast) {
+                toast.style.opacity = '0';
+                toast.style.top = '10px';
+                setTimeout(() => { if (toast) toast.style.display = 'none'; }, 400);
+            }
+        }, 4500);
+    } catch(e) {}
+}
+window.showAchievementToast = showAchievementToast;
+
 function unlockAchievement(achId, targetUserName) {
-    let userName = targetUserName || getCurrentUser();
+    let userName = targetUserName || getCurrentUser() || "Игрок";
     if (!userName) return false;
 
     let accs = loadAccounts();
-    let userAcc = accs[userName.toLowerCase()];
-    if (!userAcc) return false;
+    let lowerKey = userName.toLowerCase();
+    let userAcc = accs[lowerKey];
+    if (!userAcc) {
+        userAcc = { name: userName, achievements: {} };
+        accs[lowerKey] = userAcc;
+    }
 
     userAcc.achievements = userAcc.achievements || {};
     if (userAcc.achievements[achId]) return false; // already unlocked
@@ -1240,21 +1411,21 @@ function unlockAchievement(achId, targetUserName) {
     saveAccounts(accs);
 
     // Sync to Firebase
-    try {
-        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(userName.toLowerCase())}/achievements.json`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(userAcc.achievements)
-        }).catch(()=>{});
-    } catch(e) {}
+    if (lowerKey !== 'гость' && lowerKey !== 'игрок') {
+        try {
+            fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}/achievements.json`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userAcc.achievements)
+            }).catch(()=>{});
+        } catch(e) {}
+    }
 
     let ach = ACHIEVEMENTS_DEF.find(a => a.id === achId);
     let title = ach ? ach.title : achId;
 
     // Toast notification
-    if (typeof showAchievementToast === 'function') {
-        showAchievementToast(title);
-    }
+    showAchievementToast(title);
 
     if (achId === 'fish_day') {
         sendTelegramNotification(
@@ -1327,6 +1498,35 @@ async function loginUserP2(name, password) {
                 saveAccounts(accs);
             }
         } catch(e) {}
+    }
+
+    // Auto-fallback for Latin/Cyrillic lookalike letters
+    if (!acc) {
+        let variants = getHomoglyphVariants(lowerKey);
+        for (let altKey of variants) {
+            if (accs[altKey]) {
+                acc = accs[altKey];
+                break;
+            }
+            try {
+                let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(altKey)}.json`);
+                let cloudAcc = await res.json();
+                if (cloudAcc) {
+                    acc = cloudAcc;
+                    accs[altKey] = cloudAcc;
+                    accs[lowerKey] = cloudAcc;
+                    saveAccounts(accs);
+                    try {
+                        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(cloudAcc)
+                        }).catch(()=>{});
+                    } catch(e){}
+                    break;
+                }
+            } catch(e) {}
+        }
     }
 
     if (!acc) {
@@ -1512,6 +1712,17 @@ function recordBattleResult(isVictory) {
                 userAcc.coopPartners[p2].battles++;
                 if (isVictory) userAcc.coopPartners[p2].wins++;
             }
+
+            if (typeof players !== 'undefined' && players[0]) {
+                userAcc.lastBuild = {
+                    hero: players[0].type || 'UNKNOWN',
+                    badges: players[0].badges ? [...players[0].badges] : [],
+                    abilities: players[0].abilities ? { ...players[0].abilities } : {},
+                    won: isVictory,
+                    time: Date.now()
+                };
+            }
+
             saveAccounts(accs);
 
             // Обновление в облаке Firebase для Игрока 1
@@ -1519,7 +1730,7 @@ function recordBattleResult(isVictory) {
                 fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(curUser.toLowerCase())}.json`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stats: userAcc.stats, coopPartners: userAcc.coopPartners })
+                    body: JSON.stringify({ stats: userAcc.stats, coopPartners: userAcc.coopPartners, lastBuild: userAcc.lastBuild })
                 }).catch(e => console.warn("Firebase p1 sync error:", e));
             } catch(e) {}
         }
@@ -1551,6 +1762,16 @@ function recordBattleResult(isVictory) {
             p2Acc.coopPartners[p1Name].battles++;
             if (isVictory) p2Acc.coopPartners[p1Name].wins++;
 
+            if (typeof players !== 'undefined' && players[1]) {
+                p2Acc.lastBuild = {
+                    hero: players[1].type || 'UNKNOWN',
+                    badges: players[1].badges ? [...players[1].badges] : [],
+                    abilities: players[1].abilities ? { ...players[1].abilities } : {},
+                    won: isVictory,
+                    time: Date.now()
+                };
+            }
+
             saveAccounts(accs);
 
             // Обновление в облаке Firebase для Игрока 2
@@ -1558,7 +1779,7 @@ function recordBattleResult(isVictory) {
                 fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(p2.toLowerCase())}.json`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stats: p2Acc.stats, coopPartners: p2Acc.coopPartners })
+                    body: JSON.stringify({ stats: p2Acc.stats, coopPartners: p2Acc.coopPartners, lastBuild: p2Acc.lastBuild })
                 }).catch(e => console.warn("Firebase p2 sync error:", e));
             } catch(e) {}
         }
@@ -1682,11 +1903,18 @@ const badgesDict = {
     'thorns': { id: 'thorns', name: 'Шипы ярости (Удар боссу при ранении)', teamAllowed: false },
     'battery': { id: 'battery', name: 'Энергоячейка (+1 макс. заряд хила)', teamAllowed: true },
     'fish_scale': { id: 'fish_scale', name: 'Чешуя РЫБы (+1 макс. HP, корона)', teamAllowed: true },
+    'cracked_life': { id: 'cracked_life', name: 'Треснувшая жизнь (Щит на 1 HP)', teamAllowed: false },
+    'lucky_charm': { id: 'lucky_charm', name: 'Талисман удачи (5% уклонение, +2% к шансам)', teamAllowed: false },
+    'light_amulet': { id: 'light_amulet', name: 'Амулет света (Блок -1 урон за заряды хила)', teamAllowed: false, lModeOnly: true },
     'none':  { id: 'none', name: '[Пусто]', teamAllowed: 'both' }
 };
 
 const abilityDict = {
     'shuriken': 'Сюрикены',
+    'parry': 'Парирование',
+    'ignite': 'Огненный клинок',
+    'whirlwind': 'Замах алебардой',
+    'loom_thread': 'Нить станка',
     'chill': 'Охлаждающий отвар',
     'invig': 'Бодрящий отвар',
     'wind': 'Порыв ветра',
@@ -1703,12 +1931,30 @@ const abilitySlotNames = {
 };
 
 function getAbilitiesInfo(type) {
-    if (type === 'WATER') return { slots: ['mid'], pool: ['shuriken', 'chill', 'invig', 'none'] };
-    if (type === 'AIR') return { slots: ['mid', 'bot'], pool: ['wind', 'supertrap', 'chill', 'invig', 'none'] };
-    if (type === 'EARTH') return { slots: ['top', 'mid'], pool: ['trap', 'chill', 'invig', 'none'] };
-    if (type === 'STAMINA') return { slots: ['top', 'mid'], pool: ['shuriken', 'charge', 'chill', 'invig', 'none'] };
-    if (type === 'FIRE') return { slots: [], pool: [] };
-    return { slots: [], pool: [] };
+    let isL = (typeof secretMode !== 'undefined' && !!secretMode) || (typeof window !== 'undefined' && !!window.secretMode);
+    let pool = [];
+    if (type === 'WATER') pool = ['shuriken', 'chill', 'invig', 'none'];
+    else if (type === 'AIR') pool = ['wind', 'supertrap', 'chill', 'invig', 'none'];
+    else if (type === 'EARTH') pool = ['trap', 'chill', 'invig', 'none'];
+    else if (type === 'STAMINA') pool = ['shuriken', 'charge', 'chill', 'invig', 'none'];
+    else if (type === 'FIRE') pool = ['parry', 'ignite', 'shuriken', 'chill', 'invig', 'none'];
+    else if (type === 'FIRE_HALBERD') pool = ['whirlwind', 'ignite', 'shuriken', 'chill', 'invig', 'none'];
+    else if (type === 'WATER_ROPE') pool = ['shuriken', 'chill', 'invig', 'none'];
+
+    if (isL) {
+        pool.unshift('loom_thread');
+    }
+
+    let slots = [];
+    if (type === 'WATER') slots = ['mid'];
+    else if (type === 'AIR') slots = ['mid', 'bot'];
+    else if (type === 'EARTH') slots = ['top', 'mid'];
+    else if (type === 'STAMINA') slots = ['top', 'mid'];
+    else if (type === 'FIRE') slots = ['top', 'mid', 'bot'];
+    else if (type === 'FIRE_HALBERD') slots = ['top', 'mid'];
+    else if (type === 'WATER_ROPE') slots = ['top', 'mid', 'bot'];
+
+    return { slots: slots, pool: pool };
 }
 
 const defaultAbilities = {
@@ -1716,11 +1962,108 @@ const defaultAbilities = {
     'AIR': { top: 'none', mid: 'wind', bot: 'supertrap' },
     'EARTH': { top: 'chill', mid: 'trap', bot: 'none' },
     'STAMINA': { top: 'shuriken', mid: 'charge', bot: 'none' },
-    'FIRE': { top: 'none', mid: 'none', bot: 'none' } 
+    'FIRE': { top: 'shuriken', mid: 'parry', bot: 'ignite' },
+    'FIRE_HALBERD': { top: 'shuriken', mid: 'whirlwind', bot: 'none' },
+    'WATER_ROPE': { top: 'none', mid: 'shuriken', bot: 'none' }
 };
 
 let configBadges = { team: 'none', p1: ['none','none','none'], p2: ['none','none','none'] };
 let configAbilities = { p1: { top: 'none', mid: 'none', bot: 'none' }, p2: { top: 'none', mid: 'none', bot: 'none' } };
+
+// --- EXCLUSIVE BANANA SKIN SYSTEM (РЫБа & сarrots_44444) ---
+let bananaSkinP1 = false;
+let bananaSkinP2 = false;
+
+try {
+    bananaSkinP1 = localStorage.getItem('shelter_banana_p1') === 'true';
+    bananaSkinP2 = localStorage.getItem('shelter_banana_p2') === 'true';
+} catch(e) {}
+
+function isCarrotsUser(name) {
+    if (!name) return false;
+    let n = name.toLowerCase().trim();
+    let norm = n.replace(/[са]/g, m => (m === 'с' ? 'c' : 'a'));
+    return norm.startsWith('carrots') || norm.includes('морков');
+}
+window.isCarrotsUser = isCarrotsUser;
+
+function isCreatorUser(name) {
+    if (!name) return false;
+    let n = name.toLowerCase().trim();
+    return n === 'рыба' || n === 'admin';
+}
+window.isCreatorUser = isCreatorUser;
+
+function isBananaSkinAllowed() {
+    let u1 = getCurrentUser() || '';
+    let u2 = (typeof getP2User === 'function') ? getP2User() : '';
+    let p1Eligible = isCreatorUser(u1) || isCarrotsUser(u1);
+    let p2Eligible = (typeof numPlayers !== 'undefined' && numPlayers === 2) && (isCreatorUser(u2) || isCarrotsUser(u2));
+    return p1Eligible || p2Eligible;
+}
+window.isBananaSkinAllowed = isBananaSkinAllowed;
+
+function toggleBananaSkin(playerNum) {
+    if (!isBananaSkinAllowed()) return;
+    if (playerNum === 2) {
+        bananaSkinP2 = !bananaSkinP2;
+        try { localStorage.setItem('shelter_banana_p2', bananaSkinP2 ? 'true' : 'false'); } catch(e){}
+    } else {
+        bananaSkinP1 = !bananaSkinP1;
+        try { localStorage.setItem('shelter_banana_p1', bananaSkinP1 ? 'true' : 'false'); } catch(e){}
+    }
+    if (typeof playSound === 'function') playSound('parry');
+    updateBananaSkinUI();
+}
+window.toggleBananaSkin = toggleBananaSkin;
+
+function updateBananaSkinUI() {
+    let box = document.getElementById('banana-skin-sidebar-box');
+    let btnP1 = document.getElementById('banana-skin-btn-p1');
+    let btnP2 = document.getElementById('banana-skin-btn-p2');
+    if (!box || !btnP1) return;
+
+    if (!isBananaSkinAllowed()) {
+        box.style.display = 'none';
+        return;
+    }
+
+    box.style.display = 'block';
+    let isDuo = (typeof numPlayers !== 'undefined' && numPlayers === 2);
+
+    if (!isDuo) {
+        btnP1.style.display = 'block';
+        btnP1.innerHTML = bananaSkinP1 
+            ? '🍌 Скин банана: <b style="color: #4ade80;">ВКЛ ✨</b>' 
+            : '🍌 Скин банана: <b style="color: #94a3b8;">ВЫКЛ</b>';
+        btnP1.style.borderColor = bananaSkinP1 ? '#ffe600' : '#64748b';
+        btnP1.style.color = bananaSkinP1 ? '#fffb8f' : '#cbd5e1';
+        btnP1.style.background = bananaSkinP1 ? 'rgba(80, 60, 10, 0.85)' : 'rgba(30, 41, 59, 0.6)';
+        btnP1.style.boxShadow = bananaSkinP1 ? '0 0 15px rgba(255, 230, 0, 0.4)' : 'none';
+        if (btnP2) btnP2.style.display = 'none';
+    } else {
+        btnP1.style.display = 'block';
+        btnP1.innerHTML = bananaSkinP1 
+            ? '🍌 Скин банана (Игрок 1): <b style="color: #4ade80;">ВКЛ ✨</b>' 
+            : '🍌 Скин банана (Игрок 1): <b style="color: #94a3b8;">ВЫКЛ</b>';
+        btnP1.style.borderColor = bananaSkinP1 ? '#ffe600' : '#64748b';
+        btnP1.style.color = bananaSkinP1 ? '#fffb8f' : '#cbd5e1';
+        btnP1.style.background = bananaSkinP1 ? 'rgba(80, 60, 10, 0.85)' : 'rgba(30, 41, 59, 0.6)';
+        btnP1.style.boxShadow = bananaSkinP1 ? '0 0 15px rgba(255, 230, 0, 0.4)' : 'none';
+
+        if (btnP2) {
+            btnP2.style.display = 'block';
+            btnP2.innerHTML = bananaSkinP2 
+                ? '🍌 Скин банана (Игрок 2): <b style="color: #4ade80;">ВКЛ ✨</b>' 
+                : '🍌 Скин банана (Игрок 2): <b style="color: #94a3b8;">ВЫКЛ</b>';
+            btnP2.style.borderColor = bananaSkinP2 ? '#ffe600' : '#64748b';
+            btnP2.style.color = bananaSkinP2 ? '#fffb8f' : '#cbd5e1';
+            btnP2.style.background = bananaSkinP2 ? 'rgba(80, 60, 10, 0.85)' : 'rgba(30, 41, 59, 0.6)';
+            btnP2.style.boxShadow = bananaSkinP2 ? '0 0 15px rgba(255, 230, 0, 0.4)' : 'none';
+        }
+    }
+}
+window.updateBananaSkinUI = updateBananaSkinUI;
 
 let currentEditingSlot = null; 
 let currentEditingAbility = null;
@@ -1757,16 +2100,28 @@ function rectIntersect(r1, r2) {
     return !(r2.x > r1.x + r1.width || r2.x + r2.width < r1.x || r2.y > r1.y + r1.height || r2.y + r2.height < r1.y); 
 }
 
-function distToSegment(p, line) {
-    let l2 = Math.pow(line.x1 - line.x2, 2) + Math.pow(line.y1 - line.y2, 2);
-    let cx = p.x + p.width/2; 
-    let cy = p.y + p.height/2;
-    if (l2 === 0) return Math.hypot(cx - line.x1, cy - line.y1);
-    let t = ((cx - line.x1) * (line.x2 - line.x1) + (cy - line.y1) * (line.y2 - line.y1)) / l2;
-    t = Math.max(0, Math.min(1, t));
-    let projX = line.x1 + t * (line.x2 - line.x1); 
-    let projY = line.y1 + t * (line.y2 - line.y1);
-    return Math.hypot(cx - projX, cy - projY);
+function distToSegment(p, v, w) {
+    let px = (p.x !== undefined ? p.x : 0) + (p.width ? p.width / 2 : 0);
+    let py = (p.y !== undefined ? p.y : 0) + (p.height ? p.height / 2 : 0);
+    let x1, y1, x2, y2;
+    if (w !== undefined && w !== null) {
+        x1 = v.x; y1 = v.y;
+        x2 = w.x; y2 = w.y;
+    } else if (v && v.x1 !== undefined) {
+        x1 = v.x1; y1 = v.y1;
+        x2 = v.x2; y2 = v.y2;
+    } else if (v && v.x !== undefined) {
+        x1 = v.x; y1 = v.y;
+        x2 = v.x; y2 = v.y;
+    } else {
+        return 999999;
+    }
+    let l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+    if (l2 === 0) return Math.hypot(px - x1, py - y1);
+    let t = Math.max(0, Math.min(1, ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2));
+    let projX = x1 + t * (x2 - x1);
+    let projY = y1 + t * (y2 - y1);
+    return Math.hypot(px - projX, py - projY);
 }
 
 function applyPhysicsPushToLeaves(srcX, srcY, strength) { 

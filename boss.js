@@ -2,6 +2,7 @@
 
 function getBossColor(c) {
     if (boss.lightInfected > 0 || boss.hunterInfected > 0 || boss.infectedTimer > 0) return "#00ffff"; 
+    if (boss.state === "BOSS_STUNNED" || boss.state === "L_PHASE4_STUNNED") return c; // В оглушении босс окрашивается в свои обычные цвета!
     if (!secretMode) return c;
     if (boss.state === "SA1_ACTIVE") return "#ff8800"; 
     if (c === '#e6c800') return '#665500'; 
@@ -10,6 +11,50 @@ function getBossColor(c) {
     if (c === '#ff8800') return '#884400'; 
     if (c === '#aaaaaa') return '#444444'; 
     return c;
+}
+
+function checkBossStun() {
+    if (boss.state === "BOSS_STUNNED" || boss.state === "L_PHASE4_STUNNED" || boss.state === "L_PHASE4_ORBS" || boss.state === "L_PHASE4_FALL" || boss.state.startsWith("CINEMATIC") || boss.state === "DEFEATED" || boss.state === "FREE_ROAM" || boss.state.startsWith("L_CLIMB") || boss.phase === 2.5) return;
+    
+    let shouldStun = false;
+    if (!secretMode) {
+        // Обычный режим: 2 оглушения (1 фаза 50% и 2 фаза 50%)
+        if (boss.phase === 1 && !boss.stunP1_1 && boss.hp <= boss.maxHp * 0.5) {
+            boss.stunP1_1 = true;
+            shouldStun = true;
+        } else if (boss.phase === 2 && !boss.stunP2 && boss.hp <= phase2Hp * 0.5) {
+            boss.stunP2 = true;
+            shouldStun = true;
+        }
+    } else {
+        // L режим: 3 оглушения (1 фаза 2/3 и 1/3, 2 фаза 50%)
+        if (boss.phase === 1 && !boss.stunP1_1 && boss.hp <= boss.maxHp * (2 / 3)) {
+            boss.stunP1_1 = true;
+            shouldStun = true;
+        } else if (boss.phase === 1 && !boss.stunP1_2 && boss.hp <= boss.maxHp * (1 / 3)) {
+            boss.stunP1_2 = true;
+            shouldStun = true;
+        } else if (boss.phase === 2 && !boss.stunP2 && boss.hp <= phase2Hp * 0.5) {
+            boss.stunP2 = true;
+            shouldStun = true;
+        }
+    }
+
+    if (shouldStun) {
+        boss.state = "BOSS_STUNNED";
+        boss.stateTimer = 300; // 5 секунд оглушения
+        boss.vx = 0;
+        boss.vy = 0;
+        boss.y = FLOOR - boss.height;
+        boss.superQueue = [];
+        boss.sa1Arr = [];
+        boss.invuln = 0;
+        boss.color = "#e6c800";
+        playSound('parry');
+        playSound('break');
+        triggerShake(10, 16);
+        voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y - 10, timer: 30, isWhite: true, isOrange: false, r: 50 });
+    }
 }
 
 function createRandomSaLine(type) {
@@ -27,7 +72,37 @@ function createRandomSaLine(type) {
 }
 
 function tryDamageBoss(dmg, sourcePlayer) {
-    if (boss.invuln > 0 || boss.state === "DEFEATED" || boss.state.startsWith("CINEMATIC") || boss.state.startsWith("TELEPORT") || boss.state === "L_CLIMB_START" || boss.state === "L_CLIMB_ACTIVE" || boss.state === "VOID_SINK_STUN") return false;
+    if (boss.invuln > 0 || boss.state === "DEFEATED" || boss.state.startsWith("CINEMATIC") || boss.state.startsWith("TELEPORT") || boss.state === "L_CLIMB_START" || boss.state === "L_CLIMB_ACTIVE" || boss.state === "VOID_SINK_STUN" || boss.state === "L_PHASE4_ORBS" || boss.state === "L_PHASE4_FALL") return false;
+
+    // Фаза 4: босс в бесконечном оглушении - один любой удар и он побежден!
+    if (boss.state === "L_PHASE4_STUNNED") {
+        boss.hp = 0;
+        boss.state = "DEFEATED";
+        let bgm = document.getElementById("lModeMusic"); 
+        if (bgm) bgm.pause();
+        triggerVibration('l_mode_final'); 
+        boss.state = "FREE_ROAM"; 
+        let origX = (boss.x > -1000) ? boss.x + 15 : ARENA_W / 2;
+        let origY = (boss.y > -1000) ? boss.y + 25 : FLOOR - 50;
+        boss.x = -99999;
+        boss.y = -99999;
+        boss.vx = 0;
+        boss.vy = 0;
+        for (let i = 0; i < 60; i++) {
+            voidExplosions.push({
+                x: origX, 
+                y: origY, 
+                vx: (Math.random() - 0.5) * 24, 
+                vy: (Math.random() - 0.5) * 24, 
+                timer: 75, 
+                isWhite: Math.random() > 0.5
+            });
+        }
+        playSound('hitBoss');
+        playSound('slash');
+        triggerShake(20, 30);
+        return true;
+    }
 
     if (megaDamageActive || window.megaDamageActive) {
         dmg *= 5;
@@ -81,9 +156,9 @@ function tryDamageBoss(dmg, sourcePlayer) {
 }
 
 function triggerCinematic(type, targetPlayer, isRealHit = true, lineAngle = null) {
-    if (type === "SA1") activeCinematic = { type: 'SA1', p: targetPlayer, timer: 90, tick: 0, isReal: isRealHit, angle: lineAngle };
-    else if (type === "SA2") activeCinematic = { type: 'SA2', p: targetPlayer, timer: 60, tick: 0, isReal: isRealHit, angle: lineAngle };
-    else if (type === "SA3") activeCinematic = { type: 'SA3', p: targetPlayer, timer: 65, tick: 0, isReal: isRealHit, angle: lineAngle };
+    if (type === "SA1") activeCinematic = { type: 'SA1', p: targetPlayer, timer: 72, tick: 0, isReal: isRealHit, angle: lineAngle };
+    else if (type === "SA2") activeCinematic = { type: 'SA2', p: targetPlayer, timer: 48, tick: 0, isReal: isRealHit, angle: lineAngle };
+    else if (type === "SA3") activeCinematic = { type: 'SA3', p: targetPlayer, timer: 52, tick: 0, isReal: isRealHit, angle: lineAngle };
 }
 
 function triggerChaos(saCount) {
@@ -102,13 +177,53 @@ function checkPhaseTransition() {
     if (typeof isTutorial !== 'undefined' && isTutorial) return;
     if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") {
         boss.hp = 0;
-        if (secretMode && boss.phase >= 3) {
+        if (secretMode && boss.phase === 3) {
+            // L-mode Phase 4: True Void / Сферы Тьмы!
+            boss.phase = 4;
+            boss.hp = 1;
+            boss.maxHp = 1;
+            boss.invuln = 999999;
+            boss.x = ARENA_W / 2 - boss.width / 2;
+            boss.y = FLOOR - 220;
+            boss.vx = 0;
+            boss.vy = 0;
+            boss.state = "L_PHASE4_ORBS";
+            boss.lPhase4AttackTimer = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? 135 : 180;
+            boss.lPhase4Orbs = [
+                { x: 260, y: FLOOR - 90, r: 24, alive: true },
+                { x: ARENA_W - 260, y: FLOOR - 90, r: 24, alive: true }
+            ];
+            
+            // Восполнить все хилы до максимума
+            if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal) {
+                sharedHealPoints = MAX_HEAL_POINTS;
+            }
+            sharedHeals = maxSharedHeals;
+            sharedHitCount = 0;
+
+            triggerVibration('l_mode_final');
+            triggerShake(16, 24);
+            playSound('break');
+            playSound('lightChime');
+            battleAnnouncements.push({ text: "ФАЗА 4: СФЕРЫ ТЬМЫ", color: "#aa00ff", timer: 180 });
+            for (let i = 0; i < 40; i++) {
+                voidExplosions.push({
+                    x: boss.x + 15,
+                    y: boss.y + 25,
+                    vx: (Math.random() - 0.5) * 20,
+                    vy: (Math.random() - 0.5) * 20,
+                    timer: 50,
+                    isWhite: Math.random() > 0.5
+                });
+            }
+            return;
+        } else if (secretMode && boss.phase >= 4) {
             let bgm = document.getElementById("lModeMusic"); 
             if (bgm) bgm.pause();
             triggerVibration('l_mode_final'); 
             boss.state = "FREE_ROAM"; 
-            let origX = boss.x + 15;
-            let origY = boss.y + 25;
+            let origX = (boss.x > -1000) ? boss.x + 15 : ARENA_W / 2;
+            let origY = (boss.y > -1000) ? boss.y + 25 : FLOOR - 50;
             boss.x = -99999;
             boss.y = -99999;
             boss.vx = 0;
@@ -124,6 +239,7 @@ function checkPhaseTransition() {
                 });
             }
             playSound('hitBoss');
+            return;
         } else if (!secretMode && boss.phase >= 3) {
             boss.state = "CINEMATIC_TIE_WAIT"; 
             boss.invuln = 9999; 
@@ -172,6 +288,8 @@ function checkPhaseTransition() {
                 }
             }
         }
+    } else if (boss.hp > 0) {
+        checkBossStun();
     }
 }
 
@@ -476,6 +594,106 @@ function updateBoss() {
 
     if (boss.invuln > 0) boss.invuln--; 
     boss.stateTimer--; 
+
+    // Оглушение босса (Boss Stun: 5 секунд / 300 кадров)
+    if (boss.state === "BOSS_STUNNED") {
+        boss.vx = 0;
+        boss.vy = 0;
+        if (boss.y + boss.height < FLOOR) boss.y = Math.min(FLOOR - boss.height, boss.y + 10);
+        if (boss.stateTimer <= 0) {
+            boss.state = "IDLE";
+            boss.color = "#e6c800";
+            boss.stateTimer = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? 12 : 25;
+        }
+        return;
+    }
+
+    // Фаза 4: Сферы Тьмы
+    if (boss.state === "L_PHASE4_ORBS") {
+        boss.vx = 0;
+        boss.vy = 0;
+        boss.x = ARENA_W / 2 - boss.width / 2;
+        boss.y = (FLOOR - 220) + Math.sin(Date.now() / 250) * 8;
+        boss.invuln = 99999;
+
+        if (Math.random() < 0.25) {
+            voidExplosions.push({
+                x: boss.x + boss.width/2 + (Math.random() - 0.5) * 40,
+                y: boss.y + boss.height/2 + (Math.random() - 0.5) * 40,
+                timer: 20,
+                isWhite: false,
+                r: 15
+            });
+        }
+
+        boss.lPhase4AttackTimer--;
+        let attackInterval = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? 135 : 180;
+        if (boss.lPhase4AttackTimer <= 0) {
+            boss.lPhase4AttackTimer = attackInterval;
+            let roll = Math.random();
+            if (roll < 0.28) {
+                // Спам сюрикенами из порталов
+                boss.state = "VOID_PORTALS";
+                boss.stateTimer = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? 65 : 85;
+                boss.color = "#9900ff";
+            } else {
+                // Случайный SA: SA1 всегда 1 раз, SA2 случайное количество раз (1..3), SA3
+                let saRoll = Math.random();
+                if (saRoll < 0.33) {
+                    boss.state = "SA1_WINDUP";
+                    boss.stateTimer = 1;
+                    boss.color = "#ff8800";
+                } else if (saRoll < 0.68) {
+                    let sa2CountRoll = Math.random();
+                    if (sa2CountRoll < 0.34) {
+                        boss.state = "SA2_WINDUP";
+                        boss.stateTimer = 24;
+                    } else if (sa2CountRoll < 0.67) {
+                        boss.state = "SA2_DOUBLE";
+                        boss.stateTimer = 24;
+                    } else {
+                        boss.state = "SA2_TRIPLE";
+                        boss.stateTimer = 24;
+                    }
+                    boss.color = "#ffffff";
+                    playSound('slash');
+                } else {
+                    boss.state = "SA3_WINDUP";
+                    boss.stateTimer = 24;
+                    boss.color = "#9900ff";
+                    playSound('demonRoar');
+                }
+            }
+        }
+        return;
+    }
+
+    if (boss.state === "L_PHASE4_FALL") {
+        boss.vx = 0;
+        boss.y += 12;
+        if (boss.y >= FLOOR - boss.height) {
+            boss.y = FLOOR - boss.height;
+            boss.state = "L_PHASE4_STUNNED";
+            boss.stateTimer = 999999;
+            boss.hp = 1;
+            boss.invuln = 0;
+            boss.color = "#e6c800";
+            playSound('hitBoss');
+            playSound('break');
+            triggerShake(16, 24);
+            voidExplosions.push({ x: boss.x + boss.width/2, y: FLOOR, timer: 30, isWhite: true, r: 60 });
+        }
+        return;
+    }
+
+    if (boss.state === "L_PHASE4_STUNNED") {
+        boss.vx = 0;
+        boss.vy = 0;
+        boss.y = FLOOR - boss.height;
+        boss.invuln = 0;
+        boss.color = "#e6c800";
+        return;
+    } 
 
     // Заражение светом (Light Infection): 5 секунд = 300 кадров
     if (boss.lightInfected > 0) {
@@ -807,7 +1025,7 @@ function updateBoss() {
             for (let p of players) {
                 if (Math.abs((p.x + p.width/2) - (boss.x + boss.width/2)) < 100) {
                     let slamDmg = secretMode ? 2 : 1.5;
-                    if (boss.lightInfected > 0) slamDmg = Math.max(0.5, slamDmg - 1);
+                    if (boss.lightInfected > 0) slamDmg = Math.max(0.5, slamDmg - (boss.lightInfectedDmgRed || 0.5));
                     takeDamage(p, slamDmg);
                 }
             }
@@ -999,18 +1217,35 @@ function updateBoss() {
     } else {
         switch(boss.state) {
             case "IDLE":
+                if (boss.phase === 4) {
+                    if (boss.lPhase4Orbs && !boss.lPhase4Orbs.some(o => o.alive)) {
+                        boss.state = "L_PHASE4_STUNNED";
+                    } else {
+                        boss.state = "L_PHASE4_ORBS";
+                    }
+                    break;
+                }
                 boss.vx = 0; boss.comboCount = 0;
+                let isFast = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed);
                 if (boss.stateTimer <= 0) { 
-                    if (Math.random() < 0.25) { boss.state = "WALK"; boss.stateTimer = 60 + Math.random() * 60; } 
-                    else { boss.state = "CHASE"; boss.stateTimer = (30 + Math.random() * 40) * phaseMultiplier; } 
+                    if (Math.random() < 0.25) { 
+                        boss.state = "WALK"; 
+                        boss.stateTimer = (isFast ? 30 : 60) + Math.random() * (isFast ? 30 : 60); 
+                    } else { 
+                        boss.state = "CHASE"; 
+                        boss.stateTimer = ((isFast ? 20 : 30) + Math.random() * (isFast ? 25 : 40)) * phaseMultiplier; 
+                    } 
                 }
                 break;
             case "WALK": 
-                if (boss.stateTimer % 30 === 0) boss.vx = (Math.random() < 0.5 ? -1 : 1) * (boss.speed * 0.8); 
-                if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 15; boss.vx = 0; }
+                let isFastWalk = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed);
+                if (boss.stateTimer % 30 === 0) boss.vx = (Math.random() < 0.5 ? -1 : 1) * (boss.speed * (isFastWalk ? 1.0 : 0.8)); 
+                if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = isFastWalk ? 10 : 15; boss.vx = 0; }
                 break;
             case "CHASE":
                 let currentBossSpeed = boss.speed;
+                if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) currentBossSpeed *= 1.25;
+                if (boss.lightInfected > 0) currentBossSpeed /= 1.5;
                 if (secretMode && nearestP.purpleHp > 2) currentBossSpeed *= 1.25;
 
                 let distToP = Math.abs(boss.x - nearestP.x);
@@ -1049,6 +1284,7 @@ function updateBoss() {
                 } else if (playerRunningAway && boss.phase >= 2 && Math.random() < 0.05) { 
                     boss.state = "TELEPORT_OUT"; boss.stateTimer = 10; playSound('wind'); 
                 } else if (boss.stateTimer <= 0) {
+                    boss.attackCount = (boss.attackCount || 0) + 1;
                     let rand = Math.random(); 
                     let teleChance = numPlayers === 2 ? 0.35 : 0.25; 
                     
@@ -1161,7 +1397,7 @@ function updateBoss() {
                     if (Math.abs(pdx) < 50) { 
                         let wasH = scarf.target.isHealing; 
                         let sDmg = secretMode ? 2 : 0.5;
-                        if (boss.lightInfected > 0) sDmg = Math.max(0.5, sDmg - 1);
+                        if (boss.lightInfected > 0) sDmg = Math.max(0.5, sDmg - (boss.lightInfectedDmgRed || 0.5));
                         takeDamage(scarf.target, sDmg); 
                         if (wasH) triggerVibration('heal_interrupt'); else triggerVibration('damage'); 
                         triggerShake(3, 10); 
@@ -1206,9 +1442,15 @@ function updateBoss() {
                         airBlades.push({ x: boss.x + 15, y: boss.y - 10, vx: 0, vy: 0, state: "HOVER", timer: 30, deflected: 0 }); 
                         airBlades.push({ x: boss.x + 45, y: boss.y + 15, vx: 0, vy: 0, state: "HOVER", timer: 30, deflected: 0 }); 
                     } 
-                    boss.state = Math.random() < 0.5 ? "VULN_STANCE" : "PARRY_STANCE"; 
-                    boss.color = boss.state === "VULN_STANCE" ? "#ff8800" : "#aaaaaa"; 
-                    if (boss.state === "VULN_STANCE") boss.stateTimer = 60 * phaseMultiplier; else boss.stateTimer = 60;
+                    if (secretMode && boss.phase === 3) {
+                        boss.state = "SA1_WINDUP";
+                        boss.stateTimer = 1;
+                        boss.color = "#ff8800";
+                    } else {
+                        boss.state = Math.random() < 0.5 ? "VULN_STANCE" : "PARRY_STANCE"; 
+                        boss.color = boss.state === "VULN_STANCE" ? "#ff8800" : "#aaaaaa"; 
+                        if (boss.state === "VULN_STANCE") boss.stateTimer = 60 * phaseMultiplier; else boss.stateTimer = 60;
+                    }
                 } 
                 break;
             case "LUNGE_WINDUP": 
@@ -1247,6 +1489,12 @@ function updateBoss() {
                 } 
                 break;
             case "VULN_STANCE": 
+                if (secretMode && boss.phase === 3) {
+                    boss.state = "SA1_WINDUP"; 
+                    boss.stateTimer = 1; 
+                    boss.color = "#ff8800";
+                    break;
+                }
                 boss.vx = 0; 
                 if (boss.stateTimer <= 0) { boss.state = "VULN_LATE"; boss.stateTimer = 15 * phaseMultiplier; } 
                 break;
@@ -1261,7 +1509,7 @@ function updateBoss() {
                         let wasH = p.isHealing; 
                         let dmg = 2.5; 
                         if (boss.damageBonus > 0 || secretMode) { dmg = 3; applyBleed(p); }
-                        if (boss.lightInfected > 0) { dmg = Math.max(0.5, dmg - 1); }
+                        if (boss.lightInfected > 0) { dmg = Math.max(0.5, dmg - (boss.lightInfectedDmgRed || 0.5)); }
                         takeDamage(p, dmg); 
                         if (wasH) triggerVibration('heal_interrupt'); else triggerVibration('damage'); 
                         triggerShake(3, 10); freezeFrames = 6; 
@@ -1270,6 +1518,12 @@ function updateBoss() {
                 if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 30; } 
                 break;
             case "PARRY_STANCE": 
+                if (secretMode && boss.phase === 3) {
+                    boss.state = "SA1_WINDUP"; 
+                    boss.stateTimer = 1; 
+                    boss.color = "#ff8800";
+                    break;
+                }
                 boss.vx = 0; 
                 if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 15; } 
                 break;
@@ -1339,7 +1593,8 @@ function updateBoss() {
             }
         }
     }
-    boss.x += boss.vx; boss.y += boss.vy;
+    let effectiveVx = (boss.lightInfected > 0 && ["LUNGE", "PARRY_DASH", "HEAL_PUNISH_DASH", "FEINT_DASH_FORWARD", "FEINT_DASH_BACK"].includes(boss.state)) ? (boss.vx / 1.5) : boss.vx;
+    boss.x += effectiveVx; boss.y += boss.vy;
     let bossFloorLimit = FLOOR;
     if (boss.y + boss.height > bossFloorLimit && !boss.state.startsWith("L_INTRO") && boss.state !== "L_PHASE3_RISE" && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB")) { 
         boss.y = bossFloorLimit - boss.height; 
@@ -1371,7 +1626,7 @@ function updateBoss() {
                 } 
             }
             if (boss.lightInfected > 0) {
-                dmg = Math.max(0.5, dmg - 1);
+                dmg = Math.max(0.5, dmg - (boss.lightInfectedDmgRed || 0.5));
             }
             
             let wasH = p.isHealing; 
@@ -1662,8 +1917,9 @@ function drawBoss() {
         
         // --- БОСС: ЧЕРНЫЙ ШАРФ И ЖЕЛТЫЙ ПЛАЩ С ОРАНЖЕВЫМИ УЗОРАМИ ---
         ctx.save();
-        let bCloakColor = secretMode ? "#4a3c00" : "#e6c800";
-        let bPatternColor = secretMode ? "#8a4500" : "#ff7700";
+        let isStunColor = (boss.state === "BOSS_STUNNED" || boss.state === "L_PHASE4_STUNNED");
+        let bCloakColor = (secretMode && !isStunColor) ? "#4a3c00" : "#e6c800";
+        let bPatternColor = (secretMode && !isStunColor) ? "#8a4500" : "#ff7700";
         
         // --- БОСС: ДИНАМИЧЕСКИЙ РАЗВЕВАЮЩИЙСЯ ЖЕЛТЫЙ ПЛАЩ ---
         let bTrailDir = boss.facingRight ? -1 : 1;
@@ -1739,6 +1995,51 @@ function drawBoss() {
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+
+        // В оглушении над боссом летает белая штука (нимб и вращающиеся искры-звездочки)
+        if (boss.state === "BOSS_STUNNED" || boss.state === "L_PHASE4_STUNNED") {
+            let hTime = Date.now();
+            let hCenterX = boss.x + boss.width / 2;
+            let hCenterY = boss.y - 16;
+            
+            ctx.save();
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 14;
+            ctx.beginPath();
+            ctx.ellipse(hCenterX, hCenterY, 20, 6, Math.PI / 12, 0, Math.PI * 2);
+            ctx.stroke();
+
+            for (let i = 0; i < 3; i++) {
+                let ang = (hTime / 220) + (i * (Math.PI * 2 / 3));
+                let sx = hCenterX + Math.cos(ang) * 20;
+                let sy = hCenterY + Math.sin(ang) * 6;
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(sx, sy, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // Фаза 4: темная парящая аура босса
+        if (boss.state === "L_PHASE4_ORBS") {
+            ctx.save();
+            let bCenterX = boss.x + boss.width / 2;
+            let bCenterY = boss.y + boss.height / 2;
+            let auraPulse = 0.35 + 0.15 * Math.sin(Date.now() / 150);
+            let auraGrad = ctx.createRadialGradient(bCenterX, bCenterY, 10, bCenterX, bCenterY, 80);
+            auraGrad.addColorStop(0, "rgba(80, 0, 140, 0.7)");
+            auraGrad.addColorStop(0.6, `rgba(40, 0, 80, ${auraPulse})`);
+            auraGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+            ctx.fillStyle = auraGrad;
+            ctx.beginPath();
+            ctx.arc(bCenterX, bCenterY, 80, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
         ctx.restore();
 
         ctx.globalAlpha = 1.0;

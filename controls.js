@@ -193,6 +193,8 @@ window.addEventListener("keydown", e => {
         if (e.key === "3") selectHero1('EARTH');
         if (e.key === "4") selectHero1('STAMINA');
         if (e.key === "5" && window.fireHeroUnlocked) selectHero1('FIRE');
+        if (e.key === "6") selectHero1('FIRE_HALBERD');
+        if (e.key === "7") selectHero1('WATER_ROPE');
     }
 
     // Player 2 keyboard hero selection in menu
@@ -203,6 +205,8 @@ window.addEventListener("keydown", e => {
         if (e.key === "3") { p2HeroSelection = 'EARTH'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Земля"; p2Status.style.color = "lime"; } checkDuoStart(); }
         if (e.key === "4") { p2HeroSelection = 'STAMINA'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: 4-й Герой"; p2Status.style.color = "lime"; } checkDuoStart(); }
         if (e.key === "5" && window.fireHeroUnlocked) { p2HeroSelection = 'FIRE'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Огонь"; p2Status.style.color = "#ff5500"; } checkDuoStart(); }
+        if (e.key === "6") { p2HeroSelection = 'FIRE_HALBERD'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Алебарда"; p2Status.style.color = "#ff4422"; } checkDuoStart(); }
+        if (e.key === "7") { p2HeroSelection = 'WATER_ROPE'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Малыш Воды"; p2Status.style.color = "#00e5ff"; } checkDuoStart(); }
     }
 
     // Restart key [R] (from Game Over or Boss Defeat straight to layout selection with saved accounts!)
@@ -420,14 +424,14 @@ function updateHeroSelectUI() {
             p1Ui.appendChild(div);
         }
         if (p2Text) {
-            p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff5500;'>5</b>-Огонь";
+            p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff5500;'>5</b>-Огонь | <b style='color:#ff4422;'>6</b>-Алебарда | <b style='color:#00e5ff;'>7</b>-Малыш";
         }
     } else {
         if (fireBtn) {
             fireBtn.remove();
         }
         if (p2Text) {
-            p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой";
+            p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff4422;'>6</b>-Алебарда | <b style='color:#00e5ff;'>7</b>-Малыш";
         }
     }
 }
@@ -591,6 +595,17 @@ window.menuGoBack = menuGoBack;
 
 function cancelSecretMode() {
     secretMode = false;
+    window.secretMode = false;
+    for (let pKey of ['p1', 'p2']) {
+        if (configAbilities && configAbilities[pKey]) {
+            for (let s in configAbilities[pKey]) {
+                if (configAbilities[pKey][s] === 'loom_thread') configAbilities[pKey][s] = 'none';
+            }
+        }
+        if (configBadges && configBadges[pKey]) {
+            configBadges[pKey] = configBadges[pKey].map(b => b === 'light_amulet' ? 'none' : b);
+        }
+    }
     document.body.style.backgroundColor = "#0a0a0a";
     let ml = document.getElementById("m-light");
     if (ml) ml.style.display = "none";
@@ -1621,6 +1636,8 @@ function prepBadgeMenu() {
     document.getElementById("badge-select").style.display = "block";
     if (typeof updateEasyBossButtonUI === 'function') updateEasyBossButtonUI();
     if (typeof updateBroadcastButtonUI === 'function') updateBroadcastButtonUI();
+    if (typeof updateChallengesUI === 'function') updateChallengesUI();
+    if (typeof updateBananaSkinUI === 'function') updateBananaSkinUI();
 
     let titleTeam = document.getElementById("team-slot-title");
     let slotTeam = document.getElementById("slot-team");
@@ -1635,7 +1652,10 @@ function prepBadgeMenu() {
     for (let i = 0; i < sCount1; i++) {
         let savedKey = (configBadges.p1 && configBadges.p1[i]) ? configBadges.p1[i] : 'none';
         let bName = (savedKey === 'none') ? '[Пусто]' : badgesDict[savedKey].name.split(' (')[0];
-        p1html += `<div class="badge-slot" id="slot-p1_${i}" onclick="openBadgeList('p1_${i}')">${bName}</div>`;
+        let isSpecialBlue = (p1HeroSelection === 'WATER_ROPE' && i === 0);
+        let slotStyle = isSpecialBlue ? 'border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.4);' : '';
+        let slotTitle = isSpecialBlue ? ` title="Особый синий слот (работает только на тебе)"` : '';
+        p1html += `<div class="badge-slot" id="slot-p1_${i}" onclick="openBadgeList('p1_${i}')" style="${slotStyle}"${slotTitle}>${isSpecialBlue && savedKey === 'none' ? '[Синий слот]' : bName}</div>`;
     }
     let p1sc = document.getElementById("p1-slots-container");
     if (p1sc) p1sc.innerHTML = p1html;
@@ -1661,7 +1681,10 @@ function prepBadgeMenu() {
         for (let i = 0; i < sCount2; i++) {
             let savedKey = (configBadges.p2 && configBadges.p2[i]) ? configBadges.p2[i] : 'none';
             let bName = (savedKey === 'none') ? '[Пусто]' : badgesDict[savedKey].name.split(' (')[0];
-            p2html += `<div class="badge-slot" id="slot-p2_${i}" onclick="openBadgeList('p2_${i}')">${bName}</div>`;
+            let isSpecialBlue = (p2HeroSelection === 'WATER_ROPE' && i === 0);
+            let slotStyle = isSpecialBlue ? 'border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.4);' : '';
+            let slotTitle = isSpecialBlue ? ` title="Особый синий слот (работает только на тебе)"` : '';
+            p2html += `<div class="badge-slot" id="slot-p2_${i}" onclick="openBadgeList('p2_${i}')" style="${slotStyle}"${slotTitle}>${isSpecialBlue && savedKey === 'none' ? '[Синий слот]' : bName}</div>`;
         }
         let p2sc = document.getElementById("p2-slots-container");
         if (p2sc) p2sc.innerHTML = p2html;
@@ -1686,11 +1709,13 @@ function openBadgeList(slotId) {
     listDiv.style.display = "flex"; 
     listDiv.innerHTML = '';
     let isTopSlot = (slotId === 'team');
-
+    let isSpecialBlueSlot = (slotId === 'p1_0' && p1HeroSelection === 'WATER_ROPE') || (slotId === 'p2_0' && p2HeroSelection === 'WATER_ROPE');
+    let isL = (typeof secretMode !== 'undefined' && !!secretMode) || (typeof window !== 'undefined' && !!window.secretMode);
     for (let key in badgesDict) {
         let b = badgesDict[key];
-        if (isTopSlot && b.teamAllowed !== true) continue; 
-        if (!isTopSlot && b.teamAllowed === true && key !== 'none') continue; 
+        if (b.lModeOnly && !isL) continue; // Амулет света доступен ТОЛЬКО в L-режиме
+        if (isTopSlot && b.teamAllowed !== true && b.teamAllowed !== 'both') continue; 
+        if (!isTopSlot && !isSpecialBlueSlot && b.teamAllowed === true) continue; 
         
         let colorStyle = (b.teamAllowed === true || isTopSlot) 
             ? 'color: cyan; border-color: cyan;' 
@@ -1716,7 +1741,8 @@ function openAbList(playerId, slotId, heroType) {
 window.openAbList = openAbList;
 
 function assignBadge(badgeKey) {
-    let rawName = (badgesDict[badgeKey].id === 'none') ? '[Пусто]' : badgesDict[badgeKey].name.split(' (')[0];
+    let isSpecialBlue = (currentEditingSlot === 'p1_0' && p1HeroSelection === 'WATER_ROPE') || (currentEditingSlot === 'p2_0' && p2HeroSelection === 'WATER_ROPE');
+    let rawName = (badgesDict[badgeKey].id === 'none') ? (isSpecialBlue ? '[Синий слот]' : '[Пусто]') : badgesDict[badgeKey].name.split(' (')[0];
     if (currentEditingSlot === 'team') { 
         configBadges.team = badgeKey; 
         let el = document.getElementById('slot-team');
@@ -1765,6 +1791,25 @@ function updateEasyBossButtonUI() {
     });
 }
 window.updateEasyBossButtonUI = updateEasyBossButtonUI;
+
+// --- CHALLENGES UI TOGGLER ---
+function updateChallengesUI() {
+    let challenges = window.activeChallenges || {};
+    for (let key in challenges) {
+        let btn = document.getElementById(`challenge-btn-${key}`);
+        let chk = document.getElementById(`challenge-check-${key}`);
+        if (btn && chk) {
+            if (challenges[key]) {
+                btn.classList.add('active');
+                chk.innerText = '☑';
+            } else {
+                btn.classList.remove('active');
+                chk.innerText = '☐';
+            }
+        }
+    }
+}
+window.updateChallengesUI = updateChallengesUI;
 
 // --- CREATOR INTERACTION MODAL ---
 function openCreatorReactionModal() {

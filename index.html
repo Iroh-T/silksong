@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Убежище</title>
-    <link rel="stylesheet" href="style.css?v=40">
+    <link rel="stylesheet" href="style.css?v=52">
 </head>
 <body>
     <audio id="lModeMusic" src="lost_lace.mp3" loop></audio>
@@ -185,46 +185,99 @@
                 <div class="menu-btn" onclick="selectHero1('AIR')" style="color: #ffdd00; border-color: #ffdd00;">2. Воздух</div>
                 <div class="menu-btn" onclick="selectHero1('EARTH')" style="color: #33cc33; border-color: #33cc33;">3. Земля</div>
                 <div class="menu-btn" onclick="selectHero1('STAMINA')" style="color: #b35959; border-color: #b35959;">4. 4-й Герой</div>
+                <div class="menu-btn" onclick="selectHero1('FIRE_HALBERD')" style="color: #ff4422; border-color: #ff4422;">6. Огненная Алебарда</div>
+                <div class="menu-btn" onclick="selectHero1('WATER_ROPE')" style="color: #00e5ff; border-color: #00e5ff;">7. Малыш Воды (Трос)</div>
                 <div id="p1-status" style="margin-top: 10px; color: cyan;"></div>
             </div>
             <div id="p2-select-ui" style="display: none; margin-top: 20px; border-top: 1px solid #444; padding-top: 15px;">
                 <div style="color: yellow;"><b>ИГРОК 2:</b></div>
-                <div id="p2-options-text" style="font-size: 14px; margin-top: 10px;"><b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой</div>
+                <div id="p2-options-text" style="font-size: 13px; margin-top: 10px;"><b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b>6</b>-Алебарда | <b>7</b>-Малыш</div>
                 <div id="p2-status" style="margin-top: 10px; color: gray;">Ожидание выбора Игрока 2...</div>
             </div>
         </div>
 
         <!-- 5. BADGE SELECT -->
         <div id="badge-select" style="display: none;">
-            <div style="font-size: 24px; margin-bottom: 10px;">ВЫБОР СНАРЯЖЕНИЯ</div>
-            <div id="team-slot-title" style="color: cyan; margin-bottom: 5px;">Командный знак (Голубые):</div>
-            <div class="badge-slot" id="slot-team" onclick="openBadgeList('team')" style="border-color: cyan; color: cyan;">[Пусто]</div>
+            <div style="font-size: 24px; margin-bottom: 12px; font-weight: bold; letter-spacing: 1px;">ВЫБОР СНАРЯЖЕНИЯ</div>
             
-            <div id="p1-badge-area" style="margin-top: 15px;">
-                <div style="color: #ccc;">Знаки (Игрок 1):</div>
-                <div id="p1-slots-container"></div>
-            </div>
-            <div id="p1-ability-area" style="margin-top: 10px;">
-                <div style="color: #ffff88;">Способности (Игрок 1):</div>
-                <div id="p1-abilities-container"></div>
-            </div>
+            <div class="badge-select-container">
+                <!-- Левая колонка: Снаряжение и Способности -->
+                <div class="badge-select-main">
+                    <div id="team-slot-title" style="color: cyan; margin-bottom: 5px;">Командный знак (Голубые):</div>
+                    <div class="badge-slot" id="slot-team" onclick="openBadgeList('team')" style="border-color: cyan; color: cyan;">[Пусто]</div>
+                    
+                    <div id="p1-badge-area" style="margin-top: 15px;">
+                        <div style="color: #ccc;">Знаки (Игрок 1):</div>
+                        <div id="p1-slots-container"></div>
+                    </div>
+                    <div id="p1-ability-area" style="margin-top: 10px;">
+                        <div style="color: #ffff88;">Способности (Игрок 1):</div>
+                        <div id="p1-abilities-container"></div>
+                    </div>
 
-            <div id="p2-badge-area" style="margin-top: 15px; display: none;">
-                <div style="color: #ccc;">Знаки (Игрок 2):</div>
-                <div id="p2-slots-container"></div>
-                <div style="color: #ffff88; margin-top: 5px;">Способности (Игрок 2):</div>
-                <div id="p2-abilities-container"></div>
+                    <div id="p2-badge-area" style="margin-top: 15px; display: none;">
+                        <div style="color: #ccc;">Знаки (Игрок 2):</div>
+                        <div id="p2-slots-container"></div>
+                        <div style="color: #ffff88; margin-top: 5px;">Способности (Игрок 2):</div>
+                        <div id="p2-abilities-container"></div>
+                    </div>
+                </div>
+
+                <!-- Правая колонка: Панель Усложнений и Опции битвы -->
+                <div class="badge-select-sidebar">
+                    <!-- Challenges Panel (Усложнения) -->
+                    <div id="challenges-panel" style="background: rgba(30, 20, 45, 0.75); border: 1.5px solid #a855f7; border-radius: 8px; padding: 10px 12px; text-align: left; box-shadow: 0 0 15px rgba(168, 85, 247, 0.2);">
+                        <div style="font-size: 13px; font-weight: bold; color: #d8b4fe; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <span>⚔️</span> УСЛОЖНЕНИЯ БИТВЫ:
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <button id="challenge-btn-hp3" class="challenge-option-btn" onclick="toggleChallenge('hp3')">
+                                <span class="challenge-checkbox" id="challenge-check-hp3">☐</span>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <span style="font-weight: bold; color: #f87171;">🩸 3 ХП</span>
+                                    <span class="challenge-desc">Старт с 3 HP (чешуя и щит работают)</span>
+                                </div>
+                            </button>
+                            <button id="challenge-btn-limitedHeal" class="challenge-option-btn" onclick="toggleChallenge('limitedHeal')">
+                                <span class="challenge-checkbox" id="challenge-check-limitedHeal">☐</span>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <span style="font-weight: bold; color: #38bdf8;">🩹 Ограниченный хил</span>
+                                    <span class="challenge-desc">Шкала 12: хил 8, F 4, Огонь 12, +1 за удар</span>
+                                </div>
+                            </button>
+                            <button id="challenge-btn-bossSpeed" class="challenge-option-btn" onclick="toggleChallenge('bossSpeed')">
+                                <span class="challenge-checkbox" id="challenge-check-bossSpeed">☐</span>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <span style="font-weight: bold; color: #fbbf24;">⚡ Скорость босса</span>
+                                    <span class="challenge-desc">Босс на 25% быстрее, без пауз</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="menu-btn easy-boss-btn" onclick="toggleEasyBossMode()" style="margin: 4px 0 0 0; background: rgba(30, 41, 59, 0.6); border-color: #64748b; color: #94a3b8; font-size: 12px; padding: 8px 10px; width: 100%; box-sizing: border-box;">🌱 Ослабление Босса: ВЫКЛ (Обычный)</div>
+                    
+                    <!-- Exclusive Banana Skin Toggle for Timur (РЫБа) & carrots_44444 -->
+                    <div id="banana-skin-sidebar-box" style="display: none; margin: 4px 0;">
+                        <button id="banana-skin-btn-p1" class="menu-btn" onclick="toggleBananaSkin(1)" style="margin: 0; background: rgba(50, 40, 10, 0.7); border-color: #ffd700; color: #ffe600; font-size: 12px; padding: 8px 10px; width: 100%; box-sizing: border-box; box-shadow: 0 0 10px rgba(255, 215, 0, 0.25);">
+                            🍌 Скин банана: ВЫКЛ
+                        </button>
+                        <button id="banana-skin-btn-p2" class="menu-btn" onclick="toggleBananaSkin(2)" style="display: none; margin-top: 4px; background: rgba(50, 40, 10, 0.7); border-color: #ffd700; color: #ffe600; font-size: 12px; padding: 8px 10px; width: 100%; box-sizing: border-box; box-shadow: 0 0 10px rgba(255, 215, 0, 0.25);">
+                            🍌 Скин банана (Игрок 2): ВЫКЛ
+                        </button>
+                    </div>
+
+                    <div style="text-align: center; margin: 4px 0;">
+                        <button id="broadcast-toggle-btn" class="subtle-stream-btn" style="width: 100%; box-sizing: border-box; justify-content: center;" onclick="toggleBroadcastMode()" title="Транслировать бой другим игрокам онлайн">
+                            <span class="subtle-stream-dot" id="broadcast-dot"></span>
+                            <span id="broadcast-btn-text">Трансляция боя: ВЫКЛ</span>
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <div id="badge-list" style="display: none;"></div>
-            <div class="menu-btn easy-boss-btn" onclick="toggleEasyBossMode()" style="margin-top: 20px; margin-bottom: 6px; background: rgba(30, 41, 59, 0.6); border-color: #64748b; color: #94a3b8; font-size: 13px;">🌱 Ослабление Босса: ВЫКЛ (Обычный)</div>
-            <div style="text-align: center; margin: 4px auto 6px auto;">
-                <button id="broadcast-toggle-btn" class="subtle-stream-btn" onclick="toggleBroadcastMode()" title="Транслировать бой другим игрокам онлайн">
-                    <span class="subtle-stream-dot" id="broadcast-dot"></span>
-                    <span id="broadcast-btn-text">Трансляция боя: ВЫКЛ</span>
-                </button>
-            </div>
-            <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 8px; background: #004400; border-color: lime; color: lime;">В БОЙ!</div>
+            <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 14px; background: #004400; border-color: lime; color: lime; padding: 12px 30px; font-size: 18px;">В БОЙ!</div>
         </div>
 
         <!-- 6. ACHIEVEMENTS MENU -->
@@ -387,11 +440,11 @@
     </div>
 
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=40"></script>
-    <script src="audio.js?v=40"></script>
-    <script src="controls.js?v=40"></script>
-    <script src="player.js?v=40"></script>
-    <script src="boss.js?v=40"></script>
-    <script src="game.js?v=40"></script>
+    <script src="constants.js?v=57"></script>
+    <script src="audio.js?v=57"></script>
+    <script src="controls.js?v=57"></script>
+    <script src="player.js?v=57"></script>
+    <script src="boss.js?v=57"></script>
+    <script src="game.js?v=57"></script>
 </body>
 </html>
