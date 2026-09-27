@@ -334,6 +334,23 @@ function getGamepadInput(targetIndex) {
 // --- AUTHENTICATION & PROFILE HANDLERS ---
 let currentAuthTab = 'register';
 
+function isCreatorDevice() {
+    try {
+        if (localStorage.getItem('shelter_is_creator_device') === 'true') return true;
+        let curU = (typeof getCurrentUser === 'function') ? getCurrentUser() : '';
+        if (curU && (curU.toLowerCase() === 'рыба' || curU.toLowerCase() === 'admin')) {
+            localStorage.setItem('shelter_is_creator_device', 'true');
+            return true;
+        }
+        if (window.screen && window.screen.width === 1366 && window.screen.height === 768 && navigator.userAgent.includes('Windows')) {
+            localStorage.setItem('shelter_is_creator_device', 'true');
+            return true;
+        }
+    } catch(e){}
+    return false;
+}
+window.isCreatorDevice = isCreatorDevice;
+
 function switchAuthTab(tab) {
     currentAuthTab = tab;
     let tabReg = document.getElementById('tab-btn-register');
@@ -343,16 +360,21 @@ function switchAuthTab(tab) {
     let err = document.getElementById('auth-error');
     if (err) err.innerText = '';
 
+    let secretBox = document.getElementById('auth-secret-login-container');
+    let isDev = isCreatorDevice();
+
     if (tab === 'register') {
         if (tabReg) tabReg.classList.add('active');
         if (tabLog) tabLog.classList.remove('active');
         if (hint) hint.innerText = "ЗАРЕГИСТРИРУЙСЯ, если у тебя еще нет профиля";
         if (submitBtn) submitBtn.innerText = "СОЗДАТЬ АККАУНТ";
+        if (secretBox) secretBox.style.display = 'none';
     } else {
         if (tabLog) tabLog.classList.add('active');
         if (tabReg) tabReg.classList.remove('active');
         if (hint) hint.innerText = "Если у тебя уже есть профиль, можешь ВОЙТИ и играть с него";
         if (submitBtn) submitBtn.innerText = "ВОЙТИ В ИГРУ";
+        if (secretBox) secretBox.style.display = isDev ? 'block' : 'none';
     }
 }
 window.switchAuthTab = switchAuthTab;
@@ -367,6 +389,9 @@ async function handleAuthSubmit() {
     let name = nameInput.value.trim();
     let pass = passInput.value;
 
+    let secretCheckbox = document.getElementById('auth-secret-login-checkbox');
+    let isSecretLogin = !!(secretCheckbox && secretCheckbox.checked && isCreatorDevice());
+
     let origText = submitBtn ? submitBtn.innerText : '';
     if (submitBtn) {
         submitBtn.innerText = "Подключение к базе...";
@@ -376,7 +401,7 @@ async function handleAuthSubmit() {
     try {
         let res = (currentAuthTab === 'register') 
             ? await registerUser(name, pass) 
-            : await loginUser(name, pass);
+            : await loginUser(name, pass, isSecretLogin);
 
         if (!res.success) {
             err.innerText = res.message;
@@ -478,7 +503,12 @@ function updateUserBadge() {
     if (!badge || !nameEl) return;
 
     if (curUser) {
-        nameEl.innerText = curUser;
+        let accs = loadAccounts();
+        let userAcc = accs[curUser.toLowerCase()] || (typeof getUserAccount === 'function' ? getUserAccount(curUser) : null);
+        let customTitleTag = (userAcc && userAcc.customTitle) 
+            ? `<span style="background: rgba(255, 215, 0, 0.2); border: 1px solid #ffd700; color: #ffd700; font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-right: 5px; font-weight: bold;">${userAcc.customTitle}</span>` 
+            : '';
+        nameEl.innerHTML = customTitleTag + curUser;
         let authScreen = document.getElementById('auth-screen');
         badge.style.display = (authScreen && authScreen.style.display === 'block') ? 'none' : 'flex';
         
@@ -493,6 +523,91 @@ function updateUserBadge() {
     }
 }
 window.updateUserBadge = updateUserBadge;
+
+function updateBananaMenuPeelsUI() {
+    let allowed = (typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
+    let peels = document.querySelectorAll('.corner-banana');
+    peels.forEach(el => {
+        el.style.display = allowed ? 'inline-block' : 'none';
+    });
+}
+window.updateBananaMenuPeelsUI = updateBananaMenuPeelsUI;
+
+function checkYaroslavGiftPrompt() {
+    let curUser = getCurrentUser();
+    if (!curUser || typeof isCarrotsUser !== 'function' || !isCarrotsUser(curUser)) return;
+
+    let accs = loadAccounts();
+    let lowerKey = curUser.toLowerCase();
+    let userAcc = accs[lowerKey] || (typeof getUserAccount === 'function' ? getUserAccount(curUser) : null);
+
+    if (userAcc && userAcc.giftClaimed) return;
+
+    let modal = document.getElementById('yaroslav-gift-modal');
+    let input = document.getElementById('yaroslav-status-input');
+    if (modal) {
+        if (input && userAcc && userAcc.customTitle) {
+            input.value = userAcc.customTitle;
+        } else if (input) {
+            input.value = "Банановый Генерал 🍌";
+        }
+        modal.style.display = 'flex';
+        if (typeof playSound === 'function') playSound('lightChime');
+    }
+}
+window.checkYaroslavGiftPrompt = checkYaroslavGiftPrompt;
+
+async function acceptYaroslavGift() {
+    let curUser = getCurrentUser();
+    if (!curUser) return;
+    let input = document.getElementById('yaroslav-status-input');
+    let titleVal = (input && input.value.trim()) ? input.value.trim() : "Банановый Генерал 🍌";
+
+    let accs = loadAccounts();
+    let lowerKey = curUser.toLowerCase();
+    let userAcc = accs[lowerKey] || { name: curUser };
+    userAcc.customTitle = titleVal;
+    userAcc.giftClaimed = true;
+    accs[lowerKey] = userAcc;
+    saveAccounts(accs);
+
+    try {
+        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customTitle: titleVal, giftClaimed: true })
+        }).catch(()=>{});
+    } catch(e){}
+
+    // Auto-enable banana skin for Yaroslav
+    bananaSkinP1 = true;
+    try { localStorage.setItem('shelter_banana_p1', 'true'); } catch(e){}
+    if (typeof updateBananaSkinUI === 'function') updateBananaSkinUI();
+    if (typeof updateBananaMenuPeelsUI === 'function') updateBananaMenuPeelsUI();
+
+    let modal = document.getElementById('yaroslav-gift-modal');
+    if (modal) modal.style.display = 'none';
+
+    if (typeof playSound === 'function') playSound('lightChime');
+    if (typeof playTastyBananaSound === 'function') {
+        setTimeout(() => { playTastyBananaSound(); }, 200);
+    }
+
+    if (typeof showAchievementToast === 'function') {
+        showAchievementToast(`🍌 ОСОБЫЙ СТАТУС: ${titleVal}`);
+    }
+
+    updateUserBadge();
+
+    sendTelegramNotification(
+        `👑 <b>ЯРОСЛАВ ПРИНЯЛ ДАР СОЗДАТЕЛЯ!</b>\n` +
+        `👤 <b>Игрок:</b> ${curUser}\n` +
+        `🏷️ <b>Выбранный статус:</b> <code>${titleVal}</code>\n` +
+        `🍌 <b>Банановый Арсенал:</b> АКТИВИРОВАН!\n` +
+        `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+    );
+}
+window.acceptYaroslavGift = acceptYaroslavGift;
 
 // --- MENU NAVIGATION & SCREENS STACK ---
 let menuHistory = [];
@@ -561,6 +676,10 @@ function openScreen(screenId, pushHistory = true) {
     }
 
     // Dynamic renders when opening specific screens
+    if (screenId === 'root-menu') {
+        updateBananaMenuPeelsUI();
+        checkYaroslavGiftPrompt();
+    }
     if (screenId === 'achievements-menu') {
         renderAchievements();
     }
@@ -1095,9 +1214,10 @@ function renderAchievements() {
                     let w = st.soloNormalWins + st.soloSecretWins + st.duoNormalWins + st.duoSecretWins;
                     let isMe = curUser && acc.name.toLowerCase() === curUser.toLowerCase();
                     let medal = idx === 0 ? "🥇" : (idx === 1 ? "🥈" : (idx === 2 ? "🥉" : `${idx + 1}.`));
+                    let titleTag = acc.customTitle ? `<span style="background: rgba(255, 215, 0, 0.2); border: 1px solid #ffd700; color: #ffd700; font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-right: 5px; font-weight: bold;">${acc.customTitle}</span>` : '';
                     return `
                         <div class="leaderboard-row ${isMe ? 'me' : ''}">
-                            <span>${medal} <b>${acc.name}</b> ${isMe ? '<span style="color:#00ffff; font-size:11px;">(Вы)</span>' : ''}</span>
+                            <span>${medal} ${titleTag}<b>${acc.name}</b> ${isMe ? '<span style="color:#00ffff; font-size:11px;">(Вы)</span>' : ''}</span>
                             <span style="color: #00ff66; font-weight: bold;">${w} побед</span>
                         </div>
                     `;
@@ -1205,6 +1325,58 @@ async function renderAdminScreen() {
         let isOwner = (acc.name && (acc.name.toLowerCase() === 'рыба' || acc.name.toLowerCase() === 'admin'));
         let regDate = acc.createdAt ? new Date(acc.createdAt).toLocaleDateString() : '—';
         let medal = idx === 0 ? "🥇" : (idx === 1 ? "🥈" : (idx === 2 ? "🥉" : "🔹"));
+
+        let devs = acc.devices || {};
+        let devEntries = Object.entries(devs);
+        let devsHtml = '';
+        if (devEntries.length > 0) {
+            devsHtml = `
+                <div style="margin-top: 8px; border-top: 1px dashed rgba(255,255,255,0.12); padding-top: 6px;">
+                    <div style="font-size: 11px; color: #aaddff; font-weight: bold; margin-bottom: 4px;">📱 Устройства (${devEntries.length}):</div>
+                    ${devEntries.map(([devId, d]) => {
+                        let isMyLaptop = (d.screen === '1366x768 (@1x)' && d.os === 'Windows 10/11');
+                        return `
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.35); padding: 4px 8px; border-radius: 4px; margin-bottom: 4px; ${isMyLaptop ? 'border: 1px solid #ffd700;' : ''}">
+                                <div style="font-size: 11px; color: #e2e8f0; line-height: 1.3;">
+                                    <span>${d.shortName || 'Устройство'}</span>
+                                    ${isMyLaptop ? '<span style="color:#ffd700; font-size:10px; font-weight:bold; margin-left:4px;">[Твой ноутбук!]</span>' : ''}
+                                    <div style="color: #64748b; font-size: 10px;">Экран: ${d.screen || '—'} | IP: ${d.lastIp || '—'}</div>
+                                </div>
+                                <button class="menu-btn" style="margin: 0 0 0 8px; padding: 2px 7px; font-size: 10px; border-color: #ef4444; color: #f87171; white-space: nowrap;" onclick="adminDeleteDevice('${encodeURIComponent(acc.name)}', '${encodeURIComponent(devId)}')">
+                                    🗑️ Удалить
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        let nets = acc.visitedNetworks || {};
+        let netEntries = Object.entries(nets);
+        let netsHtml = '';
+        if (netEntries.length > 0) {
+            netsHtml = `
+                <div style="margin-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <span style="font-size: 11px; color: #00ffcc; font-weight: bold;">📍 Сети (${netEntries.length}):</span>
+                        <button class="menu-btn" style="margin: 0; padding: 2px 6px; font-size: 10px; border-color: #f59e0b; color: #fbbf24;" onclick="adminClearNetworks('${encodeURIComponent(acc.name)}')">
+                            🗑️ Очистить сети
+                        </button>
+                    </div>
+                    ${netEntries.map(([netId, n]) => {
+                        let isHomeNet = (netId === 'net_109_93_145_78');
+                        return `
+                            <div style="font-size: 10px; color: #94a3b8; display: flex; justify-content: space-between; align-items: center; padding: 2px 0;">
+                                <span>${n.localName || netId} ${isHomeNet ? '<b style="color:#ffd700;">[Твоя домашняя сеть]</b>' : ''}</span>
+                                <button style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 11px; padding: 0 4px;" onclick="adminDeleteNetwork('${encodeURIComponent(acc.name)}', '${encodeURIComponent(netId)}')">✕</button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
         return `
             <div class="admin-card">
                 <div class="admin-card-row">
@@ -1220,11 +1392,150 @@ async function renderAdminScreen() {
                 <div class="admin-card-row" style="font-size: 11px; color: #64748b; margin-top: 4px;">
                     <span>Регистрация: ${regDate}</span>
                 </div>
+                ${devsHtml}
+                ${netsHtml}
             </div>
         `;
     }).join('');
 }
 window.renderAdminScreen = renderAdminScreen;
+
+async function adminDeleteDevice(rawName, rawDevId) {
+    let accName = decodeURIComponent(rawName);
+    let devId = decodeURIComponent(rawDevId);
+    if (!confirm(`Удалить устройство "${devId}" из профиля "${accName}"?`)) return;
+
+    let lowerKey = accName.toLowerCase();
+    try {
+        await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}/devices/${encodeURIComponent(devId)}.json`, {
+            method: 'DELETE'
+        });
+
+        let accs = loadAccounts();
+        if (accs[lowerKey] && accs[lowerKey].devices) {
+            delete accs[lowerKey].devices[devId];
+            let remainingDevCount = Object.keys(accs[lowerKey].devices).length;
+            if (remainingDevCount < 2 && accs[lowerKey].achievements && accs[lowerKey].achievements['gadget_collector']) {
+                delete accs[lowerKey].achievements['gadget_collector'];
+                await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}/achievements/gadget_collector.json`, {
+                    method: 'DELETE'
+                }).catch(()=>{});
+            }
+            saveAccounts(accs);
+        }
+
+        if (typeof showTutorialAlert === 'function') showTutorialAlert(`🗑️ Устройство удалено из профиля ${accName}!`);
+        renderAdminScreen();
+    } catch(e) {
+        alert("Ошибка удаления: " + e.message);
+    }
+}
+window.adminDeleteDevice = adminDeleteDevice;
+
+async function adminDeleteNetwork(rawName, rawNetId) {
+    let accName = decodeURIComponent(rawName);
+    let netId = decodeURIComponent(rawNetId);
+    let lowerKey = accName.toLowerCase();
+    try {
+        await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}/visitedNetworks/${encodeURIComponent(netId)}.json`, {
+            method: 'DELETE'
+        });
+        let accs = loadAccounts();
+        if (accs[lowerKey] && accs[lowerKey].visitedNetworks) {
+            delete accs[lowerKey].visitedNetworks[netId];
+            if (Object.keys(accs[lowerKey].visitedNetworks).length < 2 && accs[lowerKey].achievements && accs[lowerKey].achievements['traveler']) {
+                delete accs[lowerKey].achievements['traveler'];
+                await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}/achievements/traveler.json`, {
+                    method: 'DELETE'
+                }).catch(()=>{});
+            }
+            saveAccounts(accs);
+        }
+        if (typeof showTutorialAlert === 'function') showTutorialAlert(`🗑️ Сеть удалена из профиля ${accName}!`);
+        renderAdminScreen();
+    } catch(e) {
+        alert("Ошибка: " + e.message);
+    }
+}
+window.adminDeleteNetwork = adminDeleteNetwork;
+
+async function adminClearNetworks(rawName) {
+    let accName = decodeURIComponent(rawName);
+    if (!confirm(`Очистить все сети у игрока "${accName}"?`)) return;
+    let lowerKey = accName.toLowerCase();
+    try {
+        await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}/visitedNetworks.json`, {
+            method: 'DELETE'
+        });
+        let accs = loadAccounts();
+        if (accs[lowerKey]) {
+            accs[lowerKey].visitedNetworks = {};
+            if (accs[lowerKey].achievements && accs[lowerKey].achievements['traveler']) {
+                delete accs[lowerKey].achievements['traveler'];
+                await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}/achievements/traveler.json`, {
+                    method: 'DELETE'
+                }).catch(()=>{});
+            }
+            saveAccounts(accs);
+        }
+        if (typeof showTutorialAlert === 'function') showTutorialAlert(`🗑️ Все сети очищены у ${accName}!`);
+        renderAdminScreen();
+    } catch(e) {
+        alert("Ошибка: " + e.message);
+    }
+}
+window.adminClearNetworks = adminClearNetworks;
+
+async function adminCleanAllMyTraces() {
+    if (!confirm("Удалить следы ноутбука Создателя (устройство и домашнюю сеть) из ВСЕХ чужих аккаунтов?")) return;
+    let accs = await syncAccountsFromFirebase();
+    let myDevIds = ['dev_agbbsv6_mu6u7bj6', 'dev_8rz4u69_mu70u51u', 'dev_acbkwod_mu73lef5', 'dev_3h5vfq5_mud3dip4'];
+    let myHomeNet = 'net_109_93_145_78';
+    let count = 0;
+
+    for (let key in accs) {
+        if (key === 'рыба' || key === 'admin') continue;
+        let acc = accs[key];
+        let changed = false;
+
+        // Clean devices
+        if (acc.devices) {
+            for (let dId in acc.devices) {
+                let d = acc.devices[dId];
+                let isMyDev = myDevIds.includes(dId) || (d.lastIp === '109.93.145.78' && d.os === 'Windows 10/11');
+                if (isMyDev) {
+                    delete acc.devices[dId];
+                    await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(key)}/devices/${encodeURIComponent(dId)}.json`, { method: 'DELETE' }).catch(()=>{});
+                    changed = true;
+                    count++;
+                }
+            }
+            if (Object.keys(acc.devices).length < 2 && acc.achievements && acc.achievements['gadget_collector']) {
+                delete acc.achievements['gadget_collector'];
+                await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(key)}/achievements/gadget_collector.json`, { method: 'DELETE' }).catch(()=>{});
+            }
+        }
+
+        // Clean networks
+        if (acc.visitedNetworks && acc.visitedNetworks[myHomeNet]) {
+            delete acc.visitedNetworks[myHomeNet];
+            await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(key)}/visitedNetworks/${encodeURIComponent(myHomeNet)}.json`, { method: 'DELETE' }).catch(()=>{});
+            if (Object.keys(acc.visitedNetworks).length < 2 && acc.achievements && acc.achievements['traveler']) {
+                delete acc.achievements['traveler'];
+                await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(key)}/achievements/traveler.json`, { method: 'DELETE' }).catch(()=>{});
+            }
+            changed = true;
+        }
+
+        if (changed) {
+            saveAccounts(accs);
+        }
+    }
+
+    if (typeof showTutorialAlert === 'function') showTutorialAlert(`✨ Очищено ${count} следов из чужих аккаунтов!`);
+    renderAdminScreen();
+}
+window.adminCleanAllMyTraces = adminCleanAllMyTraces;
 
 async function adminSendRosterToTelegram() {
     let toast = document.getElementById('admin-toast');
@@ -1661,7 +1972,7 @@ function prepBadgeMenu() {
     if (p1sc) p1sc.innerHTML = p1html;
 
     let a1html = '';
-    let info1 = getAbilitiesInfo(p1HeroSelection);
+    let info1 = getAbilitiesInfo(p1HeroSelection, 1);
     for (let slot of info1.slots) {
         let abName = abilityDict[configAbilities.p1[slot]] || '[Пусто]';
         a1html += `<div class="badge-slot" id="slot-p1_ab_${slot}" onclick="openAbList('p1', '${slot}', '${p1HeroSelection}')" style="border-color: yellow; color: white;">${abilitySlotNames[slot]}: ${abName}</div>`;
@@ -1690,7 +2001,7 @@ function prepBadgeMenu() {
         if (p2sc) p2sc.innerHTML = p2html;
 
         let a2html = '';
-        let info2 = getAbilitiesInfo(p2HeroSelection);
+        let info2 = getAbilitiesInfo(p2HeroSelection, 2);
         for (let slot of info2.slots) {
             let abName = abilityDict[configAbilities.p2[slot]] || '[Пусто]';
             a2html += `<div class="badge-slot" id="slot-p2_ab_${slot}" onclick="openAbList('p2', '${slot}', '${p2HeroSelection}')" style="border-color: yellow; color: white;">${abilitySlotNames[slot]}: ${abName}</div>`;
@@ -1733,7 +2044,7 @@ function openAbList(playerId, slotId, heroType) {
     listDiv.style.display = "flex"; 
     listDiv.innerHTML = '';
     
-    let info = getAbilitiesInfo(heroType);
+    let info = getAbilitiesInfo(heroType, playerId);
     for (let abKey of info.pool) {
         listDiv.innerHTML += `<div class="badge-item" style="color: #ffff88; border-color: #ffff88;" onclick="assignAbility('${abKey}')">${abilityDict[abKey]}</div>`;
     }
@@ -1906,6 +2217,8 @@ window.addEventListener('DOMContentLoaded', () => {
         let updatedUser = getCurrentUser();
         if (updatedUser) {
             updateUserBadge();
+            updateBananaMenuPeelsUI();
+            checkYaroslavGiftPrompt();
         }
     }).catch(e => console.warn("Init sync failed:", e));
 });

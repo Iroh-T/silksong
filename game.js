@@ -60,6 +60,7 @@ function buildAndStartGame() {
     let p1 = createPlayer(1, p1HeroSelection, p1Keys, p1InputType, startX1);
     p1.abilities = { ...configAbilities.p1 };
     p1.bananaSkin = !!(typeof bananaSkinP1 !== 'undefined' && bananaSkinP1 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
+    if (p1.bananaSkin || Object.values(p1.abilities).includes('banana_snack')) p1.bananaSnackUses = 3;
     
     applyBadgesToPlayer(p1, true); 
     players.push(p1);
@@ -74,6 +75,7 @@ function buildAndStartGame() {
         let p2 = createPlayer(2, p2HeroSelection, p2Keys, p2InputType, startX2);
         p2.abilities = { ...configAbilities.p2 };
         p2.bananaSkin = !!(typeof bananaSkinP2 !== 'undefined' && bananaSkinP2 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
+        if (p2.bananaSkin || Object.values(p2.abilities).includes('banana_snack')) p2.bananaSnackUses = 3;
         applyBadgesToPlayer(p2, false); 
         players.push(p2);
         
@@ -240,6 +242,7 @@ function resetGameParams() {
         p.chillTimer = 0; p.invigTimer = 0; p.runTimer = 0; p.voidDamageTimer = 0; p.spamResetTimer = 0;
         p.chillBrews = Object.values(p.abilities).includes('chill') ? 3 : 0;
         p.invigBrews = Object.values(p.abilities).includes('invig') ? 3 : 0;
+        p.bananaSnackUses = (p.bananaSkin || Object.values(p.abilities).includes('banana_snack')) ? 3 : 0;
         p.dashBurstTimer = 0; p.airDashed = false;
         if (p.type === 'STAMINA') { p.stamina = 5; p.isCharging = false; p.chargeTimer = 0; p.chargeProjectiles = []; } 
         if (p.type === 'FIRE') { p.isParrying = false; p.parryTimer = 0; p.orangeHp = 0; p.orangeHpTimer = 0; p.isFieryHealing = false; p.fireDashTimer = 0; }
@@ -1399,6 +1402,9 @@ function drawBackground() {
         }
     }
 
+    // Decorative bananas scattered on arena and platforms when banana skin is active
+    drawArenaDecorativeBananas();
+
     let topWallLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) 
         ? -2000 
         : (secretMode ? FLOOR/2 - 100 : FLOOR/2);
@@ -1413,6 +1419,90 @@ function drawBackground() {
     if (globalWindMode === "UP") { 
         ctx.fillStyle = "rgba(0, 255, 255, 0.05)"; 
         ctx.fillRect(0, bgTop, ARENA_W, (GAME_HEIGHT > FLOOR ? GAME_HEIGHT : 2000) - bgTop); 
+    }
+}
+
+function drawArenaDecorativeBananas() {
+    if (!players || !players.some(p => p.bananaSkin)) return;
+
+    function drawSingleDecorativeBanana(x, y, scale = 1, angle = 0) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.scale(scale, scale);
+
+        // Soft ground shadow
+        ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+        ctx.beginPath();
+        ctx.ellipse(0, 3, 14, 3.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Banana Yellow Body
+        ctx.fillStyle = "#ffd700";
+        ctx.beginPath();
+        ctx.moveTo(-11, -3);
+        ctx.quadraticCurveTo(0, 8, 12, 1);
+        ctx.quadraticCurveTo(0, 2, -11, -3);
+        ctx.closePath();
+        ctx.fill();
+
+        // 3D Highlight curve
+        ctx.strokeStyle = "rgba(255, 255, 230, 0.85)";
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.moveTo(-10, -2);
+        ctx.quadraticCurveTo(0, 5, 11, 1);
+        ctx.stroke();
+
+        // Dark bottom tip
+        ctx.fillStyle = "#2d1b0d";
+        ctx.beginPath();
+        ctx.arc(12, 1, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Brown stem
+        ctx.strokeStyle = "#4a2e00";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-11, -3);
+        ctx.lineTo(-14, -6);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    // Bananas scattered on the arena floor
+    const floorPositions = [
+        { x: 85, a: 0.2, s: 0.95 },
+        { x: 210, a: -0.25, s: 1.05 },
+        { x: 330, a: 0.35, s: 0.9 },
+        { x: 480, a: -0.15, s: 1.1 },
+        { x: 640, a: 0.25, s: 1.0 },
+        { x: 790, a: -0.3, s: 0.95 },
+        { x: 915, a: 0.18, s: 1.0 }
+    ];
+
+    if (secretMode) {
+        floorPositions.push(
+            { x: 1150, a: -0.2, s: 1.0 },
+            { x: 1420, a: 0.3, s: 0.95 },
+            { x: 1720, a: -0.15, s: 1.05 },
+            { x: 2050, a: 0.25, s: 0.9 },
+            { x: 2320, a: -0.3, s: 1.0 }
+        );
+    }
+
+    for (let pos of floorPositions) {
+        if (pos.x < ARENA_W) {
+            drawSingleDecorativeBanana(pos.x, FLOOR - 3, pos.s, pos.a);
+        }
+    }
+
+    // Bananas resting on platforms
+    for (let p of platforms) {
+        if (p.w >= 50) {
+            drawSingleDecorativeBanana(p.x + p.w * 0.45, p.y - 3, 0.9, -0.15);
+        }
     }
 }
 
@@ -1578,6 +1668,18 @@ function drawMasks() {
                 tagText = "[МАЛЫШ ВОДЫ] (Зажми X: Фокус | Трос: Движение)";
                 tagColor = "#00e5ff";
             }
+        }
+
+        if (p.bananaSkin || Object.values(p.abilities).includes('banana_snack')) {
+            let uCount = p.bananaSnackUses !== undefined ? p.bananaSnackUses : 3;
+            ctx.save();
+            ctx.font = "bold 12px Arial";
+            ctx.fillStyle = "#ffe600";
+            ctx.shadowColor = "rgba(255, 230, 0, 0.6)";
+            ctx.shadowBlur = 6;
+            ctx.fillText(`🍌 Бананы: ${uCount}/3`, tagOffset, yOffset + 4);
+            ctx.restore();
+            tagOffset += 110;
         }
 
         if (tagText) {

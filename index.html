@@ -69,6 +69,12 @@
             <div class="auth-form" onkeydown="if(event.key==='Enter') handleAuthSubmit()">
                 <input type="text" id="auth-username" class="auth-input" placeholder="Имя игрока (никнейм)" maxlength="20" autocomplete="off">
                 <input type="password" id="auth-password" class="auth-input" placeholder="Пароль (от 4 символов)" maxlength="32">
+                <div id="auth-secret-login-container" style="display: none; margin: 8px 0 4px 0; background: rgba(30, 20, 45, 0.85); border: 1px dashed #a855f7; border-radius: 6px; padding: 6px 10px; text-align: left;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #d8b4fe; font-size: 11px;">
+                        <input type="checkbox" id="auth-secret-login-checkbox" style="cursor: pointer; accent-color: #a855f7;">
+                        <span>🕵️ <b>Секретный вход</b> (инкогнито: без записи устройства, сетей и без уведомлений)</span>
+                    </label>
+                </div>
                 <div id="auth-error" class="auth-error"></div>
                 <button id="auth-submit-btn" class="auth-submit-btn" onclick="handleAuthSubmit()">СОЗДАТЬ АККАУНТ</button>
             </div>
@@ -96,12 +102,24 @@
                 </div>
             </div>
 
-            <div class="menu-btn" onclick="openScreen('mode-select')" style="border-color: #00ffcc; color: #00ffcc;">ИГРАТЬ</div>
+            <div class="menu-btn banana-peel-btn" onclick="openScreen('mode-select')" style="border-color: #00ffcc; color: #00ffcc;">
+                <span class="corner-banana corner-tl">🍌</span>
+                <span class="corner-banana corner-br">🍌</span>
+                ИГРАТЬ
+            </div>
             <div class="menu-btn" onclick="openScreen('achievements-menu')" style="border-color: #ffbb00; color: #ffbb00;">ДОСТИЖЕНИЯ</div>
-            <div class="menu-btn" onclick="openScreen('settings-menu')" style="border-color: #00bbff; color: #00bbff;">НАСТРОЙКИ</div>
+            <div class="menu-btn banana-peel-btn" onclick="openScreen('settings-menu')" style="border-color: #00bbff; color: #00bbff;">
+                <span class="corner-banana corner-tl">🍌</span>
+                <span class="corner-banana corner-br">🍌</span>
+                НАСТРОЙКИ
+            </div>
             <div class="menu-btn" onclick="openCreatorReactionModal()" style="border-color: #ffd700; color: #ffd700; text-shadow: 0 0 8px rgba(255,215,0,0.4);">💌 Привет Создателю (РЫБе)</div>
             <div id="admin-panel-btn" class="menu-btn" onclick="openScreen('admin-screen')" style="display: none; border-color: #ffd700; color: #ffd700; text-shadow: 0 0 8px rgba(255,215,0,0.5);">👑 ПАНЕЛЬ АДМИНА</div>
-            <div class="menu-btn" onclick="handleLogout()" style="border-color: #ff3344; color: #ff5566; margin-top: 25px;">ВЫЙТИ ИЗ АККАУНТА</div>
+            <div class="menu-btn banana-peel-btn" onclick="handleLogout()" style="border-color: #ff3344; color: #ff5566; margin-top: 25px;">
+                <span class="corner-banana corner-tl">🍌</span>
+                <span class="corner-banana corner-br">🍌</span>
+                ВЫЙТИ ИЗ АККАУНТА
+            </div>
         </div>
 
         <!-- 2. MODE SELECT (1P / 2P) -->
@@ -346,11 +364,12 @@
 
             <!-- VIEW 2: Players Base -->
             <div id="ig-admin-players-view" style="display: none;">
-                <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 12px;">
-                    <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #00ffff; color: #00ffff;" onclick="renderAdminScreen()">🔄 Обновить базу</button>
-                    <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #ffd700; color: #ffd700;" onclick="adminSendRosterToTelegram()">📤 В Telegram бота</button>
+                <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 12px; flex-wrap: wrap;">
+                    <button class="menu-btn" style="margin: 0; padding: 7px 12px; font-size: 11px; border-color: #00ffff; color: #00ffff;" onclick="renderAdminScreen()">🔄 Обновить базу</button>
+                    <button class="menu-btn" style="margin: 0; padding: 7px 12px; font-size: 11px; border-color: #ffd700; color: #ffd700;" onclick="adminSendRosterToTelegram()">📤 В Telegram</button>
+                    <button class="menu-btn" style="margin: 0; padding: 7px 12px; font-size: 11px; border-color: #f59e0b; color: #fbbf24;" onclick="adminCleanAllMyTraces()">🧹 Очистить мои следы</button>
                 </div>
-                <div id="admin-cards-list" style="max-height: 250px; overflow-y: auto; text-align: left; padding: 4px;"></div>
+                <div id="admin-cards-list" style="max-height: 270px; overflow-y: auto; text-align: left; padding: 4px;"></div>
             </div>
 
             <!-- VIEW 3: Player Feedback Chat -->
@@ -439,12 +458,34 @@
         </div>
     </div>
 
+    <!-- Yaroslav Exclusive Gift Modal -->
+    <div id="yaroslav-gift-modal" style="display: none; position: fixed; inset: 0; background: rgba(5, 10, 20, 0.92); backdrop-filter: blur(10px); z-index: 1080; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: linear-gradient(145deg, #0f172a, #1e1b4b); border: 3px solid #ffd700; box-shadow: 0 0 50px rgba(255,215,0,0.5), inset 0 0 20px rgba(255,215,0,0.2); border-radius: 16px; max-width: 520px; width: 100%; padding: 28px 24px; text-align: center; color: #e2e8f0; position: relative;">
+            <div style="font-size: 46px; margin-bottom: 8px; filter: drop-shadow(0 0 10px rgba(255,215,0,0.8));">👑🍌🥕</div>
+            <div style="font-size: 22px; font-weight: 900; color: #ffd700; margin-bottom: 12px; letter-spacing: 1.5px; text-shadow: 0 0 12px rgba(255,215,0,0.6);">
+                👑 ВНИМАНИЕ: ОСОБЫЙ СТАТУС!
+            </div>
+            <div style="font-size: 14px; color: #cbd5e1; line-height: 1.6; margin-bottom: 20px;">
+                «Приветствуем тебя, Ярослав! Создатель игры <b>РЫБа</b> лично наделил тебя особым статусом и подарил секретный доступ к <b>Банановому Арсеналу 🍌🥕</b>»
+            </div>
+            <div style="margin-bottom: 20px; text-align: left; background: rgba(0,0,0,0.3); padding: 12px 16px; border-radius: 10px; border: 1px solid rgba(255,215,0,0.3);">
+                <label style="display: block; font-size: 12px; color: #ffd700; font-weight: bold; margin-bottom: 6px;">
+                    ТВОЙ ТИТУЛ / СТАТУС (будет виден в таблице и везде рядом с твоим именем):
+                </label>
+                <input id="yaroslav-status-input" type="text" maxlength="28" value="Банановый Генерал 🍌" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 2px solid #ffd700; border-radius: 8px; padding: 10px 14px; font-size: 14px; color: #fff; font-weight: bold; outline: none; box-shadow: 0 0 10px rgba(255,215,0,0.3);">
+            </div>
+            <button class="menu-btn" style="border-color: #ffd700; color: #000; background: linear-gradient(135deg, #ffd700, #ffaa00); font-weight: 900; font-size: 15px; padding: 14px 20px; border-radius: 10px; box-shadow: 0 0 25px rgba(255,215,0,0.7); cursor: pointer; width: 100%; margin: 0;" onclick="acceptYaroslavGift()">
+                ✨ ПРИНЯТЬ ДАР СОЗДАТЕЛЯ
+            </button>
+        </div>
+    </div>
+
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=57"></script>
-    <script src="audio.js?v=57"></script>
-    <script src="controls.js?v=57"></script>
-    <script src="player.js?v=57"></script>
-    <script src="boss.js?v=57"></script>
-    <script src="game.js?v=57"></script>
+    <script src="constants.js?v=59"></script>
+    <script src="audio.js?v=59"></script>
+    <script src="controls.js?v=59"></script>
+    <script src="player.js?v=59"></script>
+    <script src="boss.js?v=59"></script>
+    <script src="game.js?v=59"></script>
 </body>
 </html>

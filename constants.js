@@ -591,6 +591,7 @@ window.getDeviceInfo = getDeviceInfo;
 
 // Record device under account
 function recordDeviceForAccount(username) {
+    if (window.incognitoSession) return;
     if (!username || username.toLowerCase() === 'гость') return;
     let dev = getDeviceInfo();
     let accs = loadAccounts();
@@ -633,6 +634,7 @@ window.recordDeviceForAccount = recordDeviceForAccount;
 let presenceHeartbeatInterval = null;
 
 function sendPresencePing() {
+    if (window.incognitoSession) return;
     let dev = getDeviceInfo();
     let curUser = getCurrentUser() || 'Гость';
     let p2 = (typeof getP2User === 'function') ? getP2User() : null;
@@ -831,7 +833,7 @@ function getHomoglyphVariants(str) {
 }
 window.getHomoglyphVariants = getHomoglyphVariants;
 
-async function loginUser(name, password) {
+async function loginUser(name, password, isSecret = false) {
     let cleanName = (name || '').trim();
     if (!cleanName) {
         return { success: false, message: "Введите имя игрока!" };
@@ -839,11 +841,11 @@ async function loginUser(name, password) {
     let lowerKey = cleanName.toLowerCase();
 
     // 👑 Исключение для Создателя:
-    // Имя создателя пишется строго «РЫБа»!
+    // Имя создателя пишется строго «РЫБа» (секрет не раскрывается посторонним)
     if (lowerKey === 'рыба' && cleanName !== 'РЫБа') {
         return { 
             success: false, 
-            message: "Имя Создателя пишется строго «РЫБа» (с заглавными Р, Ы, Б и маленькой а)!" 
+            message: "Неверное имя или пароль!" 
         };
     }
 
@@ -900,9 +902,22 @@ async function loginUser(name, password) {
         return { success: false, message: "Неверный пароль!" };
     }
     setCurrentUser(acc.name);
-    recordDeviceForAccount(acc.name);
-    sendPresencePing();
-    return { success: true, user: acc };
+
+    if (acc.name.toLowerCase() === 'рыба' || acc.name.toLowerCase() === 'admin') {
+        try { localStorage.setItem('shelter_is_creator_device', 'true'); } catch(e){}
+    }
+
+    if (!isSecret) {
+        window.incognitoSession = false;
+        recordDeviceForAccount(acc.name);
+        sendPresencePing();
+    } else {
+        window.incognitoSession = true;
+        if (typeof showTutorialAlert === 'function') {
+            showTutorialAlert("🕵️ Секретный вход: устройство и уведомления отключены!");
+        }
+    }
+    return { success: true, user: acc, isSecret: isSecret };
 }
 
 function getUserAccount(name) {
@@ -998,29 +1013,31 @@ async function detectCurrentNetwork() {
     } catch(e) {}
 
     // Register network in Firebase /networks list for admin panel
-    try {
-        let curU = getCurrentUser() || 'Гость';
-        let netPayload = {
-            netId: currentNetworkId,
-            ip: currentNetworkIp || 'device',
-            lastSeen: Date.now(),
-            lastUser: curU
-        };
-        fetch(`${FIREBASE_URL}/networks/${encodeURIComponent(currentNetworkId)}.json`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(netPayload)
-        }).catch(()=>{});
+    if (!window.incognitoSession) {
+        try {
+            let curU = getCurrentUser() || 'Гость';
+            let netPayload = {
+                netId: currentNetworkId,
+                ip: currentNetworkIp || 'device',
+                lastSeen: Date.now(),
+                lastUser: curU
+            };
+            fetch(`${FIREBASE_URL}/networks/${encodeURIComponent(currentNetworkId)}.json`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(netPayload)
+            }).catch(()=>{});
 
-        // Trigger presence ping now that external network IP is known
-        if (typeof sendPresencePing === 'function') {
-            sendPresencePing();
-        }
-    } catch(e) {}
+            // Trigger presence ping now that external network IP is known
+            if (typeof sendPresencePing === 'function') {
+                sendPresencePing();
+            }
+        } catch(e) {}
+    }
 
     // Record visit for current player
     let curUser = getCurrentUser();
-    if (curUser) {
+    if (curUser && !window.incognitoSession) {
         let accs = loadAccounts();
         let userAcc = accs[curUser.toLowerCase()];
         if (userAcc) {
@@ -1476,11 +1493,11 @@ async function loginUserP2(name, password) {
     let lowerKey = cleanName.toLowerCase();
 
     // 👑 Исключение для Создателя:
-    // Имя создателя пишется строго «РЫБа»!
+    // Имя создателя пишется строго «РЫБа» (секрет не раскрывается посторонним)
     if (lowerKey === 'рыба' && cleanName !== 'РЫБа') {
         return { 
             success: false, 
-            message: "Имя Создателя пишется строго «РЫБа» (с заглавными Р, Ы, Б и маленькой а)!" 
+            message: "Неверное имя или пароль!" 
         };
     }
 
@@ -1910,6 +1927,7 @@ const badgesDict = {
 };
 
 const abilityDict = {
+    'banana_snack': 'Вкусный банан 🍌',
     'shuriken': 'Сюрикены',
     'parry': 'Парирование',
     'ignite': 'Огненный клинок',
@@ -1930,7 +1948,7 @@ const abilitySlotNames = {
     'bot': 'Удар + Спец'
 };
 
-function getAbilitiesInfo(type) {
+function getAbilitiesInfo(type, playerNum) {
     let isL = (typeof secretMode !== 'undefined' && !!secretMode) || (typeof window !== 'undefined' && !!window.secretMode);
     let pool = [];
     if (type === 'WATER') pool = ['shuriken', 'chill', 'invig', 'none'];
@@ -1940,6 +1958,11 @@ function getAbilitiesInfo(type) {
     else if (type === 'FIRE') pool = ['parry', 'ignite', 'shuriken', 'chill', 'invig', 'none'];
     else if (type === 'FIRE_HALBERD') pool = ['whirlwind', 'ignite', 'shuriken', 'chill', 'invig', 'none'];
     else if (type === 'WATER_ROPE') pool = ['shuriken', 'chill', 'invig', 'none'];
+
+    let isBanana = (playerNum === 2 || playerNum === 'p2') ? bananaSkinP2 : bananaSkinP1;
+    if (isBanana || (typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed())) {
+        pool.unshift('banana_snack');
+    }
 
     if (isL) {
         pool.unshift('loom_thread');
@@ -2008,11 +2031,29 @@ function toggleBananaSkin(playerNum) {
     if (playerNum === 2) {
         bananaSkinP2 = !bananaSkinP2;
         try { localStorage.setItem('shelter_banana_p2', bananaSkinP2 ? 'true' : 'false'); } catch(e){}
+        if (bananaSkinP2 && configAbilities && configAbilities.p2) {
+            let sKeys = Object.keys(configAbilities.p2);
+            if (!Object.values(configAbilities.p2).includes('banana_snack') && sKeys.length > 0) {
+                let targetSlot = configAbilities.p2.mid !== undefined ? 'mid' : sKeys[0];
+                configAbilities.p2[targetSlot] = 'banana_snack';
+            }
+        }
     } else {
         bananaSkinP1 = !bananaSkinP1;
         try { localStorage.setItem('shelter_banana_p1', bananaSkinP1 ? 'true' : 'false'); } catch(e){}
+        if (bananaSkinP1 && configAbilities && configAbilities.p1) {
+            let sKeys = Object.keys(configAbilities.p1);
+            if (!Object.values(configAbilities.p1).includes('banana_snack') && sKeys.length > 0) {
+                let targetSlot = configAbilities.p1.mid !== undefined ? 'mid' : sKeys[0];
+                configAbilities.p1[targetSlot] = 'banana_snack';
+            }
+        }
     }
     if (typeof playSound === 'function') playSound('parry');
+    if (typeof prepBadgeMenu === 'function') {
+        let badgeScreen = document.getElementById('badge-select');
+        if (badgeScreen && badgeScreen.style.display === 'block') prepBadgeMenu();
+    }
     updateBananaSkinUI();
 }
 window.toggleBananaSkin = toggleBananaSkin;

@@ -1,10 +1,21 @@
 // --- AUDIO & HAPTICS MODULE ---
 let audioCtx = null;
+let tastyBananaAudio = null;
+
+function initTastyBananaAudio() {
+    if (!tastyBananaAudio) {
+        try {
+            tastyBananaAudio = new Audio('вкусный_банан.mp3');
+            tastyBananaAudio.preload = 'auto';
+        } catch(e) {}
+    }
+}
 
 function initAudio() { 
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
     }
+    initTastyBananaAudio();
 }
 
 function triggerVibration(type) {
@@ -216,7 +227,29 @@ function playSound(type) {
         osc.start(now);
         osc.stop(now + 0.2);
     }
+    else if (type === 'tasty_banana') {
+        playTastyBananaSound();
+    }
 }
+
+function playTastyBananaSound() {
+    try {
+        if (!tastyBananaAudio) {
+            tastyBananaAudio = new Audio('вкусный_банан.mp3');
+        }
+        tastyBananaAudio.currentTime = 0;
+        tastyBananaAudio.volume = 0.85;
+        let p = tastyBananaAudio.play();
+        if (p) {
+            p.catch(() => {
+                if (typeof playSound === 'function') playSound('heal');
+            });
+        }
+    } catch(e) {
+        if (typeof playSound === 'function') playSound('heal');
+    }
+}
+window.playTastyBananaSound = playTastyBananaSound;
 
 // --- ATMOSPHERIC MENU SOUNDTRACK (SILKSONG AMBIENCE) ---
 let menuMusicTimer = null;

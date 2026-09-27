@@ -346,7 +346,31 @@ function executeAbility(p, ab) {
         }
     };
 
-    if (ab === 'shuriken') {
+    if (ab === 'banana_snack') {
+        if (p.bananaSnackUses === undefined) p.bananaSnackUses = 3;
+        if (p.bananaSnackUses > 0 && p.hp < p.maxHp) {
+            p.bananaSnackUses--;
+            p.hp = Math.min(p.maxHp, p.hp + 1);
+            p.attackCooldown = 15;
+            playSound('tasty_banana');
+            if (typeof triggerVibration === 'function') triggerVibration('heal');
+            for (let i = 0; i < 8; i++) {
+                voidExplosions.push({
+                    x: p.x + 15 + (Math.random() - 0.5) * 35,
+                    y: p.y + 15 + (Math.random() - 0.5) * 35,
+                    timer: 20,
+                    isWhite: Math.random() > 0.4,
+                    isOrange: true,
+                    r: 25
+                });
+            }
+        } else if (p.bananaSnackUses > 0 && p.hp >= p.maxHp) {
+            playSound('leaf');
+        } else {
+            playSound('throw');
+        }
+    }
+    else if (ab === 'shuriken') {
         if (canAfford(true)) {
             spendCost(true); p.attackCooldown = 15; playSound('throw');
             let targetX = boss.x + boss.width/2;
@@ -2098,73 +2122,75 @@ function drawPlayer(p) {
         ctx.fill();
     }
 
-    // --- CLOAKS & PATTERNS ---
-    ctx.save();
+    // --- CLOAKS & PATTERNS (Hidden when Banana Skin is equipped!) ---
+    if (!p.bananaSkin) {
+        ctx.save();
 
-    // --- DYNAMIC BILLOWING CLOAK WITH CLOTH PHYSICS ---
-    let trailDir = p.facingRight ? -1 : 1; // Плащ развевается позади персонажа
-    let runSpeed = Math.abs(p.vx);
-    let velLagX = -p.vx * 3.5; // Отклоняется назад от скорости бега
-    let velLagY = -p.vy * 1.8; // Взлетает при падении, опускается при прыжке
-    let time = Date.now();
-    let pIdx = (typeof players !== 'undefined' && players[1] === p) ? 2 : 1;
-    let waveTime = time / 110 + pIdx * 3;
+        // --- DYNAMIC BILLOWING CLOAK WITH CLOTH PHYSICS ---
+        let trailDir = p.facingRight ? -1 : 1; // Плащ развевается позади персонажа
+        let runSpeed = Math.abs(p.vx);
+        let velLagX = -p.vx * 3.5; // Отклоняется назад от скорости бега
+        let velLagY = -p.vy * 1.8; // Взлетает при падении, опускается при прыжке
+        let time = Date.now();
+        let pIdx = (typeof players !== 'undefined' && players[1] === p) ? 2 : 1;
+        let waveTime = time / 110 + pIdx * 3;
 
-    // Многочастотные волновые колебания для живого извивания ткани
-    let flutter1 = Math.sin(waveTime) * (5 + runSpeed * 1.5);
-    let flutter2 = Math.cos(waveTime * 1.4) * (6 + runSpeed * 1.8);
-    let flap = Math.sin(waveTime * 1.8) * (4 + runSpeed);
+        // Многочастотные волновые колебания для живого извивания ткани
+        let flutter1 = Math.sin(waveTime) * (5 + runSpeed * 1.5);
+        let flutter2 = Math.cos(waveTime * 1.4) * (6 + runSpeed * 1.8);
+        let flap = Math.sin(waveTime * 1.8) * (4 + runSpeed);
 
-    let anchorX = p.facingRight ? p.x + 8 : p.x + p.width - 8;
-    let shoulderX = anchorX;
-    let shoulderY = p.y + 10;
+        let anchorX = p.facingRight ? p.x + 8 : p.x + p.width - 8;
+        let shoulderX = anchorX;
+        let shoulderY = p.y + 10;
 
-    // Ключевые точки извивающегося края плаща
-    let tipX = anchorX + (trailDir * (24 + runSpeed * 4)) + (velLagX * 0.5) + flutter1;
-    let tipY = p.y + p.height + flutter2 * 0.8 + (velLagY * 0.4);
-    let midX = anchorX + (trailDir * (28 + runSpeed * 4.5)) + (velLagX * 0.6) + flutter2;
-    let midY = p.y + 24 + flutter1 * 0.7;
-    let hemMidX = anchorX + (trailDir * (13 + runSpeed * 2)) + flap;
-    let hemMidY = p.y + p.height - 2 - flap * 0.5;
+        // Ключевые точки извивающегося края плаща
+        let tipX = anchorX + (trailDir * (24 + runSpeed * 4)) + (velLagX * 0.5) + flutter1;
+        let tipY = p.y + p.height + flutter2 * 0.8 + (velLagY * 0.4);
+        let midX = anchorX + (trailDir * (28 + runSpeed * 4.5)) + (velLagX * 0.6) + flutter2;
+        let midY = p.y + 24 + flutter1 * 0.7;
+        let hemMidX = anchorX + (trailDir * (13 + runSpeed * 2)) + flap;
+        let hemMidY = p.y + p.height - 2 - flap * 0.5;
 
-    // 1. Тень складок плаща для 3D глубины
-    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
-    ctx.beginPath();
-    ctx.moveTo(shoulderX, shoulderY + 2);
-    ctx.quadraticCurveTo(midX * 0.9, midY, tipX - trailDir * 4, tipY);
-    ctx.quadraticCurveTo(hemMidX, hemMidY + 2, anchorX, p.y + p.height);
-    ctx.closePath();
-    ctx.fill();
+        // 1. Тень складок плаща для 3D глубины
+        ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+        ctx.beginPath();
+        ctx.moveTo(shoulderX, shoulderY + 2);
+        ctx.quadraticCurveTo(midX * 0.9, midY, tipX - trailDir * 4, tipY);
+        ctx.quadraticCurveTo(hemMidX, hemMidY + 2, anchorX, p.y + p.height);
+        ctx.closePath();
+        ctx.fill();
 
-    // 2. Основная развевающаяся ткань плаща
-    ctx.fillStyle = cloakColor;
-    ctx.beginPath();
-    ctx.moveTo(shoulderX, shoulderY);
-    // Верхняя волна плаща
-    ctx.quadraticCurveTo(shoulderX + (trailDir * (13 + runSpeed * 2)), shoulderY + 4 + flap, midX, midY);
-    // Внешний колышущийся край к кончику
-    ctx.quadraticCurveTo(midX + trailDir * 4, midY + (p.height * 0.4), tipX, tipY);
-    // Нижняя волнистая кромка плаща
-    ctx.quadraticCurveTo(hemMidX, hemMidY, anchorX, p.y + p.height - 4);
-    ctx.lineTo(shoulderX, shoulderY);
-    ctx.closePath();
-    ctx.fill();
+        // 2. Основная развевающаяся ткань плаща
+        ctx.fillStyle = cloakColor;
+        ctx.beginPath();
+        ctx.moveTo(shoulderX, shoulderY);
+        // Верхняя волна плаща
+        ctx.quadraticCurveTo(shoulderX + (trailDir * (13 + runSpeed * 2)), shoulderY + 4 + flap, midX, midY);
+        // Внешний колышущийся край к кончику
+        ctx.quadraticCurveTo(midX + trailDir * 4, midY + (p.height * 0.4), tipX, tipY);
+        // Нижняя волнистая кромка плаща
+        ctx.quadraticCurveTo(hemMidX, hemMidY, anchorX, p.y + p.height - 4);
+        ctx.lineTo(shoulderX, shoulderY);
+        ctx.closePath();
+        ctx.fill();
 
-    // 3. Извивающиеся узоры на плаще
-    ctx.strokeStyle = patternColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(shoulderX + (trailDir * 4), shoulderY + 6);
-    ctx.quadraticCurveTo(midX - (trailDir * 4), midY + 4, tipX - (trailDir * 3), tipY - 4);
-    ctx.stroke();
+        // 3. Извивающиеся узоры на плаще
+        ctx.strokeStyle = patternColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(shoulderX + (trailDir * 4), shoulderY + 6);
+        ctx.quadraticCurveTo(midX - (trailDir * 4), midY + 4, tipX - (trailDir * 3), tipY - 4);
+        ctx.stroke();
 
-    // Вторая линия узора
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(shoulderX + (trailDir * 7), shoulderY + 12);
-    ctx.quadraticCurveTo(midX - (trailDir * 8), midY + 12, hemMidX, hemMidY - 3);
-    ctx.stroke();
-    ctx.restore();
+        // Вторая линия узора
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(shoulderX + (trailDir * 7), shoulderY + 12);
+        ctx.quadraticCurveTo(midX - (trailDir * 8), midY + 12, hemMidX, hemMidY - 3);
+        ctx.stroke();
+        ctx.restore();
+    }
 
     // --- EARTH HERO: BLACK-PURPLE HAIR ---
     if (p.type === 'EARTH') {
