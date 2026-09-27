@@ -46,6 +46,7 @@ let loomThreads = [];
 let lightAmuletWaves = [];
 let battleAnnouncements = [];
 let waterRopes = [];
+let fallingBananaPeels = [];
 let slowMoTimer = 0;
 
 function distToSegment(p, v, w) {

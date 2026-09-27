@@ -11,6 +11,7 @@ function buildAndStartGame() {
     let ctrlCont = document.getElementById("controls-container");
     if (ctrlCont) ctrlCont.style.display = isTouch ? "none" : "block";
     players = [];
+    fallingBananaPeels = [];
     isTutorial = false;
     
     if (secretMode) { 
@@ -262,7 +263,7 @@ function resetGameParams() {
     activeCinematic = null; globalWindMode = "NONE"; globalWindTimer = 0; globalWindCooldown = 0; 
     voidExplosions = []; voidPortals = []; looms = []; chaosBalls = []; screamRings = [];
     loomThreads = []; lightAmuletWaves = []; battleAnnouncements = [];
-    waterRopes = []; slowMoTimer = 0;
+    waterRopes = []; fallingBananaPeels = []; slowMoTimer = 0;
     
     boss.hp = boss.maxHp; boss.phase = 1; boss.damageBonus = 0; boss.x = ARENA_W/2; boss.y = FLOOR - 50; 
     boss.state = "IDLE"; boss.stateTimer = 60; boss.flashTimer = 0; boss.vx = 0; 
@@ -637,6 +638,9 @@ function updateProjectiles() {
         w.timer--;
         if (w.timer <= 0) lightAmuletWaves.splice(i, 1);
     }
+
+    // Falling Banana Peels
+    updateFallingBananaPeels();
 }
 
 function updateWaterRopes() {
@@ -1506,6 +1510,209 @@ function drawArenaDecorativeBananas() {
     }
 }
 
+// --- FALLING BANANA PEEL ABILITY SYSTEM ---
+function spawnFallingBananaPeel(x, y, facingRight) {
+    if (typeof fallingBananaPeels === 'undefined' || !fallingBananaPeels) fallingBananaPeels = [];
+    let throwDir = facingRight ? -1 : 1; // flings behind the player who ate the banana
+    fallingBananaPeels.push({
+        x: x,
+        y: y,
+        vx: throwDir * (2.8 + Math.random() * 1.6),
+        vy: -5.4 - Math.random() * 1.8,
+        angle: (Math.random() - 0.5) * 0.8,
+        spin: throwDir * (0.18 + Math.random() * 0.1),
+        onGround: false,
+        bounces: 0,
+        timer: 1800, // 30 seconds
+        slipped: false
+    });
+}
+window.spawnFallingBananaPeel = spawnFallingBananaPeel;
+
+function updateFallingBananaPeels() {
+    if (!fallingBananaPeels || fallingBananaPeels.length === 0) return;
+    for (let i = fallingBananaPeels.length - 1; i >= 0; i--) {
+        let peel = fallingBananaPeels[i];
+        peel.timer--;
+        if (peel.timer <= 0) {
+            fallingBananaPeels.splice(i, 1);
+            continue;
+        }
+
+        if (!peel.onGround) {
+            peel.vy += 0.28; // gravity
+            peel.x += peel.vx;
+            peel.y += peel.vy;
+            peel.angle += peel.spin;
+
+            // Check platforms
+            let hitPlat = false;
+            if (peel.vy >= 0 && typeof platforms !== 'undefined') {
+                for (let plat of platforms) {
+                    if (peel.x >= plat.x && peel.x <= plat.x + plat.w && peel.y >= plat.y - 2 && peel.y - peel.vy <= plat.y + 12) {
+                        peel.y = plat.y - 2;
+                        peel.bounces = (peel.bounces || 0) + 1;
+                        if (peel.bounces < 2) {
+                            peel.vy = -peel.vy * 0.35;
+                            peel.vx *= 0.6;
+                            peel.spin *= 0.5;
+                        } else {
+                            peel.onGround = true;
+                            peel.vy = 0;
+                            peel.vx = 0;
+                            peel.angle = 0;
+                        }
+                        hitPlat = true;
+                        break;
+                    }
+                }
+            }
+
+            // Check arena floor
+            if (!hitPlat && peel.y >= FLOOR - 2) {
+                peel.y = FLOOR - 2;
+                peel.bounces = (peel.bounces || 0) + 1;
+                if (peel.bounces < 2) {
+                    peel.vy = -peel.vy * 0.35;
+                    peel.vx *= 0.6;
+                    peel.spin *= 0.5;
+                } else {
+                    peel.onGround = true;
+                    peel.vy = 0;
+                    peel.vx = 0;
+                    peel.angle = 0;
+                }
+            }
+        } else {
+            // Hilarious interactive mechanics:
+            // 1. If Boss steps on the banana peel, boss does a funny slip stagger!
+            if (!peel.slipped && typeof boss !== 'undefined' && boss.state !== "DEFEATED" && boss.state !== "TRANSITION" && !boss.state.startsWith("CINEMATIC") && boss.x > -200) {
+                let bossHitbox = { x: boss.x, y: boss.y, width: boss.width, height: boss.height };
+                let peelBox = { x: peel.x - 14, y: peel.y - 12, width: 28, height: 18 };
+                if (rectIntersect(peelBox, bossHitbox)) {
+                    peel.slipped = true;
+                    peel.timer = Math.min(peel.timer, 45); // squished peel fades quickly
+                    if (typeof playSound === 'function') playSound('leaf');
+                    if (typeof triggerVibration === 'function') triggerVibration('clash');
+                    boss.vx = (boss.facingDir || 1) * 4;
+                    boss.stateTimer = Math.max(boss.stateTimer, 15);
+                    if (typeof voidExplosions !== 'undefined') {
+                        voidExplosions.push({
+                            x: peel.x,
+                            y: peel.y,
+                            timer: 16,
+                            isWhite: true,
+                            isOrange: true,
+                            r: 25
+                        });
+                    }
+                }
+            }
+
+            // 2. If a Player steps on the peel, they get a fun slippery little slide boost!
+            if (!peel.slipped && typeof players !== 'undefined') {
+                let peelBox = { x: peel.x - 12, y: peel.y - 10, width: 24, height: 16 };
+                for (let pl of players) {
+                    if (!pl.isDowned && pl.hp > 0 && rectIntersect(peelBox, pl)) {
+                        peel.slipped = true;
+                        peel.timer = Math.min(peel.timer, 45);
+                        if (typeof playSound === 'function') playSound('leaf');
+                        pl.vx = (pl.facingRight ? 1 : -1) * 7.5;
+                        if (typeof voidExplosions !== 'undefined') {
+                            voidExplosions.push({
+                                x: peel.x,
+                                y: peel.y,
+                                timer: 14,
+                                isWhite: false,
+                                isOrange: true,
+                                r: 18
+                            });
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+window.updateFallingBananaPeels = updateFallingBananaPeels;
+
+function drawFallingBananaPeels() {
+    if (!fallingBananaPeels || fallingBananaPeels.length === 0) return;
+
+    for (let peel of fallingBananaPeels) {
+        ctx.save();
+        ctx.translate(peel.x, peel.y);
+        ctx.rotate(peel.angle);
+
+        let alpha = 1.0;
+        if (peel.timer < 90) alpha = peel.timer / 90;
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+
+        if (peel.onGround) {
+            // Ground shadow
+            ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+            ctx.beginPath();
+            ctx.ellipse(0, 3, 14, 3.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Stem (dark brown)
+        ctx.fillStyle = "#3e2714";
+        ctx.beginPath();
+        ctx.arc(0, -3, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Left peel skin
+        ctx.fillStyle = "#ffd700";
+        ctx.beginPath();
+        ctx.moveTo(0, -3);
+        ctx.quadraticCurveTo(-10, -7, -15, 2);
+        ctx.quadraticCurveTo(-8, 3, 0, -1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "#4a2e00";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // Right peel skin
+        ctx.fillStyle = "#ffcc00";
+        ctx.beginPath();
+        ctx.moveTo(0, -3);
+        ctx.quadraticCurveTo(10, -7, 15, 2);
+        ctx.quadraticCurveTo(8, 3, 0, -1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "#4a2e00";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // Bottom/Center peel skin
+        ctx.fillStyle = "#ffe600";
+        ctx.beginPath();
+        ctx.moveTo(-3, -1);
+        ctx.quadraticCurveTo(0, 7, 2, 11);
+        ctx.quadraticCurveTo(4, 7, 3, -1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "#4a2e00";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // Creamy highlights on the peel insides
+        ctx.fillStyle = "rgba(255, 255, 230, 0.85)";
+        ctx.beginPath();
+        ctx.ellipse(-6, -1, 3.5, 1.2, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(6, -1, 3.5, 1.2, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+window.drawFallingBananaPeels = drawFallingBananaPeels;
+
 function drawMasks() {
     for (let idx = 0; idx < players.length; idx++) {
         let p = players[idx]; 
@@ -2211,6 +2418,9 @@ function draw() {
             ctx.fillRect(-l.size/2, -l.size/2, l.size, l.size/2); 
             ctx.restore(); 
         }
+
+        // Falling & grounded banana peels from ability
+        drawFallingBananaPeels();
 
         for (let b of airBlades) { 
             ctx.save(); ctx.translate(b.x, b.y); 

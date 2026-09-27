@@ -354,6 +354,9 @@ function executeAbility(p, ab) {
             p.attackCooldown = 15;
             playSound('tasty_banana');
             if (typeof triggerVibration === 'function') triggerVibration('heal');
+            if (typeof spawnFallingBananaPeel === 'function') {
+                spawnFallingBananaPeel(p.x + p.width / 2, p.y + 12, p.facingRight);
+            }
             for (let i = 0; i < 8; i++) {
                 voidExplosions.push({
                     x: p.x + 15 + (Math.random() - 0.5) * 35,
