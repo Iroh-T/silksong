@@ -2031,6 +2031,10 @@ function toggleBananaSkin(playerNum) {
     if (!isBananaSkinAllowed()) return;
     if (playerNum === 2) {
         bananaSkinP2 = !bananaSkinP2;
+        if (bananaSkinP2) {
+            gnomeSkinP2 = false;
+            try { localStorage.setItem('shelter_gnome_p2', 'false'); } catch(e){}
+        }
         try { localStorage.setItem('shelter_banana_p2', bananaSkinP2 ? 'true' : 'false'); } catch(e){}
         if (bananaSkinP2 && configAbilities && configAbilities.p2) {
             let sKeys = Object.keys(configAbilities.p2);
@@ -2041,6 +2045,10 @@ function toggleBananaSkin(playerNum) {
         }
     } else {
         bananaSkinP1 = !bananaSkinP1;
+        if (bananaSkinP1) {
+            gnomeSkinP1 = false;
+            try { localStorage.setItem('shelter_gnome_p1', 'false'); } catch(e){}
+        }
         try { localStorage.setItem('shelter_banana_p1', bananaSkinP1 ? 'true' : 'false'); } catch(e){}
         if (bananaSkinP1 && configAbilities && configAbilities.p1) {
             let sKeys = Object.keys(configAbilities.p1);
@@ -2056,6 +2064,7 @@ function toggleBananaSkin(playerNum) {
         if (badgeScreen && badgeScreen.style.display === 'block') prepBadgeMenu();
     }
     updateBananaSkinUI();
+    if (typeof updateGnomeSkinUI === 'function') updateGnomeSkinUI();
 }
 window.toggleBananaSkin = toggleBananaSkin;
 
@@ -2106,6 +2115,102 @@ function updateBananaSkinUI() {
     }
 }
 window.updateBananaSkinUI = updateBananaSkinUI;
+
+// --- EXCLUSIVE BLUE GNOME SKIN SYSTEM (РЫБа & Dasha545) ---
+let gnomeSkinP1 = false;
+let gnomeSkinP2 = false;
+
+try {
+    gnomeSkinP1 = localStorage.getItem('shelter_gnome_p1') === 'true';
+    gnomeSkinP2 = localStorage.getItem('shelter_gnome_p2') === 'true';
+} catch(e) {}
+
+function isDashaUser(name) {
+    if (!name) return false;
+    let n = name.toLowerCase().trim();
+    return n === 'dasha545' || n.startsWith('dasha') || n.startsWith('даша');
+}
+window.isDashaUser = isDashaUser;
+
+function isGnomeSkinAllowed() {
+    let u1 = getCurrentUser() || '';
+    let u2 = (typeof getP2User === 'function') ? getP2User() : '';
+    let p1Eligible = isCreatorUser(u1) || isDashaUser(u1);
+    let p2Eligible = (typeof numPlayers !== 'undefined' && numPlayers === 2) && (isCreatorUser(u2) || isDashaUser(u2));
+    return p1Eligible || p2Eligible;
+}
+window.isGnomeSkinAllowed = isGnomeSkinAllowed;
+
+function toggleGnomeSkin(playerNum) {
+    if (!isGnomeSkinAllowed()) return;
+    if (playerNum === 2) {
+        gnomeSkinP2 = !gnomeSkinP2;
+        if (gnomeSkinP2) {
+            bananaSkinP2 = false;
+            try { localStorage.setItem('shelter_banana_p2', 'false'); } catch(e){}
+        }
+        try { localStorage.setItem('shelter_gnome_p2', gnomeSkinP2 ? 'true' : 'false'); } catch(e){}
+    } else {
+        gnomeSkinP1 = !gnomeSkinP1;
+        if (gnomeSkinP1) {
+            bananaSkinP1 = false;
+            try { localStorage.setItem('shelter_banana_p1', 'false'); } catch(e){}
+        }
+        try { localStorage.setItem('shelter_gnome_p1', gnomeSkinP1 ? 'true' : 'false'); } catch(e){}
+    }
+    if (typeof playSound === 'function') playSound('parry');
+    updateGnomeSkinUI();
+    if (typeof updateBananaSkinUI === 'function') updateBananaSkinUI();
+}
+window.toggleGnomeSkin = toggleGnomeSkin;
+
+function updateGnomeSkinUI() {
+    let box = document.getElementById('gnome-skin-sidebar-box');
+    let btnP1 = document.getElementById('gnome-skin-btn-p1');
+    let btnP2 = document.getElementById('gnome-skin-btn-p2');
+    if (!box || !btnP1) return;
+
+    if (!isGnomeSkinAllowed()) {
+        box.style.display = 'none';
+        return;
+    }
+
+    box.style.display = 'block';
+    let isDuo = (typeof numPlayers !== 'undefined' && numPlayers === 2);
+
+    if (!isDuo) {
+        btnP1.style.display = 'block';
+        btnP1.innerHTML = gnomeSkinP1 
+            ? '🧙‍♂️ Скин синего гнома: <b style="color: #38bdf8;">ВКЛ ✨</b>' 
+            : '🧙‍♂️ Скин синего гнома: <b style="color: #94a3b8;">ВЫКЛ</b>';
+        btnP1.style.borderColor = gnomeSkinP1 ? '#00d4ff' : '#64748b';
+        btnP1.style.color = gnomeSkinP1 ? '#bae6fd' : '#cbd5e1';
+        btnP1.style.background = gnomeSkinP1 ? 'rgba(14, 116, 144, 0.75)' : 'rgba(30, 41, 59, 0.6)';
+        btnP1.style.boxShadow = gnomeSkinP1 ? '0 0 15px rgba(0, 212, 255, 0.4)' : 'none';
+        if (btnP2) btnP2.style.display = 'none';
+    } else {
+        btnP1.style.display = 'block';
+        btnP1.innerHTML = gnomeSkinP1 
+            ? '🧙‍♂️ Скин синего гнома (Игрок 1): <b style="color: #38bdf8;">ВКЛ ✨</b>' 
+            : '🧙‍♂️ Скин синего гнома (Игрок 1): <b style="color: #94a3b8;">ВЫКЛ</b>';
+        btnP1.style.borderColor = gnomeSkinP1 ? '#00d4ff' : '#64748b';
+        btnP1.style.color = gnomeSkinP1 ? '#bae6fd' : '#cbd5e1';
+        btnP1.style.background = gnomeSkinP1 ? 'rgba(14, 116, 144, 0.75)' : 'rgba(30, 41, 59, 0.6)';
+        btnP1.style.boxShadow = gnomeSkinP1 ? '0 0 15px rgba(0, 212, 255, 0.4)' : 'none';
+
+        if (btnP2) {
+            btnP2.style.display = 'block';
+            btnP2.innerHTML = gnomeSkinP2 
+                ? '🧙‍♂️ Скин синего гнома (Игрок 2): <b style="color: #38bdf8;">ВКЛ ✨</b>' 
+                : '🧙‍♂️ Скин синего гнома (Игрок 2): <b style="color: #94a3b8;">ВЫКЛ</b>';
+            btnP2.style.borderColor = gnomeSkinP2 ? '#00d4ff' : '#64748b';
+            btnP2.style.color = gnomeSkinP2 ? '#bae6fd' : '#cbd5e1';
+            btnP2.style.background = gnomeSkinP2 ? 'rgba(14, 116, 144, 0.75)' : 'rgba(30, 41, 59, 0.6)';
+            btnP2.style.boxShadow = gnomeSkinP2 ? '0 0 15px rgba(0, 212, 255, 0.4)' : 'none';
+        }
+    }
+}
+window.updateGnomeSkinUI = updateGnomeSkinUI;
 
 let currentEditingSlot = null; 
 let currentEditingAbility = null;

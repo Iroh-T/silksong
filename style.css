@@ -901,3 +901,20 @@ canvas {
 .banana-peel-btn:hover .corner-br {
     transform: rotate(165deg) scale(1.25);
 }
+
+.corner-gnome {
+    position: absolute;
+    font-size: 18px;
+    line-height: 1;
+    pointer-events: none;
+    filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.8));
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    user-select: none;
+    display: none;
+}
+.banana-peel-btn:hover .corner-gnome.corner-tl {
+    transform: rotate(-15deg) scale(1.25);
+}
+.banana-peel-btn:hover .corner-gnome.corner-br {
+    transform: rotate(165deg) scale(1.25);
+}

@@ -1976,6 +1976,75 @@ function drawBananaBody(p, bodyColor, cloakColor) {
         ctx.fill();
     }
 
+// --- EXCLUSIVE BLUE GNOME SKIN HAT RENDERING ---
+function drawGnomeHat(p) {
+    ctx.save();
+    let runSpeed = Math.abs(p.vx);
+    let hDir = p.facingRight ? 1 : -1;
+    let headX = p.facingRight ? p.x + 11 : p.x + 19;
+    let headY = p.y + 5;
+
+    // Hat bending physics based on velocity and direction
+    let lagX = -p.vx * 1.5;
+    let lagY = -p.vy * 0.8;
+    let flutter = Math.sin(Date.now() / 110) * (2 + runSpeed * 0.8);
+    let tipX = headX + (hDir * -6) + lagX + flutter;
+    let tipY = p.y - 20 + lagY;
+
+    // Base of triangular cap
+    let baseL_X = headX - 10;
+    let baseL_Y = headY;
+    let baseR_X = headX + 10;
+    let baseR_Y = headY;
+
+    // 1. Triangular Gnome Cone Hat (Rich Gnome Blue)
+    ctx.fillStyle = "#1e40af"; // Deep vibrant blue
+    ctx.beginPath();
+    ctx.moveTo(baseL_X, baseL_Y);
+    ctx.quadraticCurveTo(headX - 5 + lagX * 0.3, headY - 11, tipX, tipY);
+    ctx.quadraticCurveTo(headX + 5 + lagX * 0.3, headY - 11, baseR_X, baseR_Y);
+    ctx.closePath();
+    ctx.fill();
+
+    // 2. 3D shading on back half
+    ctx.fillStyle = "rgba(15, 23, 42, 0.4)";
+    ctx.beginPath();
+    let midBaseX = headX + (hDir * -2);
+    ctx.moveTo(baseL_X, baseL_Y);
+    ctx.quadraticCurveTo(headX - 5 + lagX * 0.3, headY - 11, tipX, tipY);
+    ctx.lineTo(midBaseX, baseL_Y);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3. Crisp outline
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(baseL_X, baseL_Y);
+    ctx.quadraticCurveTo(headX - 5 + lagX * 0.3, headY - 11, tipX, tipY);
+    ctx.quadraticCurveTo(headX + 5 + lagX * 0.3, headY - 11, baseR_X, baseR_Y);
+    ctx.stroke();
+
+    // 4. Folded cloth rim / brim at base of hat
+    ctx.fillStyle = "#38bdf8"; // Bright sky-blue rim
+    ctx.beginPath();
+    ctx.ellipse(headX, headY, 11, 3.5, (hDir * 0.08), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#0284c7";
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    // 5. Cute fluffy pom-pom / bell on the tip of the triangle
+    ctx.fillStyle = "#ffffff";
+    ctx.shadowColor = "#38bdf8";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#94a3b8";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
     ctx.restore();
 }
 
@@ -2103,6 +2172,9 @@ function drawPlayer(p) {
     }
 
     let bodyColor = p.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0 ? "lightblue" : baseColor;
+    if (p.gnomeSkin) {
+        bodyColor = p.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0 ? "lightblue" : "#1d4ed8";
+    }
     ctx.fillStyle = bodyColor;
     
     // --- MAIN BODY SHAPE (OR BANANA SKIN) ---
@@ -2419,13 +2491,19 @@ function drawPlayer(p) {
         ctx.restore();
     }
 
+    // Blue Gnome Pointy Hat
+    if (p.gnomeSkin && !p.isDowned) {
+        drawGnomeHat(p);
+    }
+
     // Fish Scale Badge Crown
     if (p.hasFishScale && !p.isDowned) {
         ctx.save();
         ctx.fillStyle = "#ffd700";
         ctx.font = "14px Arial";
         ctx.textAlign = "center";
-        ctx.fillText("👑", p.x + p.width / 2, p.y - 6);
+        let crownY = p.gnomeSkin ? p.y - 26 : p.y - 6;
+        ctx.fillText("👑", p.x + p.width / 2, crownY);
         ctx.restore();
     }
 

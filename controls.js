@@ -525,13 +525,136 @@ function updateUserBadge() {
 window.updateUserBadge = updateUserBadge;
 
 function updateBananaMenuPeelsUI() {
-    let allowed = (typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
+    let allowedB = (typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
     let peels = document.querySelectorAll('.corner-banana');
     peels.forEach(el => {
-        el.style.display = allowed ? 'inline-block' : 'none';
+        el.style.display = allowedB ? 'inline-block' : 'none';
+    });
+
+    let allowedG = (typeof isGnomeSkinAllowed === 'function' && isGnomeSkinAllowed());
+    let gnomes = document.querySelectorAll('.corner-gnome');
+    gnomes.forEach(el => {
+        el.style.display = (allowedG && !allowedB) ? 'inline-block' : 'none';
     });
 }
 window.updateBananaMenuPeelsUI = updateBananaMenuPeelsUI;
+
+function checkDashaGiftPrompt() {
+    let curUser = getCurrentUser();
+    if (!curUser || typeof isDashaUser !== 'function' || !isDashaUser(curUser)) return;
+
+    let accs = loadAccounts();
+    let lowerKey = curUser.toLowerCase();
+    let userAcc = accs[lowerKey] || (typeof getUserAccount === 'function' ? getUserAccount(curUser) : null);
+
+    if (userAcc && userAcc.gnomeGiftClaimed) return;
+
+    let modal = document.getElementById('dasha-gift-modal');
+    let input = document.getElementById('dasha-status-input');
+    if (modal) {
+        if (input) {
+            input.value = ""; // Нет ника/статуса по умолчанию — Даша должна ввести сама!
+            input.style.borderColor = '#38bdf8';
+            input.style.boxShadow = '0 0 10px rgba(56,189,248,0.3)';
+        }
+        modal.style.display = 'flex';
+        if (typeof playSound === 'function') playSound('lightChime');
+    }
+}
+window.checkDashaGiftPrompt = checkDashaGiftPrompt;
+
+function previewDashaModal() {
+    let modal = document.getElementById('dasha-gift-modal');
+    let input = document.getElementById('dasha-status-input');
+    if (modal) {
+        if (input) {
+            input.value = "";
+            input.style.borderColor = '#38bdf8';
+            input.style.boxShadow = '0 0 10px rgba(56,189,248,0.3)';
+        }
+        modal.style.display = 'flex';
+        if (typeof playSound === 'function') playSound('lightChime');
+    }
+}
+window.previewDashaModal = previewDashaModal;
+
+async function acceptDashaGift() {
+    let curUser = getCurrentUser();
+    if (!curUser) return;
+    let input = document.getElementById('dasha-status-input');
+    let titleVal = (input && input.value) ? input.value.trim() : "";
+
+    // По требованию Создателя: Даша должна обязательно ввести свой статус сама
+    if (!titleVal) {
+        if (input) {
+            input.focus();
+            input.style.borderColor = '#ef4444';
+            input.style.boxShadow = '0 0 15px rgba(239, 68, 68, 0.7)';
+        }
+        if (typeof showTutorialAlert === 'function') {
+            showTutorialAlert("⚠️ Пожалуйста, напиши свой статус / титул!");
+        }
+        return;
+    }
+
+    // Если это Создатель (РЫБа) в режиме предпросмотра — ничего не сохраняем в базу данных!
+    if (typeof isCreatorUser === 'function' && isCreatorUser(curUser)) {
+        let modal = document.getElementById('dasha-gift-modal');
+        if (modal) modal.style.display = 'none';
+        if (typeof playSound === 'function') playSound('lightChime');
+        if (typeof showTutorialAlert === 'function') {
+            showTutorialAlert(`👀 Предпросмотр завершён! Введённый статус: «${titleVal}». База данных не затронута.`);
+        }
+        return;
+    }
+
+    let accs = loadAccounts();
+    let lowerKey = curUser.toLowerCase();
+    let userAcc = accs[lowerKey] || { name: curUser };
+    userAcc.customTitle = titleVal;
+    userAcc.gnomeGiftClaimed = true;
+    accs[lowerKey] = userAcc;
+    saveAccounts(accs);
+
+    try {
+        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customTitle: titleVal, gnomeGiftClaimed: true })
+        }).catch(()=>{});
+    } catch(e){}
+
+    // Auto-enable Gnome skin for Dasha
+    gnomeSkinP1 = true;
+    bananaSkinP1 = false;
+    try { 
+        localStorage.setItem('shelter_gnome_p1', 'true');
+        localStorage.setItem('shelter_banana_p1', 'false');
+    } catch(e){}
+    if (typeof updateGnomeSkinUI === 'function') updateGnomeSkinUI();
+    if (typeof updateBananaSkinUI === 'function') updateBananaSkinUI();
+    if (typeof updateBananaMenuPeelsUI === 'function') updateBananaMenuPeelsUI();
+
+    let modal = document.getElementById('dasha-gift-modal');
+    if (modal) modal.style.display = 'none';
+
+    if (typeof playSound === 'function') playSound('lightChime');
+
+    if (typeof showAchievementToast === 'function') {
+        showAchievementToast(`🧙‍♂️ ОСОБЫЙ ОБРАЗ: ${titleVal}`);
+    }
+
+    updateUserBadge();
+
+    sendTelegramNotification(
+        `🧙‍♂️ <b>ДАША ПРИНЯЛА ОБРАЗ СИНЕГО ГНОМА!</b>\n` +
+        `👤 <b>Игрок:</b> ${curUser}\n` +
+        `🏷️ <b>Выбранный статус:</b> <code>${titleVal}</code>\n` +
+        `🔷 <b>Скин Синего Гнома:</b> АКТИВИРОВАН!\n` +
+        `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+    );
+}
+window.acceptDashaGift = acceptDashaGift;
 
 function checkYaroslavGiftPrompt() {
     let curUser = getCurrentUser();
@@ -679,6 +802,7 @@ function openScreen(screenId, pushHistory = true) {
     if (screenId === 'root-menu') {
         updateBananaMenuPeelsUI();
         checkYaroslavGiftPrompt();
+        checkDashaGiftPrompt();
     }
     if (screenId === 'achievements-menu') {
         renderAchievements();
@@ -1949,6 +2073,7 @@ function prepBadgeMenu() {
     if (typeof updateBroadcastButtonUI === 'function') updateBroadcastButtonUI();
     if (typeof updateChallengesUI === 'function') updateChallengesUI();
     if (typeof updateBananaSkinUI === 'function') updateBananaSkinUI();
+    if (typeof updateGnomeSkinUI === 'function') updateGnomeSkinUI();
 
     let titleTeam = document.getElementById("team-slot-title");
     let slotTeam = document.getElementById("slot-team");
@@ -2219,6 +2344,7 @@ window.addEventListener('DOMContentLoaded', () => {
             updateUserBadge();
             updateBananaMenuPeelsUI();
             checkYaroslavGiftPrompt();
+            checkDashaGiftPrompt();
         }
     }).catch(e => console.warn("Init sync failed:", e));
 });

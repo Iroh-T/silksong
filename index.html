@@ -105,12 +105,16 @@
             <div class="menu-btn banana-peel-btn" onclick="openScreen('mode-select')" style="border-color: #00ffcc; color: #00ffcc;">
                 <span class="corner-banana corner-tl">🍌</span>
                 <span class="corner-banana corner-br">🍌</span>
+                <span class="corner-gnome corner-tl">🧙‍♂️</span>
+                <span class="corner-gnome corner-br">🧙‍♂️</span>
                 ИГРАТЬ
             </div>
             <div class="menu-btn" onclick="openScreen('achievements-menu')" style="border-color: #ffbb00; color: #ffbb00;">ДОСТИЖЕНИЯ</div>
             <div class="menu-btn banana-peel-btn" onclick="openScreen('settings-menu')" style="border-color: #00bbff; color: #00bbff;">
                 <span class="corner-banana corner-tl">🍌</span>
                 <span class="corner-banana corner-br">🍌</span>
+                <span class="corner-gnome corner-tl">🧙‍♂️</span>
+                <span class="corner-gnome corner-br">🧙‍♂️</span>
                 НАСТРОЙКИ
             </div>
             <div class="menu-btn" onclick="openCreatorReactionModal()" style="border-color: #ffd700; color: #ffd700; text-shadow: 0 0 8px rgba(255,215,0,0.4);">💌 Привет Создателю (РЫБе)</div>
@@ -118,6 +122,8 @@
             <div class="menu-btn banana-peel-btn" onclick="handleLogout()" style="border-color: #ff3344; color: #ff5566; margin-top: 25px;">
                 <span class="corner-banana corner-tl">🍌</span>
                 <span class="corner-banana corner-br">🍌</span>
+                <span class="corner-gnome corner-tl">🧙‍♂️</span>
+                <span class="corner-gnome corner-br">🧙‍♂️</span>
                 ВЫЙТИ ИЗ АККАУНТА
             </div>
         </div>
@@ -282,6 +288,16 @@
                         </button>
                         <button id="banana-skin-btn-p2" class="menu-btn" onclick="toggleBananaSkin(2)" style="display: none; margin-top: 4px; background: rgba(50, 40, 10, 0.7); border-color: #ffd700; color: #ffe600; font-size: 12px; padding: 8px 10px; width: 100%; box-sizing: border-box; box-shadow: 0 0 10px rgba(255, 215, 0, 0.25);">
                             🍌 Скин банана (Игрок 2): ВЫКЛ
+                        </button>
+                    </div>
+
+                    <!-- Exclusive Blue Gnome Skin Toggle for Timur (РЫБа) & Dasha (Dasha545) -->
+                    <div id="gnome-skin-sidebar-box" style="display: none; margin: 4px 0;">
+                        <button id="gnome-skin-btn-p1" class="menu-btn" onclick="toggleGnomeSkin(1)" style="margin: 0; background: rgba(15, 35, 75, 0.75); border-color: #00d4ff; color: #80e5ff; font-size: 12px; padding: 8px 10px; width: 100%; box-sizing: border-box; box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);">
+                            🧙‍♂️ Скин синего гнома: ВЫКЛ
+                        </button>
+                        <button id="gnome-skin-btn-p2" class="menu-btn" onclick="toggleGnomeSkin(2)" style="display: none; margin-top: 4px; background: rgba(15, 35, 75, 0.75); border-color: #00d4ff; color: #80e5ff; font-size: 12px; padding: 8px 10px; width: 100%; box-sizing: border-box; box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);">
+                            🧙‍♂️ Скин синего гнома (Игрок 2): ВЫКЛ
                         </button>
                     </div>
 
@@ -480,12 +496,35 @@
         </div>
     </div>
 
+    <!-- Dasha Exclusive Gift Modal -->
+    <div id="dasha-gift-modal" style="display: none; position: fixed; inset: 0; background: rgba(5, 10, 25, 0.92); backdrop-filter: blur(10px); z-index: 1080; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: linear-gradient(145deg, #0b192c, #1e3a8a); border: 3px solid #38bdf8; box-shadow: 0 0 50px rgba(56,189,248,0.5), inset 0 0 20px rgba(56,189,248,0.2); border-radius: 16px; max-width: 520px; width: 100%; padding: 28px 24px; text-align: center; color: #e2e8f0; position: relative;">
+            <button onclick="document.getElementById('dasha-gift-modal').style.display='none'" style="position: absolute; top: 12px; right: 14px; background: transparent; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; line-height: 1; padding: 4px;" title="Закрыть">✖</button>
+            <div style="font-size: 46px; margin-bottom: 8px; filter: drop-shadow(0 0 10px rgba(56,189,248,0.8));">🧙‍♂️🔷✨</div>
+            <div style="font-size: 22px; font-weight: 900; color: #38bdf8; margin-bottom: 12px; letter-spacing: 1.5px; text-shadow: 0 0 12px rgba(56,189,248,0.6);">
+                🧙‍♂️ ВНИМАНИЕ: СЕКРЕТНЫЙ СКИН!
+            </div>
+            <div style="font-size: 14px; color: #cbd5e1; line-height: 1.6; margin-bottom: 20px;">
+                «Приветствуем тебя, Даша! Создатель игры <b>РЫБа</b> лично наделил тебя особым статусом и подарил секретный доступ к образу <b>Синего Гнома 🧙‍♂️🔷</b>»
+            </div>
+            <div style="margin-bottom: 20px; text-align: left; background: rgba(0,0,0,0.3); padding: 12px 16px; border-radius: 10px; border: 1px solid rgba(56,189,248,0.3);">
+                <label style="display: block; font-size: 12px; color: #38bdf8; font-weight: bold; margin-bottom: 6px;">
+                    ТВОЙ ТИТУЛ / СТАТУС (будет виден в таблице и везде рядом с твоим именем):
+                </label>
+                <input id="dasha-status-input" type="text" maxlength="28" value="" placeholder="Напиши свой статус здесь..." oninput="this.style.borderColor='#38bdf8'; this.style.boxShadow='0 0 10px rgba(56,189,248,0.3)';" style="width: 100%; box-sizing: border-box; background: #071527; border: 2px solid #38bdf8; border-radius: 8px; padding: 10px 14px; font-size: 14px; color: #fff; font-weight: bold; outline: none; box-shadow: 0 0 10px rgba(56,189,248,0.3);">
+            </div>
+            <button class="menu-btn" style="border-color: #38bdf8; color: #031329; background: linear-gradient(135deg, #38bdf8, #60a5fa); font-weight: 900; font-size: 15px; padding: 14px 20px; border-radius: 10px; box-shadow: 0 0 25px rgba(56,189,248,0.7); cursor: pointer; width: 100%; margin: 0;" onclick="acceptDashaGift()">
+                ✨ ПРИНЯТЬ ДАР СОЗДАТЕЛЯ
+            </button>
+        </div>
+    </div>
+
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=60"></script>
-    <script src="audio.js?v=60"></script>
-    <script src="controls.js?v=60"></script>
-    <script src="player.js?v=60"></script>
-    <script src="boss.js?v=60"></script>
-    <script src="game.js?v=60"></script>
+    <script src="constants.js?v=64"></script>
+    <script src="audio.js?v=64"></script>
+    <script src="controls.js?v=64"></script>
+    <script src="player.js?v=64"></script>
+    <script src="boss.js?v=64"></script>
+    <script src="game.js?v=64"></script>
 </body>
 </html>

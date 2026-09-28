@@ -61,6 +61,7 @@ function buildAndStartGame() {
     let p1 = createPlayer(1, p1HeroSelection, p1Keys, p1InputType, startX1);
     p1.abilities = { ...configAbilities.p1 };
     p1.bananaSkin = !!(typeof bananaSkinP1 !== 'undefined' && bananaSkinP1 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
+    p1.gnomeSkin = !!(typeof gnomeSkinP1 !== 'undefined' && gnomeSkinP1 && typeof isGnomeSkinAllowed === 'function' && isGnomeSkinAllowed());
     if (p1.bananaSkin || Object.values(p1.abilities).includes('banana_snack')) p1.bananaSnackUses = 3;
     
     applyBadgesToPlayer(p1, true); 
@@ -76,6 +77,7 @@ function buildAndStartGame() {
         let p2 = createPlayer(2, p2HeroSelection, p2Keys, p2InputType, startX2);
         p2.abilities = { ...configAbilities.p2 };
         p2.bananaSkin = !!(typeof bananaSkinP2 !== 'undefined' && bananaSkinP2 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
+        p2.gnomeSkin = !!(typeof gnomeSkinP2 !== 'undefined' && gnomeSkinP2 && typeof isGnomeSkinAllowed === 'function' && isGnomeSkinAllowed());
         if (p2.bananaSkin || Object.values(p2.abilities).includes('banana_snack')) p2.bananaSnackUses = 3;
         applyBadgesToPlayer(p2, false); 
         players.push(p2);
