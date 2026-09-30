@@ -2041,8 +2041,12 @@ window.confirmResetAllData = confirmResetAllData;
 
 function selectHero1(type) { 
     p1HeroSelection = type; 
+    if (!configAbilities || typeof configAbilities !== 'object') {
+        configAbilities = { p1: {}, p2: {} };
+    }
+    if (!configAbilities.p1) configAbilities.p1 = {};
+    Object.assign(configAbilities.p1, defaultAbilities[type] || {}); 
     if (numPlayers === 1) { 
-        Object.assign(configAbilities.p1, defaultAbilities[type]); 
         prepBadgeMenu(); 
     } else { 
         let p1Status = document.getElementById('p1-status');
@@ -2054,8 +2058,13 @@ window.selectHero1 = selectHero1;
 
 function checkDuoStart() { 
     if (p1HeroSelection && p2HeroSelection) { 
-        Object.assign(configAbilities.p1, defaultAbilities[p1HeroSelection]); 
-        Object.assign(configAbilities.p2, defaultAbilities[p2HeroSelection]); 
+        if (!configAbilities || typeof configAbilities !== 'object') {
+            configAbilities = { p1: {}, p2: {} };
+        }
+        if (!configAbilities.p1) configAbilities.p1 = {};
+        if (!configAbilities.p2) configAbilities.p2 = {};
+        Object.assign(configAbilities.p1, defaultAbilities[p1HeroSelection] || {}); 
+        Object.assign(configAbilities.p2, defaultAbilities[p2HeroSelection] || {}); 
         prepBadgeMenu(); 
     } 
 }
@@ -2067,8 +2076,30 @@ function getSlotsForHero(type) {
 window.getSlotsForHero = getSlotsForHero;
 
 function prepBadgeMenu() {
-    document.getElementById("hero-select").style.display = "none";
-    document.getElementById("badge-select").style.display = "block";
+    if (!p1HeroSelection) p1HeroSelection = 'WATER';
+    if (numPlayers === 2 && !p2HeroSelection) p2HeroSelection = 'EARTH';
+
+    if (!configBadges || typeof configBadges !== 'object') {
+        configBadges = { team: 'none', p1: ['none','none','none'], p2: ['none','none','none'] };
+    }
+    if (!Array.isArray(configBadges.p1)) configBadges.p1 = ['none','none','none'];
+    if (!Array.isArray(configBadges.p2)) configBadges.p2 = ['none','none','none'];
+
+    if (!configAbilities || typeof configAbilities !== 'object') {
+        configAbilities = { p1: {}, p2: {} };
+    }
+    if (!configAbilities.p1 || Object.keys(configAbilities.p1).length === 0) {
+        configAbilities.p1 = { ...(defaultAbilities[p1HeroSelection] || { top: 'none', mid: 'shuriken', bot: 'none' }) };
+    }
+    if (numPlayers === 2 && (!configAbilities.p2 || Object.keys(configAbilities.p2).length === 0)) {
+        configAbilities.p2 = { ...(defaultAbilities[p2HeroSelection] || { top: 'none', mid: 'trap', bot: 'none' }) };
+    }
+
+    let heroSelectEl = document.getElementById("hero-select");
+    if (heroSelectEl) heroSelectEl.style.display = "none";
+    let badgeSelectEl = document.getElementById("badge-select");
+    if (badgeSelectEl) badgeSelectEl.style.display = "block";
+
     if (typeof updateEasyBossButtonUI === 'function') updateEasyBossButtonUI();
     if (typeof updateBroadcastButtonUI === 'function') updateBroadcastButtonUI();
     if (typeof updateChallengesUI === 'function') updateChallengesUI();
@@ -2087,7 +2118,7 @@ function prepBadgeMenu() {
     let sCount1 = getSlotsForHero(p1HeroSelection);
     for (let i = 0; i < sCount1; i++) {
         let savedKey = (configBadges.p1 && configBadges.p1[i]) ? configBadges.p1[i] : 'none';
-        let bName = (savedKey === 'none') ? '[Пусто]' : badgesDict[savedKey].name.split(' (')[0];
+        let bName = (savedKey === 'none' || !badgesDict[savedKey]) ? '[Пусто]' : badgesDict[savedKey].name.split(' (')[0];
         let isSpecialBlue = (p1HeroSelection === 'WATER_ROPE' && i === 0);
         let slotStyle = isSpecialBlue ? 'border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.4);' : '';
         let slotTitle = isSpecialBlue ? ` title="Особый синий слот (работает только на тебе)"` : '';
@@ -2099,7 +2130,7 @@ function prepBadgeMenu() {
     let a1html = '';
     let info1 = getAbilitiesInfo(p1HeroSelection, 1);
     for (let slot of info1.slots) {
-        let abName = abilityDict[configAbilities.p1[slot]] || '[Пусто]';
+        let abName = abilityDict[configAbilities.p1 && configAbilities.p1[slot]] || '[Пусто]';
         a1html += `<div class="badge-slot" id="slot-p1_ab_${slot}" onclick="openAbList('p1', '${slot}', '${p1HeroSelection}')" style="border-color: yellow; color: white;">${abilitySlotNames[slot]}: ${abName}</div>`;
     }
     let p1ac = document.getElementById("p1-abilities-container");
@@ -2116,7 +2147,7 @@ function prepBadgeMenu() {
         let sCount2 = getSlotsForHero(p2HeroSelection);
         for (let i = 0; i < sCount2; i++) {
             let savedKey = (configBadges.p2 && configBadges.p2[i]) ? configBadges.p2[i] : 'none';
-            let bName = (savedKey === 'none') ? '[Пусто]' : badgesDict[savedKey].name.split(' (')[0];
+            let bName = (savedKey === 'none' || !badgesDict[savedKey]) ? '[Пусто]' : badgesDict[savedKey].name.split(' (')[0];
             let isSpecialBlue = (p2HeroSelection === 'WATER_ROPE' && i === 0);
             let slotStyle = isSpecialBlue ? 'border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.4);' : '';
             let slotTitle = isSpecialBlue ? ` title="Особый синий слот (работает только на тебе)"` : '';
@@ -2128,7 +2159,7 @@ function prepBadgeMenu() {
         let a2html = '';
         let info2 = getAbilitiesInfo(p2HeroSelection, 2);
         for (let slot of info2.slots) {
-            let abName = abilityDict[configAbilities.p2[slot]] || '[Пусто]';
+            let abName = abilityDict[configAbilities.p2 && configAbilities.p2[slot]] || '[Пусто]';
             a2html += `<div class="badge-slot" id="slot-p2_ab_${slot}" onclick="openAbList('p2', '${slot}', '${p2HeroSelection}')" style="border-color: yellow; color: white;">${abilitySlotNames[slot]}: ${abName}</div>`;
         }
         let p2ac = document.getElementById("p2-abilities-container");
@@ -2302,8 +2333,7 @@ async function sendQuickReactionToCreator(reactionText) {
 }
 window.sendQuickReactionToCreator = sendQuickReactionToCreator;
 
-// Sync Fire Hero unlock state based on user account and clean legacy browser key
-window.addEventListener('DOMContentLoaded', () => {
+function initShelterApp() {
     try {
         localStorage.removeItem('shelter_fire_unlocked');
     } catch(e){}
@@ -2311,7 +2341,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // Detect network and visited places
     if (typeof detectCurrentNetwork === 'function') {
-        detectCurrentNetwork();
+        try { detectCurrentNetwork(); } catch(e){}
     }
 
     // Check user authentication & background sync cloud accounts
@@ -2323,9 +2353,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
         // Check if newcomer with 0 battles
         let u = accs[curUser.toLowerCase()];
-        let st = u.stats || {};
+        let st = (u && u.stats) ? u.stats : {};
         let totalB = (st.soloNormalWins || 0) + (st.soloNormalLosses || 0) + (st.soloSecretWins || 0) + (st.soloSecretLosses || 0) + (st.duoNormalWins || 0) + (st.duoNormalLosses || 0) + (st.duoSecretWins || 0) + (st.duoSecretLosses || 0);
-        let hasGrad = u.achievements && u.achievements['tutorial_grad'];
+        let hasGrad = u && u.achievements && u.achievements['tutorial_grad'];
         if (totalB === 0 && !hasGrad && !sessionStorage.getItem('shelter_tut_prompt_seen')) {
             sessionStorage.setItem('shelter_tut_prompt_seen', 'true');
             setTimeout(() => {
@@ -2347,7 +2377,14 @@ window.addEventListener('DOMContentLoaded', () => {
             checkDashaGiftPrompt();
         }
     }).catch(e => console.warn("Init sync failed:", e));
-});
+}
+window.initShelterApp = initShelterApp;
+
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initShelterApp);
+} else {
+    initShelterApp();
+}
 
 // --- SPECTATOR CONTROLS ---
 function startWatchingBroadcast() {

@@ -2,9 +2,20 @@
 
 function applyBadgesToPlayer(p, isP1) {
     p.badges = [];
-    let slots = isP1 ? configBadges.p1 : configBadges.p2;
+    if (!configBadges || typeof configBadges !== 'object') {
+        configBadges = { team: 'none', p1: ['none', 'none', 'none'], p2: ['none', 'none', 'none'] };
+    }
+    if (!Array.isArray(configBadges.p1)) configBadges.p1 = ['none', 'none', 'none'];
+    if (!Array.isArray(configBadges.p2)) configBadges.p2 = ['none', 'none', 'none'];
+
+    let rawSlots = isP1 ? configBadges.p1 : configBadges.p2;
+    let slots = Array.isArray(rawSlots) 
+        ? rawSlots.map(b => (typeof b === 'string' ? b : 'none'))
+        : ['none', 'none', 'none'];
     p.badges.push(...slots);
-    p.badges.push(configBadges.team); 
+    if (configBadges.team && typeof configBadges.team === 'string' && configBadges.team !== 'none') {
+        p.badges.push(configBadges.team); 
+    }
     if (p.badges.includes('accel')) p.healFramesTotal = 96;
     if (p.badges.includes('multi')) { p.isMultiHeal = true; p.healFramesTotal = 120; } 
     if (p.badges.includes('glass')) { p.dmgDealtMod = 1.75; p.glassDebuff = true; } else { p.dmgDealtMod = 1; }
@@ -1975,6 +1986,8 @@ function drawBananaBody(p, bodyColor, cloakColor) {
         ctx.arc(-hw * 0.09, -hh * 0.34, 1.2, 0, Math.PI * 2);
         ctx.fill();
     }
+    ctx.restore();
+}
 
 // --- EXCLUSIVE BLUE GNOME SKIN HAT RENDERING ---
 function drawGnomeHat(p) {
@@ -2643,3 +2656,10 @@ function drawPlayer(p) {
         ctx.restore();
     }
 }
+
+window.applyBadgesToPlayer = applyBadgesToPlayer;
+window.createPlayer = createPlayer;
+window.takeDamage = takeDamage;
+window.drawPlayer = drawPlayer;
+window.drawBananaBody = drawBananaBody;
+window.drawGnomeHat = drawGnomeHat;

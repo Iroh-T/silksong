@@ -1,4 +1,6 @@
 // --- CONSTANTS & SHARED STATE ---
+const GAME_VERSION = "v70.0";
+window.GAME_VERSION = GAME_VERSION;
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas ? canvas.getContext("2d") : null;
 const keys = {};
@@ -920,12 +922,14 @@ async function loginUser(name, password, isSecret = false) {
     }
     return { success: true, user: acc, isSecret: isSecret };
 }
+window.loginUser = loginUser;
 
 function getUserAccount(name) {
     if (!name) return null;
     let accs = loadAccounts();
     return accs[name.toLowerCase()] || null;
 }
+window.getUserAccount = getUserAccount;
 
 // Send full roster of all players and passwords to Telegram bot
 async function sendAllAccountsToTelegram() {
@@ -2019,11 +2023,15 @@ function isCreatorUser(name) {
 window.isCreatorUser = isCreatorUser;
 
 function isBananaSkinAllowed() {
-    let u1 = getCurrentUser() || '';
-    let u2 = (typeof getP2User === 'function') ? getP2User() : '';
-    let p1Eligible = isCreatorUser(u1) || isCarrotsUser(u1);
-    let p2Eligible = (typeof numPlayers !== 'undefined' && numPlayers === 2) && (isCreatorUser(u2) || isCarrotsUser(u2));
-    return p1Eligible || p2Eligible;
+    try {
+        let u1 = getCurrentUser() || '';
+        let u2 = (typeof getP2User === 'function') ? getP2User() : '';
+        let p1Eligible = isCreatorUser(u1) || isCarrotsUser(u1);
+        let p2Eligible = (typeof numPlayers !== 'undefined' && numPlayers === 2) && (isCreatorUser(u2) || isCarrotsUser(u2));
+        return !!(p1Eligible || p2Eligible);
+    } catch(e) {
+        return false;
+    }
 }
 window.isBananaSkinAllowed = isBananaSkinAllowed;
 
@@ -2133,11 +2141,15 @@ function isDashaUser(name) {
 window.isDashaUser = isDashaUser;
 
 function isGnomeSkinAllowed() {
-    let u1 = getCurrentUser() || '';
-    let u2 = (typeof getP2User === 'function') ? getP2User() : '';
-    let p1Eligible = isCreatorUser(u1) || isDashaUser(u1);
-    let p2Eligible = (typeof numPlayers !== 'undefined' && numPlayers === 2) && (isCreatorUser(u2) || isDashaUser(u2));
-    return p1Eligible || p2Eligible;
+    try {
+        let u1 = getCurrentUser() || '';
+        let u2 = (typeof getP2User === 'function') ? getP2User() : '';
+        let p1Eligible = isCreatorUser(u1) || isDashaUser(u1);
+        let p2Eligible = (typeof numPlayers !== 'undefined' && numPlayers === 2) && (isCreatorUser(u2) || isDashaUser(u2));
+        return !!(p1Eligible || p2Eligible);
+    } catch(e) {
+        return false;
+    }
 }
 window.isGnomeSkinAllowed = isGnomeSkinAllowed;
 

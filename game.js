@@ -1,231 +1,281 @@
 // --- GAME ENGINE & MAIN LOOP MODULE ---
 
 function buildAndStartGame() {
-    initAudio(); 
-    if (typeof stopMenuMusic === 'function') stopMenuMusic();
-    let overlay = document.getElementById("overlay");
-    if (overlay) overlay.style.display = "none"; 
-    let isTouch = (p1InputType === 'TOUCH' || (numPlayers === 2 && p2InputType === 'TOUCH'));
-    let mobUi = document.getElementById("mobile-ui");
-    if (mobUi) mobUi.style.display = isTouch ? "flex" : "none";
-    let ctrlCont = document.getElementById("controls-container");
-    if (ctrlCont) ctrlCont.style.display = isTouch ? "none" : "block";
-    players = [];
-    fallingBananaPeels = [];
-    isTutorial = false;
-    
-    if (secretMode) { 
-        ARENA_W = 2500; 
-        ARENA_H = 600; 
-        FLOOR = 550; 
-    } else { 
-        ARENA_W = 1000; 
-        ARENA_H = 400; 
-        FLOOR = 350; 
-    }
-
-    battleResultRecorded = false;
-    battleStartTime = Date.now();
-
-    function mapControlsToKeysObj(schemeObj) {
-        let res = {};
-        for (let k in schemeObj) {
-            res[k] = [schemeObj[k]];
-        }
-        return res;
-    }
-
-    let p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
-    let p2Keys = mapControlsToKeysObj(userControls.SCHEME_2);
-
-    if (p1InputType === 'KEYBOARD_2' || p1InputType === 'KEYBOARD_SHOOTER') {
-        p1Keys = mapControlsToKeysObj(userControls.SCHEME_2);
-    } else if (p1InputType === 'DUO_KEYBOARD_P1') {
-        p1Keys = mapControlsToKeysObj(userControls.DUO_KEYBOARD.p1);
-    } else {
-        p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
-    }
-
-    if (p2InputType === 'KEYBOARD_1' || p2InputType === 'KEYBOARD_SILK') {
-        p2Keys = mapControlsToKeysObj(userControls.SCHEME_1);
-    } else if (p2InputType === 'DUO_KEYBOARD_P2') {
-        p2Keys = mapControlsToKeysObj(userControls.DUO_KEYBOARD.p2);
-    } else {
-        p2Keys = mapControlsToKeysObj(userControls.SCHEME_2);
-    }
-
-    if (!p1HeroSelection) p1HeroSelection = 'WATER';
-    if (numPlayers === 2 && !p2HeroSelection) p2HeroSelection = 'EARTH';
-
-    let startX1 = secretMode ? ARENA_W/2 - 50 : 150;
-    let p1 = createPlayer(1, p1HeroSelection, p1Keys, p1InputType, startX1);
-    p1.abilities = { ...configAbilities.p1 };
-    p1.bananaSkin = !!(typeof bananaSkinP1 !== 'undefined' && bananaSkinP1 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
-    p1.gnomeSkin = !!(typeof gnomeSkinP1 !== 'undefined' && gnomeSkinP1 && typeof isGnomeSkinAllowed === 'function' && isGnomeSkinAllowed());
-    if (p1.bananaSkin || Object.values(p1.abilities).includes('banana_snack')) p1.bananaSnackUses = 3;
-    
-    applyBadgesToPlayer(p1, true); 
-    players.push(p1);
-
-    if (numPlayers === 1) {
-        boss.maxHp = secretMode ? 60 : 25; 
-        phase2Hp = secretMode ? 39 : 18; 
-        phase3Hp = secretMode ? 20 : 10; 
-        maxSharedHeals = 3;
-    } else {
-        let startX2 = secretMode ? ARENA_W/2 + 50 : 200;
-        let p2 = createPlayer(2, p2HeroSelection, p2Keys, p2InputType, startX2);
-        p2.abilities = { ...configAbilities.p2 };
-        p2.bananaSkin = !!(typeof bananaSkinP2 !== 'undefined' && bananaSkinP2 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
-        p2.gnomeSkin = !!(typeof gnomeSkinP2 !== 'undefined' && gnomeSkinP2 && typeof isGnomeSkinAllowed === 'function' && isGnomeSkinAllowed());
-        if (p2.bananaSkin || Object.values(p2.abilities).includes('banana_snack')) p2.bananaSnackUses = 3;
-        applyBadgesToPlayer(p2, false); 
-        players.push(p2);
+    try {
+        initAudio(); 
+        if (typeof stopMenuMusic === 'function') stopMenuMusic();
         
-        let isLoreDuo = (p1HeroSelection === 'WATER' && p2HeroSelection === 'EARTH') || (p1HeroSelection === 'EARTH' && p2HeroSelection === 'WATER');
-        if (isLoreDuo) { 
-            players[0].maxHp = 7; players[0].hp = 7; 
-            players[1].maxHp = 7; players[1].hp = 7; 
+        let isTouch = (p1InputType === 'TOUCH' || (numPlayers === 2 && p2InputType === 'TOUCH'));
+        let mobUi = document.getElementById("mobile-ui");
+        if (mobUi) mobUi.style.display = isTouch ? "flex" : "none";
+        let ctrlCont = document.getElementById("controls-container");
+        if (ctrlCont) ctrlCont.style.display = isTouch ? "none" : "block";
+        players = [];
+        fallingBananaPeels = [];
+        isTutorial = false;
+        
+        if (secretMode) { 
+            ARENA_W = 2500; 
+            ARENA_H = 600; 
+            FLOOR = 550; 
+        } else { 
+            ARENA_W = 1000; 
+            ARENA_H = 400; 
+            FLOOR = 350; 
         }
-        boss.maxHp = secretMode ? 100 : 50; 
-        phase2Hp = secretMode ? 66 : 36; 
-        phase3Hp = secretMode ? 33 : 20; 
-        maxSharedHeals = 4;
-    }
 
-    if (secretMode) { 
-        for (let p of players) { p.maxHp += 2; p.hp += 2; } 
-    }
+        battleResultRecorded = false;
+        battleStartTime = Date.now();
 
-    // Battery Badge: +1 maximum heal charge for the team
-    if (players.some(p => p.badges && p.badges.includes('battery'))) {
-        maxSharedHeals = Math.min(6, maxSharedHeals + 1);
-    }
-
-    if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) {
-        for (let p of players) {
-            p.maxHp = (p.type === 'WATER_ROPE') ? 2 : 3;
-            if (p.badges && p.badges.includes('fish_scale')) p.maxHp += 1;
-            p.hp = p.maxHp;
+        function mapControlsToKeysObj(schemeObj) {
+            let res = {};
+            if (schemeObj && typeof schemeObj === 'object') {
+                for (let k in schemeObj) {
+                    if (schemeObj[k]) res[k] = [schemeObj[k]];
+                }
+            }
+            return res;
         }
-    }
 
-    if (!secretMode) {
-        platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10 } ];
-    } else {
-        platforms = [];
-    }
+        if (!userControls || typeof userControls !== 'object') {
+            userControls = JSON.parse(JSON.stringify(DEFAULT_CONTROLS));
+        }
+        let s1 = userControls.SCHEME_1 || DEFAULT_CONTROLS.SCHEME_1;
+        let s2 = userControls.SCHEME_2 || DEFAULT_CONTROLS.SCHEME_2;
+        let duo1 = (userControls.DUO_KEYBOARD && userControls.DUO_KEYBOARD.p1) || DEFAULT_CONTROLS.DUO_KEYBOARD.p1;
+        let duo2 = (userControls.DUO_KEYBOARD && userControls.DUO_KEYBOARD.p2) || DEFAULT_CONTROLS.DUO_KEYBOARD.p2;
 
-    let isEasyBoss = !!(typeof easyBossMode !== 'undefined' && easyBossMode) || !!window.easyBossMode;
-    if (isEasyBoss) {
-        boss.maxHp = Math.round(boss.maxHp * 0.75);
-        phase2Hp = Math.round(phase2Hp * 0.75);
-        phase3Hp = Math.round(phase3Hp * 0.75);
-        activeWorldMessage = {
-            text: `🌿 ОСЛАБЛЕНИЕ БОССА: ВКЛЮЧЕНО (HP: ${boss.maxHp}, УРОН: -50%)`,
-            sender: 'Система',
-            timer: 200,
-            maxTimer: 200
-        };
-    }
+        let p1Keys = mapControlsToKeysObj(s1);
+        let p2Keys = mapControlsToKeysObj(s2);
 
-    resetGameParams(); 
-    gameState = "PLAYING";
-    if (typeof sendPresencePing === 'function') sendPresencePing();
+        if (p1InputType === 'KEYBOARD_2' || p1InputType === 'KEYBOARD_SHOOTER') {
+            p1Keys = mapControlsToKeysObj(s2);
+        } else if (p1InputType === 'DUO_KEYBOARD_P1') {
+            p1Keys = mapControlsToKeysObj(duo1);
+        } else {
+            p1Keys = mapControlsToKeysObj(s1);
+        }
 
-    if (secretMode) {
-        boss.state = "L_INTRO_FALL"; 
-        boss.stateTimer = 60; 
-        boss.y = FLOOR + 100; 
-        boss.color = "#aaaaaa";
-        for (let p of players) { p.y = -200; p.vy = 5; }
-    }
+        if (p2InputType === 'KEYBOARD_1' || p2InputType === 'KEYBOARD_SILK') {
+            p2Keys = mapControlsToKeysObj(s1);
+        } else if (p2InputType === 'DUO_KEYBOARD_P2') {
+            p2Keys = mapControlsToKeysObj(duo2);
+        } else {
+            p2Keys = mapControlsToKeysObj(s2);
+        }
 
-    if (window.isBroadcasting) {
-        sendTelegramNotification(`🔴 <b>${getCurrentUser() || 'РЫБа'} начал прямую трансляцию боя!</b>\n⏰ <i>${new Date().toLocaleTimeString()}</i>`);
+        if (!p1HeroSelection) p1HeroSelection = 'WATER';
+        if (numPlayers === 2 && !p2HeroSelection) p2HeroSelection = 'EARTH';
+
+        if (!configAbilities || typeof configAbilities !== 'object') {
+            configAbilities = { p1: {}, p2: {} };
+        }
+        if (!configAbilities.p1 || typeof configAbilities.p1 !== 'object' || Object.keys(configAbilities.p1).length === 0) {
+            configAbilities.p1 = { ...(defaultAbilities[p1HeroSelection] || { top: 'none', mid: 'shuriken', bot: 'none' }) };
+        }
+        if (numPlayers === 2 && (!configAbilities.p2 || typeof configAbilities.p2 !== 'object' || Object.keys(configAbilities.p2).length === 0)) {
+            configAbilities.p2 = { ...(defaultAbilities[p2HeroSelection] || { top: 'none', mid: 'trap', bot: 'none' }) };
+        }
+
+        if (!configBadges || typeof configBadges !== 'object') {
+            configBadges = { team: 'none', p1: ['none', 'none', 'none'], p2: ['none', 'none', 'none'] };
+        }
+        if (!Array.isArray(configBadges.p1)) configBadges.p1 = ['none', 'none', 'none'];
+        if (!Array.isArray(configBadges.p2)) configBadges.p2 = ['none', 'none', 'none'];
+        if (!configBadges.team) configBadges.team = 'none';
+
+        let startX1 = secretMode ? ARENA_W/2 - 50 : 150;
+        let p1 = createPlayer(1, p1HeroSelection, p1Keys, p1InputType, startX1);
+        p1.abilities = { ...(configAbilities.p1 || defaultAbilities[p1HeroSelection] || {}) };
+        p1.bananaSkin = !!(typeof bananaSkinP1 !== 'undefined' && bananaSkinP1 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
+        p1.gnomeSkin = !!(typeof gnomeSkinP1 !== 'undefined' && gnomeSkinP1 && typeof isGnomeSkinAllowed === 'function' && isGnomeSkinAllowed());
+        let p1AbList = (p1.abilities && typeof p1.abilities === 'object') ? Object.values(p1.abilities) : [];
+        if (p1.bananaSkin || p1AbList.includes('banana_snack')) p1.bananaSnackUses = 3;
+        
+        applyBadgesToPlayer(p1, true); 
+        players.push(p1);
+
+        if (numPlayers === 1) {
+            boss.maxHp = secretMode ? 60 : 25; 
+            phase2Hp = secretMode ? 39 : 18; 
+            phase3Hp = secretMode ? 20 : 10; 
+            maxSharedHeals = 3;
+        } else {
+            let startX2 = secretMode ? ARENA_W/2 + 50 : 200;
+            let p2 = createPlayer(2, p2HeroSelection, p2Keys, p2InputType, startX2);
+            p2.abilities = { ...(configAbilities.p2 || defaultAbilities[p2HeroSelection] || {}) };
+            p2.bananaSkin = !!(typeof bananaSkinP2 !== 'undefined' && bananaSkinP2 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
+            p2.gnomeSkin = !!(typeof gnomeSkinP2 !== 'undefined' && gnomeSkinP2 && typeof isGnomeSkinAllowed === 'function' && isGnomeSkinAllowed());
+            let p2AbList = (p2.abilities && typeof p2.abilities === 'object') ? Object.values(p2.abilities) : [];
+            if (p2.bananaSkin || p2AbList.includes('banana_snack')) p2.bananaSnackUses = 3;
+            applyBadgesToPlayer(p2, false); 
+            players.push(p2);
+            
+            let isLoreDuo = (p1HeroSelection === 'WATER' && p2HeroSelection === 'EARTH') || (p1HeroSelection === 'EARTH' && p2HeroSelection === 'WATER');
+            if (isLoreDuo) { 
+                players[0].maxHp = 7; players[0].hp = 7; 
+                players[1].maxHp = 7; players[1].hp = 7; 
+            }
+            boss.maxHp = secretMode ? 100 : 50; 
+            phase2Hp = secretMode ? 66 : 36; 
+            phase3Hp = secretMode ? 33 : 20; 
+            maxSharedHeals = 4;
+        }
+
+        if (secretMode) { 
+            for (let p of players) { p.maxHp += 2; p.hp += 2; } 
+        }
+
+        // Battery Badge: +1 maximum heal charge for the team
+        if (players.some(p => p.badges && p.badges.includes('battery'))) {
+            maxSharedHeals = Math.min(6, maxSharedHeals + 1);
+        }
+
+        if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) {
+            for (let p of players) {
+                p.maxHp = (p.type === 'WATER_ROPE') ? 2 : 3;
+                if (p.badges && p.badges.includes('fish_scale')) p.maxHp += 1;
+                p.hp = p.maxHp;
+            }
+        }
+
+        if (!secretMode) {
+            platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10 } ];
+        } else {
+            platforms = [];
+        }
+
+        let isEasyBoss = !!(typeof easyBossMode !== 'undefined' && easyBossMode) || !!window.easyBossMode;
+        if (isEasyBoss) {
+            boss.maxHp = Math.round(boss.maxHp * 0.75);
+            phase2Hp = Math.round(phase2Hp * 0.75);
+            phase3Hp = Math.round(phase3Hp * 0.75);
+            activeWorldMessage = {
+                text: `🌿 ОСЛАБЛЕНИЕ БОССА: ВКЛЮЧЕНО (HP: ${boss.maxHp}, УРОН: -50%)`,
+                sender: 'Система',
+                timer: 200,
+                maxTimer: 200
+            };
+        }
+
+        resetGameParams(); 
+        gameState = "PLAYING";
+
+        // ONLY hide overlay once game state is verified and active!
+        let overlay = document.getElementById("overlay");
+        if (overlay) overlay.style.display = "none"; 
+
+        if (typeof sendPresencePing === 'function') sendPresencePing();
+
+        if (secretMode) {
+            boss.state = "L_INTRO_FALL"; 
+            boss.stateTimer = 60; 
+            boss.y = FLOOR + 100; 
+            boss.color = "#aaaaaa";
+            for (let p of players) { p.y = -200; p.vy = 5; }
+        }
+
+        if (window.isBroadcasting) {
+            sendTelegramNotification(`🔴 <b>${getCurrentUser() || 'РЫБа'} начал прямую трансляцию боя!</b>\n⏰ <i>${new Date().toLocaleTimeString()}</i>`);
+        }
+    } catch(err) {
+        console.error("Critical error in buildAndStartGame:", err);
+        let overlay = document.getElementById("overlay");
+        if (overlay) overlay.style.display = "block";
     }
 }
 window.buildAndStartGame = buildAndStartGame;
 
 function buildAndStartTutorialGame() {
-    initAudio(); 
-    if (typeof stopMenuMusic === 'function') stopMenuMusic();
-    let overlay = document.getElementById("overlay");
-    if (overlay) overlay.style.display = "none"; 
-    let isTouch = (p1InputType === 'TOUCH');
-    let mobUi = document.getElementById("mobile-ui");
-    if (mobUi) mobUi.style.display = isTouch ? "flex" : "none";
-    let ctrlCont = document.getElementById("controls-container");
-    if (ctrlCont) ctrlCont.style.display = isTouch ? "none" : "block";
-    players = [];
-    
-    secretMode = false;
-    ARENA_W = 1000; 
-    ARENA_H = 400; 
-    FLOOR = 350; 
-    platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10 } ];
+    try {
+        initAudio(); 
+        if (typeof stopMenuMusic === 'function') stopMenuMusic();
+        
+        let isTouch = (p1InputType === 'TOUCH');
+        let mobUi = document.getElementById("mobile-ui");
+        if (mobUi) mobUi.style.display = isTouch ? "flex" : "none";
+        let ctrlCont = document.getElementById("controls-container");
+        if (ctrlCont) ctrlCont.style.display = isTouch ? "none" : "block";
+        players = [];
+        
+        secretMode = false;
+        ARENA_W = 1000; 
+        ARENA_H = 400; 
+        FLOOR = 350; 
+        platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10 } ];
 
-    battleResultRecorded = false;
-    cheatUsedInBattle = false;
-    healsUsedInBattle = 0;
-    battleStartTime = Date.now();
-    
-    isTutorial = true;
-    tutorialStep = 'WALK';
-    tutorialSubStep = 0;
-    tutorialDamageDealt = false;
-    tutorialTargets = [];
+        battleResultRecorded = false;
+        cheatUsedInBattle = false;
+        healsUsedInBattle = 0;
+        battleStartTime = Date.now();
+        
+        isTutorial = true;
+        tutorialStep = 'WALK';
+        tutorialSubStep = 0;
+        tutorialDamageDealt = false;
+        tutorialTargets = [];
 
-    numPlayers = 1;
-    p1HeroSelection = 'WATER';
+        numPlayers = 1;
+        p1HeroSelection = 'WATER';
 
-    function mapControlsToKeysObj(schemeObj) {
-        let res = {};
-        for (let k in schemeObj) {
-            res[k] = [schemeObj[k]];
+        function mapControlsToKeysObj(schemeObj) {
+            let res = {};
+            if (schemeObj && typeof schemeObj === 'object') {
+                for (let k in schemeObj) {
+                    if (schemeObj[k]) res[k] = [schemeObj[k]];
+                }
+            }
+            return res;
         }
-        return res;
+
+        let p1Keys = mapControlsToKeysObj(userControls ? userControls.SCHEME_1 : DEFAULT_CONTROLS.SCHEME_1);
+        if (p1InputType === 'KEYBOARD_2' || p1InputType === 'KEYBOARD_SHOOTER') {
+            p1Keys = mapControlsToKeysObj(userControls ? userControls.SCHEME_2 : DEFAULT_CONTROLS.SCHEME_2);
+        } else {
+            p1Keys = mapControlsToKeysObj(userControls ? userControls.SCHEME_1 : DEFAULT_CONTROLS.SCHEME_1);
+        }
+
+        let p1 = createPlayer(1, 'WATER', p1Keys, p1InputType, 120);
+        p1.abilities = { top: 'shuriken', mid: 'shuriken', bot: 'shuriken' };
+        applyBadgesToPlayer(p1, true);
+        players.push(p1);
+
+        resetGameParams();
+
+        // 4 heal charges for training
+        sharedHeals = 4;
+        maxSharedHeals = 4;
+
+        // Step 1: 4 glowing spheres on the floor
+        tutorialDots = [
+            { x: 240, y: FLOOR - 20 },
+            { x: 440, y: FLOOR - 20 },
+            { x: 640, y: FLOOR - 20 },
+            { x: 820, y: FLOOR - 20 }
+        ];
+
+        boss.hp = 7;
+        boss.maxHp = 7;
+        boss.x = -999;
+        boss.y = -999;
+        boss.state = "INACTIVE";
+
+        gameState = "PLAYING";
+        let overlay = document.getElementById("overlay");
+        if (overlay) overlay.style.display = "none"; 
+
+        if (typeof sendPresencePing === 'function') sendPresencePing();
+    } catch(err) {
+        console.error("Tutorial start failed:", err);
+        let overlay = document.getElementById("overlay");
+        if (overlay) overlay.style.display = "block";
     }
-
-    let p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
-    if (p1InputType === 'KEYBOARD_2' || p1InputType === 'KEYBOARD_SHOOTER') {
-        p1Keys = mapControlsToKeysObj(userControls.SCHEME_2);
-    } else {
-        p1Keys = mapControlsToKeysObj(userControls.SCHEME_1);
-    }
-
-    let p1 = createPlayer(1, 'WATER', p1Keys, p1InputType, 120);
-    p1.abilities = { top: 'shuriken', mid: 'shuriken', bot: 'shuriken' };
-    applyBadgesToPlayer(p1, true);
-    players.push(p1);
-
-    resetGameParams();
-
-    // 4 heal charges for training
-    sharedHeals = 4;
-    maxSharedHeals = 4;
-
-    // Step 1: 4 glowing spheres on the floor
-    tutorialDots = [
-        { x: 240, y: FLOOR - 20 },
-        { x: 440, y: FLOOR - 20 },
-        { x: 640, y: FLOOR - 20 },
-        { x: 820, y: FLOOR - 20 }
-    ];
-
-    boss.hp = 7;
-    boss.maxHp = 7;
-    boss.x = -999;
-    boss.y = -999;
-    boss.state = "INACTIVE";
-
-    gameState = "PLAYING";
-    if (typeof sendPresencePing === 'function') sendPresencePing();
 }
 window.buildAndStartTutorialGame = buildAndStartTutorialGame;
 
 function resetGameParams() {
     for (let p of players) { 
+        if (!p) continue;
         if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) {
             let baseHp = (p.type === 'WATER_ROPE') ? 2 : 3;
             if (p.badges && p.badges.includes('fish_scale')) baseHp += 1;
@@ -243,9 +293,10 @@ function resetGameParams() {
         p.attackSpamCount = 0; p.overheatTimer = 0; p.heatLevel = 0; 
         p.lastSafeX = p.x; p.lastSafeY = p.y;
         p.chillTimer = 0; p.invigTimer = 0; p.runTimer = 0; p.voidDamageTimer = 0; p.spamResetTimer = 0;
-        p.chillBrews = Object.values(p.abilities).includes('chill') ? 3 : 0;
-        p.invigBrews = Object.values(p.abilities).includes('invig') ? 3 : 0;
-        p.bananaSnackUses = (p.bananaSkin || Object.values(p.abilities).includes('banana_snack')) ? 3 : 0;
+        let abList = (p.abilities && typeof p.abilities === 'object') ? Object.values(p.abilities) : [];
+        p.chillBrews = abList.includes('chill') ? 3 : 0;
+        p.invigBrews = abList.includes('invig') ? 3 : 0;
+        p.bananaSnackUses = (p.bananaSkin || abList.includes('banana_snack')) ? 3 : 0;
         p.dashBurstTimer = 0; p.airDashed = false;
         if (p.type === 'STAMINA') { p.stamina = 5; p.isCharging = false; p.chargeTimer = 0; p.chargeProjectiles = []; } 
         if (p.type === 'FIRE') { p.isParrying = false; p.parryTimer = 0; p.orangeHp = 0; p.orangeHpTimer = 0; p.isFieryHealing = false; p.fireDashTimer = 0; }
@@ -254,8 +305,8 @@ function resetGameParams() {
         if (p.badges && p.badges.includes('shield')) p.hasAegisShield = true;
         if (p.badges && p.badges.includes('cracked_life')) { p.hasCrackedLife = true; p.crackedShieldBroken = false; }
     }
-    if (players.length > 0) players[0].x = ARENA_W/2 - 50; 
-    if (players.length > 1) players[1].x = ARENA_W/2 + 50;
+    if (players.length > 0 && players[0]) players[0].x = ARENA_W/2 - 50; 
+    if (players.length > 1 && players[1]) players[1].x = ARENA_W/2 + 50;
     
     sharedHeals = maxSharedHeals; 
     sharedHitCount = 0; 
@@ -267,26 +318,30 @@ function resetGameParams() {
     loomThreads = []; lightAmuletWaves = []; battleAnnouncements = [];
     waterRopes = []; fallingBananaPeels = []; slowMoTimer = 0;
     
-    boss.hp = boss.maxHp; boss.phase = 1; boss.damageBonus = 0; boss.x = ARENA_W/2; boss.y = FLOOR - 50; 
-    boss.state = "IDLE"; boss.stateTimer = 60; boss.flashTimer = 0; boss.vx = 0; 
-    boss.speed = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? (6.5 * 1.25) : 6.5; 
-    boss.missCount = 0; boss.directAttackActive = false; boss.directAttackHit = false; boss.comboCount = 0; 
-    boss.heroBleedTimer = 0; boss.heroBleedTicks = 0; boss.superQueue = []; boss.sa1Arr = []; 
-    boss.hunterInfected = 0; boss.infectedTimer = 0; boss.voidWindDisabled = 0; boss.sa1Count = 0; 
-    boss.saLines = null; boss.color = "#e6c800"; boss.climbSaTimer = 0; boss.saLinesState = ""; boss.saLinesTimer = 0;
-    boss.lightStunDone = false; boss.lightInfected = 0; boss.lightInfectedDmgRed = 0.5;
-    boss.climbSaStep = 0; boss.halfHpSeqDone = false;
-    boss.attackCount = 0; boss.firstAttackAwarded = false; boss.healSpammerAwarded = false;
-    boss.stunP1_1 = false; boss.stunP1_2 = false; boss.stunP2 = false;
-    boss.lPhase4Orbs = []; boss.lPhase4AttackTimer = 0;
+    if (boss) {
+        boss.hp = boss.maxHp || 25; boss.phase = 1; boss.damageBonus = 0; boss.x = ARENA_W/2; boss.y = FLOOR - 50; 
+        boss.state = "IDLE"; boss.stateTimer = 60; boss.flashTimer = 0; boss.vx = 0; 
+        boss.speed = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? (6.5 * 1.25) : 6.5; 
+        boss.missCount = 0; boss.directAttackActive = false; boss.directAttackHit = false; boss.comboCount = 0; 
+        boss.heroBleedTimer = 0; boss.heroBleedTicks = 0; boss.superQueue = []; boss.sa1Arr = []; 
+        boss.hunterInfected = 0; boss.infectedTimer = 0; boss.voidWindDisabled = 0; boss.sa1Count = 0; 
+        boss.saLines = null; boss.color = "#e6c800"; boss.climbSaTimer = 0; boss.saLinesState = ""; boss.saLinesTimer = 0;
+        boss.lightStunDone = false; boss.lightInfected = 0; boss.lightInfectedDmgRed = 0.5;
+        boss.climbSaStep = 0; boss.halfHpSeqDone = false;
+        boss.attackCount = 0; boss.firstAttackAwarded = false; boss.healSpammerAwarded = false;
+        boss.stunP1_1 = false; boss.stunP1_2 = false; boss.stunP2 = false;
+        boss.lPhase4Orbs = []; boss.lPhase4AttackTimer = 0;
+    }
     battleStartTime = Date.now();
     
     screenShake = { timer: 0, mag: 0, dirX: 0, dirY: 0 }; 
     freezeFrames = 0;
     godModeActive = false; window.godModeActive = false;
     megaDamageActive = false; window.megaDamageActive = false;
-    let bgm = document.getElementById("lModeMusic"); 
-    if (bgm) bgm.pause();
+    try {
+        let bgm = document.getElementById("lModeMusic"); 
+        if (bgm) bgm.pause();
+    } catch(e) {}
 }
 
 function updateProjectiles() {
@@ -1788,7 +1843,8 @@ function drawMasks() {
         }
         
         let brewX = 30 + (p.maxHp + (p.purpleHp > 0 ? p.purpleHp : 0)) * 30 + (p.orangeHp > 0 ? 30 : 0) + 10;
-        if (p.chillBrews > 0 || Object.values(p.abilities).includes('chill')) {
+        let pAbList = (p.abilities && typeof p.abilities === 'object') ? Object.values(p.abilities) : [];
+        if (p.chillBrews > 0 || pAbList.includes('chill')) {
             for (let i = 0; i < p.chillBrews; i++) {
                 ctx.beginPath(); ctx.arc(brewX + i * 16, yOffset, 5, 0, Math.PI*2);
                 ctx.fillStyle = "cyan"; ctx.fill();
@@ -1796,7 +1852,7 @@ function drawMasks() {
             }
             if (p.chillBrews > 0) brewX += p.chillBrews * 16 + 10;
         }
-        if (p.invigBrews > 0 || Object.values(p.abilities).includes('invig')) {
+        if (p.invigBrews > 0 || pAbList.includes('invig')) {
             for (let i = 0; i < p.invigBrews; i++) {
                 ctx.beginPath(); ctx.arc(brewX + i * 16, yOffset, 5, 0, Math.PI*2);
                 ctx.fillStyle = "#ffcc00"; ctx.fill();
@@ -2473,7 +2529,7 @@ function draw() {
 
         // Water Ropes (Малыш Воды)
         for (let p of players) {
-            if (p.type === 'WATER_ROPE') {
+            if (p && p.type === 'WATER_ROPE') {
                 if (p.ropeA && !p.ropeActive) {
                     ctx.save();
                     ctx.beginPath();
@@ -2670,7 +2726,7 @@ function draw() {
 
             drawBoss();
             for (let p of players) {
-                drawPlayer(p);
+                if (p) drawPlayer(p);
             }
 
             if (secretMode && players.some(p => (p.hallucinationHits || 0) >= ((p.hasLightAmulet && !p.lightAmuletBroken) ? 4 : 3) && !(p.type === 'WATER' && p.stance === 'DEMON'))) {
