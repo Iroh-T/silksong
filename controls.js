@@ -753,7 +753,11 @@ function openScreen(screenId, pushHistory = true) {
         'achievements-menu',
         'admin-screen',
         'settings-menu',
-        'keybind-editor-menu'
+        'keybind-editor-menu',
+        'online-hub-screen',
+        'online-host-wait-screen',
+        'online-join-screen',
+        'online-prep-screen'
     ];
 
     let currentActive = allScreens.find(id => {
@@ -788,6 +792,7 @@ function openScreen(screenId, pushHistory = true) {
 
     // User badge: show only if logged in and not on auth-screen
     updateUserBadge();
+    if (typeof checkOnlineCoopButtonVisibility === 'function') checkOnlineCoopButtonVisibility();
 
     // Cancel mode L if returning to root menu
     if (screenId === 'root-menu' && secretMode) {
@@ -825,6 +830,10 @@ function menuGoBack() {
     // If we are currently rebinding a key, cancel rebinding first
     if (window.rebindingActive) {
         cancelRebinding();
+        return;
+    }
+    if (window.onlineNet && window.onlineNet.isActive) {
+        window.onlineNet.handleMenuBack();
         return;
     }
     if (menuHistory.length > 0) {
@@ -1140,6 +1149,10 @@ function startTutorialFromPrompt() {
 window.startTutorialFromPrompt = startTutorialFromPrompt;
 
 function selectInput(in1, in2) {
+    if (window.onlineNet && window.onlineNet.isActive) {
+        window.onlineNet.handleSelectInput(in1);
+        return;
+    }
     p1InputType = in1; 
     if (numPlayers === 2) p2InputType = in2;
 
@@ -2040,6 +2053,10 @@ function confirmResetAllData() {
 window.confirmResetAllData = confirmResetAllData;
 
 function selectHero1(type) { 
+    if (window.onlineNet && window.onlineNet.isActive) {
+        window.onlineNet.handleSelectHero(type);
+        return;
+    }
     p1HeroSelection = type; 
     if (!configAbilities || typeof configAbilities !== 'object') {
         configAbilities = { p1: {}, p2: {} };
@@ -2076,6 +2093,10 @@ function getSlotsForHero(type) {
 window.getSlotsForHero = getSlotsForHero;
 
 function prepBadgeMenu() {
+    if (window.onlineNet && window.onlineNet.isActive) {
+        window.onlineNet.setupOnlineBadgeMenu();
+        return;
+    }
     if (!p1HeroSelection) p1HeroSelection = 'WATER';
     if (numPlayers === 2 && !p2HeroSelection) p2HeroSelection = 'EARTH';
 
@@ -2225,6 +2246,9 @@ function assignBadge(badgeKey) {
     }
     let bl = document.getElementById("badge-list");
     if (bl) bl.style.display = "none";
+    if (window.onlineNet && window.onlineNet.isActive) {
+        window.onlineNet.syncBadgesToFirebase();
+    }
 }
 window.assignBadge = assignBadge;
 
@@ -2234,6 +2258,9 @@ function assignAbility(abKey) {
     if (el) el.innerText = `${abilitySlotNames[currentEditingAbility.s]}: ${abilityDict[abKey]}`;
     let bl = document.getElementById("badge-list");
     if (bl) bl.style.display = "none";
+    if (window.onlineNet && window.onlineNet.isActive) {
+        window.onlineNet.syncBadgesToFirebase();
+    }
 }
 window.assignAbility = assignAbility;
 

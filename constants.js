@@ -1,5 +1,5 @@
 // --- CONSTANTS & SHARED STATE ---
-const GAME_VERSION = "v71.0";
+const GAME_VERSION = "v72.2";
 window.GAME_VERSION = GAME_VERSION;
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas ? canvas.getContext("2d") : null;
@@ -1190,6 +1190,9 @@ function toggleChallenge(key) {
         if (typeof updateChallengesUI === 'function') {
             updateChallengesUI();
         }
+        if (window.onlineNet && window.onlineNet.isActive) {
+            window.onlineNet.syncChallengesToFirebase();
+        }
     }
     return activeChallenges[key];
 }
@@ -1682,6 +1685,9 @@ let battleResultRecorded = false;
 function recordBattleResult(isVictory) {
     if (battleResultRecorded) return;
     battleResultRecorded = true;
+    if (window.onlineNet && window.onlineNet.isActive) {
+        window.onlineNet.cleanupGame();
+    }
     let s = loadGameStats();
     if (numPlayers === 1) {
         if (!secretMode) {

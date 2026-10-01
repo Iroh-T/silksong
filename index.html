@@ -34,7 +34,7 @@
                 </div>
             </div>
             <!-- Discreet Corner Version Tag -->
-            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v71.0</div>
+            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v72.0</div>
         </div>
         <div id="mobile-ui">
             <div id="joy-base"><div id="joy-stick"></div></div>
@@ -135,7 +135,10 @@
             <div style="font-size: 24px; margin-bottom: 15px;">ВЫБЕРИТЕ РЕЖИМ</div>
             <div class="menu-btn btn-tutorial-green" onclick="startTutorial()">🎓 ОБУЧЕНИЕ (Основы боя)</div>
             <div class="menu-btn" onclick="selectMode(1)">1 ИГРОК</div>
-            <div class="menu-btn" onclick="selectMode(2)">2 ИГРОКА</div>
+            <div class="menu-btn" onclick="selectMode(2)">2 ИГРОКА (Локально)</div>
+            <div id="online-coop-btn" class="menu-btn" style="display: none; border-color: #a855f7; color: #e9d5ff; background: linear-gradient(135deg, rgba(168,85,247,0.25), rgba(59,130,246,0.25)); box-shadow: 0 0 15px rgba(168,85,247,0.4); margin-top: 10px;" onclick="openOnlineHub()">
+                🌐 СЕТЕВАЯ ИГРА ОНЛАЙН (BETA)
+            </div>
             <div style="font-size: 12px; color: gray; margin-top: 15px;">(Подключите геймпад PS4/Xbox/Nintendo и нажмите любую кнопку)</div>
             <div class="menu-btn m-btn-l" id="mobile-l-btn-mode" style="display:none; margin-top:20px;" onclick="toggleSecretMobile()">АКТИВОВАТЬ РЕЖИМ [L]</div>
         </div>
@@ -168,9 +171,71 @@
             <button id="p2-auth-submit-btn" class="auth-submit-btn" onclick="handleP2AuthSubmit()">ВОЙТИ В СВОЙ АККАУНТ</button>
         </div>
 
+        <!-- ONLINE 1: HUB (Choose Host or Join) -->
+        <div id="online-hub-screen" style="display: none; max-width: 480px; margin: 0 auto; text-align: center;">
+            <div style="font-size: 24px; color: #c084fc; font-weight: bold; margin-bottom: 4px; letter-spacing: 1px;">🌐 СЕТЕВАЯ ИГРА ОНЛАЙН</div>
+            <div style="font-size: 12px; color: #a855f7; margin-bottom: 20px;">Закрытый бета-тест для Создателя и друзей</div>
+            
+            <div class="menu-btn" style="border-color: #ffd700; color: #ffd700; padding: 14px; font-size: 16px; font-weight: bold; background: rgba(255,215,0,0.12); box-shadow: 0 0 15px rgba(255,215,0,0.3); margin-bottom: 14px; cursor: pointer;" onclick="startOnlineHost()">
+                👑 СОЗДАТЬ КОМАНДУ (ХОСТ)
+                <div style="font-size: 11px; color: #ffe680; font-weight: normal; margin-top: 4px;">Ты ведёшь бой, напарник подключается к тебе</div>
+            </div>
+
+            <div class="menu-btn" style="border-color: #38bdf8; color: #38bdf8; padding: 14px; font-size: 16px; font-weight: bold; background: rgba(56,189,248,0.12); box-shadow: 0 0 15px rgba(56,189,248,0.3); margin-bottom: 18px; cursor: pointer;" onclick="openOnlineJoinScreen()">
+                ⚔️ ПРИСОЕДИНИТЬСЯ (ИГРОК)
+                <div style="font-size: 11px; color: #bae6fd; font-weight: normal; margin-top: 4px;">Найти открытые комнаты друзей и войти</div>
+            </div>
+        </div>
+
+        <!-- ONLINE 2: HOST WAITING SCREEN -->
+        <div id="online-host-wait-screen" style="display: none; max-width: 480px; margin: 0 auto; text-align: center;">
+            <div style="font-size: 22px; color: #ffd700; font-weight: bold; margin-bottom: 8px;">👑 ОЖИДАНИЕ КОМАНДЫ...</div>
+            <div style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
+                Хост: <b style="color: #ffd700;" id="online-host-my-name">РЫБа</b>
+            </div>
+
+            <div style="margin: 15px auto; width: 44px; height: 44px; border: 4px solid #a855f7; border-top-color: #ffd700; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+
+            <div style="background: rgba(15, 23, 42, 0.85); border: 1.5px solid #a855f7; border-radius: 10px; padding: 14px; margin-bottom: 18px; box-shadow: 0 0 15px rgba(168,85,247,0.3);">
+                <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 6px;">Код твоей комнаты (виден в списке для друзей):</div>
+                <div id="online-host-room-code" style="font-family: monospace; font-size: 22px; font-weight: 900; color: #00ffff; letter-spacing: 2px;">ПОДКЛЮЧЕНИЕ...</div>
+                <button class="menu-btn" style="margin-top: 10px; font-size: 12px; padding: 6px 14px; border-color: #00ffff; color: #00ffff;" onclick="copyOnlineRoomCode()">📋 Скопировать код</button>
+            </div>
+
+            <div style="font-size: 12px; color: #cbd5e1; line-height: 1.6; margin-bottom: 20px;">
+                Ярослав, Даша или Гэндальф увидят твою комнату в списке прямо сейчас!<br>
+                Как только напарник нажмёт «Войти» — откроется боевая подготовка.
+            </div>
+
+            <button class="menu-btn" style="border-color: #ff4466; color: #ff6688; margin: 0 auto;" onclick="cancelOnlineHost()">✖ Отменить комнату</button>
+        </div>
+
+        <!-- ONLINE 3: JOIN SCREEN (Room list + manual code) -->
+        <div id="online-join-screen" style="display: none; max-width: 500px; margin: 0 auto; text-align: center;">
+            <div style="font-size: 22px; color: #38bdf8; font-weight: bold; margin-bottom: 4px;">⚔️ ПОИСК КОМАНДЫ</div>
+            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 14px;">Кто прямо сейчас ищет напарника:</div>
+
+            <div id="online-rooms-list" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding: 4px;">
+                <div style="color: #94a3b8; font-size: 13px; padding: 16px;">🔄 Поиск открытых комнат...</div>
+            </div>
+
+            <button class="menu-btn" style="border-color: #38bdf8; color: #38bdf8; font-size: 12px; padding: 8px 14px; margin-bottom: 16px;" onclick="refreshOnlineRoomsList()">🔄 Обновить список комнат</button>
+
+            <div style="border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 12px; margin-bottom: 12px;">
+                <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">Или войти по прямому коду:</div>
+                <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
+                    <input type="text" id="online-manual-code-input" placeholder="RYBA-1234" style="background: #0f172a; border: 1.5px solid #38bdf8; color: #fff; padding: 8px 12px; border-radius: 6px; font-family: monospace; font-size: 14px; width: 160px; text-align: center; text-transform: uppercase;">
+                    <button class="menu-btn" style="margin: 0; padding: 8px 16px; font-size: 13px; border-color: #00ffaa; color: #00ffaa;" onclick="joinOnlineByManualCode()">ВОЙТИ</button>
+                </div>
+            </div>
+        </div>
+
         <!-- 3. INPUT SELECT -->
         <div id="input-select" style="display: none;">
             <div style="font-size: 24px; margin-bottom: 15px;">ВЫБОР УПРАВЛЕНИЯ</div>
+            <div id="online-input-banner" style="display: none; background: rgba(15, 23, 42, 0.85); border: 1.5px solid #00ffff; border-radius: 8px; padding: 10px; margin-bottom: 15px; color: #38bdf8; font-weight: bold; font-size: 13px;">
+                🎉 ИГРА НАЙДЕНА! Выбери раскладку для себя
+            </div>
             <div id="input-1p" style="display: none;">
                 <div class="menu-btn" onclick="selectInput('KEYBOARD_1', null)">1. Первая раскладка (Клав.)</div>
                 <div class="menu-btn" onclick="selectInput('KEYBOARD_2', null)">2. Вторая раскладка (Клав.)</div>
@@ -204,6 +269,11 @@
         <!-- 4. HERO SELECT -->
         <div id="hero-select" style="display: none;">
             <div style="margin-bottom: 15px; font-size: 24px;">ВЫБОР ГЕРОЕВ</div>
+            <div id="online-hero-banner" style="display: none; background: rgba(15, 23, 42, 0.85); border: 1.5px solid #00ffff; border-radius: 8px; padding: 10px; margin-bottom: 15px; font-size: 13px; color: #fff; box-shadow: 0 0 12px rgba(0,255,255,0.25);">
+                <span id="online-hero-p1-text" style="color: #00ffff; font-weight: bold;">Игрок 1: Выбирает...</span>
+                <span style="color: #64748b; margin: 0 8px;">|</span>
+                <span id="online-hero-p2-text" style="color: #ffd700; font-weight: bold;">Игрок 2: Выбирает...</span>
+            </div>
             <div class="menu-btn easy-boss-btn" onclick="toggleEasyBossMode()" style="margin-bottom: 14px; background: rgba(30, 41, 59, 0.6); border-color: #64748b; color: #94a3b8; font-size: 13px;">🌱 Ослабление Босса: ВЫКЛ (Обычный)</div>
             <div id="p1-select-ui">
                 <div style="color: cyan;"><b>ИГРОК 1:</b></div>
@@ -312,8 +382,18 @@
                 </div>
             </div>
 
-            <div id="badge-list" style="display: none;"></div>
-            <div class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 14px; background: #004400; border-color: lime; color: lime; padding: 12px 30px; font-size: 18px;">В БОЙ!</div>
+            <div id="badge-select-offline-btn" class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 14px; background: #004400; border-color: lime; color: lime; padding: 12px 30px; font-size: 18px;">В БОЙ!</div>
+            
+            <!-- Online Ready & Countdown Block -->
+            <div id="online-badge-bottom-box" style="display: none; margin-top: 14px; text-align: center;">
+                <div id="online-teammate-status-text" style="font-size: 13px; color: #f59e0b; margin-bottom: 8px;">⏳ Сокомандник выбирает значки...</div>
+                <button id="online-ready-toggle-btn" class="menu-btn" onclick="window.onlineNet.toggleReady()" style="margin: 0; background: rgba(255, 215, 0, 0.15); border-color: #ffd700; color: #ffd700; padding: 12px 30px; font-size: 18px; font-weight: 900; width: 100%; box-sizing: border-box;">
+                    ⚔️ Я ГОТОВ!
+                </button>
+                <div id="online-countdown-banner" style="display: none; margin-top: 10px; font-size: 22px; font-weight: 900; color: #ffd700; text-shadow: 0 0 15px rgba(255,215,0,0.8); background: rgba(0,0,0,0.85); border: 2px solid #ffd700; border-radius: 8px; padding: 10px;">
+                    🔥 ОБА ГОТОВЫ! СТАРТ ЧЕРЕЗ 3...
+                </div>
+            </div>
         </div>
 
         <!-- 6. ACHIEVEMENTS MENU -->
@@ -449,7 +529,7 @@
             </div>
         </div>
         <!-- Discreet Overlay Version Tag -->
-        <div class="game-version-display" style="position: absolute; bottom: 8px; right: 12px; font-size: 11px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; user-select: none;">v71.0</div>
+        <div class="game-version-display" style="position: absolute; bottom: 8px; right: 12px; font-size: 11px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; user-select: none;">v72.0</div>
     </div>
 
     <!-- Creator Reaction Modal -->
@@ -524,11 +604,14 @@
     </div>
 
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=71"></script>
-    <script src="audio.js?v=71"></script>
-    <script src="controls.js?v=71"></script>
-    <script src="player.js?v=71"></script>
-    <script src="boss.js?v=71"></script>
-    <script src="game.js?v=71"></script>
+    <script src="constants.js?v=72.2"></script>
+    <script src="audio.js?v=72.2"></script>
+    <script src="controls.js?v=72.2"></script>
+    <script src="player.js?v=72.2"></script>
+    <script src="boss.js?v=72.2"></script>
+    <script src="game.js?v=72.2"></script>
+
+    <!-- Pure Firebase Online Multiplayer Module -->
+    <script src="network.js?v=72.2"></script>
 </body>
 </html>

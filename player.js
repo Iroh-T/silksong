@@ -601,7 +601,12 @@ function updatePlayers() {
 
         let kLeft=false, kRight=false, kDown=false, kUp=false, kJump=false, kAttack=false, kHeal=false, kSpec=false, kDash=false, kLight=false, kStance=false;
 
-        if (p.inputType === 'GAMEPAD') {
+        if (p.inputType === 'ONLINE_REMOTE' && window.onlineNet && window.onlineNet.remoteInputs) {
+            let ri = window.onlineNet.remoteInputs;
+            kLeft = !!ri.left; kRight = !!ri.right; kUp = !!ri.up; kDown = !!ri.down;
+            kJump = !!ri.jump; kAttack = !!ri.attack; kHeal = !!ri.heal; kDash = !!ri.dash;
+            kSpec = !!ri.special; kStance = !!ri.stance; kLight = !!ri.light;
+        } else if (p.inputType === 'GAMEPAD') {
             let targetIndex = p.id === 1 ? 0 : 1;
             if (numPlayers === 2 && p1InputType.startsWith('KEYBOARD') && p.id === 2) targetIndex = 0;
             if (numPlayers === 2 && p2InputType.startsWith('KEYBOARD') && p.id === 1) targetIndex = 0;
