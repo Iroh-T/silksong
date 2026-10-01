@@ -2189,16 +2189,35 @@ function prepBadgeMenu() {
 }
 window.prepBadgeMenu = prepBadgeMenu;
 
+function closeBadgeModal() {
+    let bl = document.getElementById("badge-list");
+    if (bl) bl.style.display = "none";
+    let bd = document.getElementById("badge-list-backdrop");
+    if (bd) bd.style.display = "none";
+}
+window.closeBadgeModal = closeBadgeModal;
+
 function openBadgeList(slotId) {
     currentEditingSlot = slotId; 
     currentEditingAbility = null;
     let listDiv = document.getElementById("badge-list");
     if (!listDiv) return;
-    listDiv.style.display = "flex"; 
-    listDiv.innerHTML = '';
+    
     let isTopSlot = (slotId === 'team');
     let isSpecialBlueSlot = (slotId === 'p1_0' && p1HeroSelection === 'WATER_ROPE') || (slotId === 'p2_0' && p2HeroSelection === 'WATER_ROPE');
     let isL = (typeof secretMode !== 'undefined' && !!secretMode) || (typeof window !== 'undefined' && !!window.secretMode);
+    
+    let titleText = isTopSlot ? "💎 КОМАНДНЫЙ ЗНАК (Голубой)" : (isSpecialBlueSlot ? "🌀 СИНИЙ ЗНАК" : "🛡️ ЗНАЧОК ДЛЯ СЛОТА");
+
+    let html = `
+        <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(0,229,255,0.4); padding-bottom: 10px; margin-bottom: 14px;">
+            <div style="font-weight: 900; color: #00e5ff; font-size: 16px; text-shadow: 0 0 10px rgba(0,229,255,0.6); display: flex; align-items: center; gap: 8px;">
+                <span>✨</span> <span>ВЫБЕРИТЕ: ${titleText}</span>
+            </div>
+            <button onclick="closeBadgeModal()" style="background: rgba(239, 68, 68, 0.2); border: 1.5px solid #ef4444; color: #f87171; border-radius: 8px; padding: 6px 14px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.4)'" onmouseout="this.style.background='rgba(239,68,68,0.2)'">✖ ЗАКРЫТЬ</button>
+        </div>
+    `;
+
     for (let key in badgesDict) {
         let b = badgesDict[key];
         if (b.lModeOnly && !isL) continue; // Амулет света доступен ТОЛЬКО в L-режиме
@@ -2206,10 +2225,16 @@ function openBadgeList(slotId) {
         if (!isTopSlot && !isSpecialBlueSlot && b.teamAllowed === true) continue; 
         
         let colorStyle = (b.teamAllowed === true || isTopSlot) 
-            ? 'color: cyan; border-color: cyan;' 
-            : 'color: white; border-color: #aaa;';
-        listDiv.innerHTML += `<div class="badge-item" style="${colorStyle}" onclick="assignBadge('${key}')">${b.name}</div>`;
+            ? 'color: #00e5ff; border-color: #00e5ff; background: rgba(0, 229, 255, 0.1);' 
+            : 'color: #ffffff; border-color: #64748b;';
+        html += `<div class="badge-item" style="${colorStyle}" onclick="assignBadge('${key}')">${b.name}</div>`;
     }
+
+    listDiv.innerHTML = html;
+    listDiv.style.display = "flex"; 
+    
+    let bd = document.getElementById("badge-list-backdrop");
+    if (bd) bd.style.display = "block";
 }
 window.openBadgeList = openBadgeList;
 
@@ -2218,13 +2243,27 @@ function openAbList(playerId, slotId, heroType) {
     currentEditingAbility = { p: playerId, s: slotId };
     let listDiv = document.getElementById("badge-list");
     if (!listDiv) return;
-    listDiv.style.display = "flex"; 
-    listDiv.innerHTML = '';
+    
+    let slotTitle = (abilitySlotNames && abilitySlotNames[slotId]) ? abilitySlotNames[slotId] : slotId;
+    let html = `
+        <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(255,255,0,0.4); padding-bottom: 10px; margin-bottom: 14px;">
+            <div style="font-weight: 900; color: #ffff88; font-size: 16px; text-shadow: 0 0 10px rgba(255,255,0,0.6); display: flex; align-items: center; gap: 8px;">
+                <span>⚡</span> <span>ВЫБЕРИТЕ СПОСОБНОСТЬ (${slotTitle}):</span>
+            </div>
+            <button onclick="closeBadgeModal()" style="background: rgba(239, 68, 68, 0.2); border: 1.5px solid #ef4444; color: #f87171; border-radius: 8px; padding: 6px 14px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.4)'" onmouseout="this.style.background='rgba(239,68,68,0.2)'">✖ ЗАКРЫТЬ</button>
+        </div>
+    `;
     
     let info = getAbilitiesInfo(heroType, playerId);
     for (let abKey of info.pool) {
-        listDiv.innerHTML += `<div class="badge-item" style="color: #ffff88; border-color: #ffff88;" onclick="assignAbility('${abKey}')">${abilityDict[abKey]}</div>`;
+        html += `<div class="badge-item" style="color: #ffff88; border-color: #fbbf24; background: rgba(251, 191, 36, 0.1);" onclick="assignAbility('${abKey}')">${abilityDict[abKey]}</div>`;
     }
+    
+    listDiv.innerHTML = html;
+    listDiv.style.display = "flex"; 
+    
+    let bd = document.getElementById("badge-list-backdrop");
+    if (bd) bd.style.display = "block";
 }
 window.openAbList = openAbList;
 
@@ -2244,8 +2283,7 @@ function assignBadge(badgeKey) {
         let el = document.getElementById('slot-' + currentEditingSlot);
         if (el) el.innerText = rawName;
     }
-    let bl = document.getElementById("badge-list");
-    if (bl) bl.style.display = "none";
+    closeBadgeModal();
     if (window.onlineNet && window.onlineNet.isActive) {
         window.onlineNet.syncBadgesToFirebase();
     }
@@ -2256,8 +2294,7 @@ function assignAbility(abKey) {
     configAbilities[currentEditingAbility.p][currentEditingAbility.s] = abKey;
     let el = document.getElementById(`slot-${currentEditingAbility.p}_ab_${currentEditingAbility.s}`);
     if (el) el.innerText = `${abilitySlotNames[currentEditingAbility.s]}: ${abilityDict[abKey]}`;
-    let bl = document.getElementById("badge-list");
-    if (bl) bl.style.display = "none";
+    closeBadgeModal();
     if (window.onlineNet && window.onlineNet.isActive) {
         window.onlineNet.syncBadgesToFirebase();
     }

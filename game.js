@@ -1031,6 +1031,21 @@ function update() {
         }
     }
 
+    // Online Multiplayer: Guest Frame Handling (Smooth 60 FPS interpolation, zero local lag)
+    if (window.isOnlineMatch && window.onlineNet && window.onlineNet.isActive && !window.onlineNet.isHost) {
+        if (typeof window.onlineNet.updateGuestBattleFrame === 'function') {
+            window.onlineNet.updateGuestBattleFrame();
+        }
+        return;
+    }
+
+    // Online Multiplayer: Host Frame Hook (broadcasts 60 FPS authoritative state to guest)
+    if (window.isOnlineMatch && window.onlineNet && window.onlineNet.isActive && window.onlineNet.isHost) {
+        if (typeof window.onlineNet.broadcastHostBattleFrame === 'function') {
+            window.onlineNet.broadcastHostBattleFrame();
+        }
+    }
+
     // 2. Spectator Mode Update (Receives stream from host)
     if (window.spectatorMode) {
         let bs = window.broadcastState;

@@ -34,7 +34,7 @@
                 </div>
             </div>
             <!-- Discreet Corner Version Tag -->
-            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v72.0</div>
+            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v72.1</div>
         </div>
         <div id="mobile-ui">
             <div id="joy-base"><div id="joy-stick"></div></div>
@@ -382,6 +382,8 @@
                 </div>
             </div>
 
+            <div id="badge-list-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1199; backdrop-filter: blur(4px);" onclick="closeBadgeModal()"></div>
+            <div id="badge-list" style="display: none;"></div>
             <div id="badge-select-offline-btn" class="menu-btn" onclick="buildAndStartGame()" style="margin-top: 14px; background: #004400; border-color: lime; color: lime; padding: 12px 30px; font-size: 18px;">В БОЙ!</div>
             
             <!-- Online Ready & Countdown Block -->
@@ -529,7 +531,7 @@
             </div>
         </div>
         <!-- Discreet Overlay Version Tag -->
-        <div class="game-version-display" style="position: absolute; bottom: 8px; right: 12px; font-size: 11px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; user-select: none;">v72.0</div>
+        <div class="game-version-display" style="position: absolute; bottom: 8px; right: 12px; font-size: 11px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; user-select: none;">v72.1</div>
     </div>
 
     <!-- Creator Reaction Modal -->
@@ -604,14 +606,14 @@
     </div>
 
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=72.2"></script>
-    <script src="audio.js?v=72.2"></script>
-    <script src="controls.js?v=72.2"></script>
-    <script src="player.js?v=72.2"></script>
-    <script src="boss.js?v=72.2"></script>
-    <script src="game.js?v=72.2"></script>
+    <script src="constants.js?v=72.1"></script>
+    <script src="audio.js?v=72.1"></script>
+    <script src="controls.js?v=72.1"></script>
+    <script src="player.js?v=72.1"></script>
+    <script src="boss.js?v=72.1"></script>
+    <script src="game.js?v=72.1"></script>
 
     <!-- Pure Firebase Online Multiplayer Module -->
-    <script src="network.js?v=72.2"></script>
+    <script src="network.js?v=72.1"></script>
 </body>
 </html>

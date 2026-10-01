@@ -115,24 +115,47 @@ canvas {
     border-color: white; 
 }
 #badge-list { 
-    display: flex; 
+    display: none; 
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(160deg, rgba(10, 18, 35, 0.98), rgba(15, 23, 42, 0.98));
+    border: 2.5px solid #00e5ff;
+    box-shadow: 0 0 50px rgba(0, 229, 255, 0.45), 0 20px 60px rgba(0, 0, 0, 0.9);
+    border-radius: 16px;
+    padding: 20px 22px;
+    max-width: 650px;
+    width: 92%;
+    max-height: 82vh;
+    overflow-y: auto;
+    z-index: 1200;
     flex-wrap: wrap; 
     justify-content: center; 
     gap: 10px; 
-    margin-top: 20px; 
-    border-top: 1px solid #444; 
-    padding-top: 20px;
+    backdrop-filter: blur(8px);
+    box-sizing: border-box;
 } 
 .badge-item { 
-    border: 1px solid cyan; 
-    padding: 5px 10px; 
-    font-size: 12px; 
+    border: 1.5px solid #00e5ff; 
+    padding: 10px 14px; 
+    font-size: 13px; 
+    font-weight: bold;
     cursor: pointer; 
-    background: #111; 
-    width: 45%; 
+    background: rgba(15, 23, 42, 0.85); 
+    border-radius: 8px;
+    width: 46%; 
+    box-sizing: border-box;
+    transition: all 0.15s ease;
+    text-align: center;
+    color: #e2e8f0;
 } 
 .badge-item:hover { 
-    background: #333; 
+    background: rgba(0, 229, 255, 0.25); 
+    border-color: #ffffff;
+    box-shadow: 0 0 16px rgba(0, 229, 255, 0.6);
+    transform: translateY(-2px);
+    color: #ffffff;
 }
 #mobile-ui { 
     display: none; 

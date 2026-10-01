@@ -525,6 +525,25 @@ function executeAbility(p, ab) {
 
 function updatePlayers() {
     for (let p of players) {
+        // Online Guest Mode: P1 (Host) is smoothly interpolated from Host's 60 FPS packets!
+        if (window.isOnlineMatch && window.onlineNet && window.onlineNet.isActive && !window.onlineNet.isHost && p.id === 1) {
+            if (window.onlineNet.targetP1) {
+                let tp = window.onlineNet.targetP1;
+                p.x += (tp.x - p.x) * 0.45;
+                p.y += (tp.y - p.y) * 0.45;
+                p.vx = tp.vx || 0;
+                p.vy = tp.vy || 0;
+                p.facingRight = tp.facingRight;
+                p.attackType = tp.attackType;
+                p.attackTimer = tp.attackTimer;
+                p.isDashing = tp.isDashing;
+                p.isDowned = tp.isDowned;
+                p.isHealing = tp.isHealing;
+                p.hp = tp.hp;
+            }
+            continue;
+        }
+
         if (p.voidDamageTimer > 0) p.voidDamageTimer--;
         if (p.crackedImmuneTimer > 0) p.crackedImmuneTimer--;
         if (p.fireLungeTimer > 0) p.fireLungeTimer--;
