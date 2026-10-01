@@ -1820,6 +1820,32 @@ function drawMasks() {
                 ctx.stroke();
                 ctx.restore();
             }
+
+            // Thorns Badge: Thorny barbed spikes around player's HP masks!
+            if (p.badges && p.badges.includes('thorns')) {
+                ctx.save();
+                ctx.fillStyle = (p.hp > i) ? "#ff2244" : "#883344";
+                ctx.strokeStyle = "#440011";
+                ctx.lineWidth = 1;
+                let numSpikes = 6;
+                for (let s = 0; s < numSpikes; s++) {
+                    let ang = (s * Math.PI * 2) / numSpikes + (i * 0.4);
+                    let tipX = cx + Math.cos(ang) * 14.5;
+                    let tipY = cy + Math.sin(ang) * 14.5;
+                    let b1x = cx + Math.cos(ang - 0.25) * 9.8;
+                    let b1y = cy + Math.sin(ang - 0.25) * 9.8;
+                    let b2x = cx + Math.cos(ang + 0.25) * 9.8;
+                    let b2y = cy + Math.sin(ang + 0.25) * 9.8;
+                    ctx.beginPath();
+                    ctx.moveTo(b1x, b1y);
+                    ctx.lineTo(tipX, tipY);
+                    ctx.lineTo(b2x, b2y);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
         }
         if (p.purpleHp > 0) {
             for (let i = 0; i < p.purpleHp; i++) {
@@ -1938,13 +1964,22 @@ function drawMasks() {
         if (p.bananaSkin || Object.values(p.abilities).includes('banana_snack')) {
             let uCount = p.bananaSnackUses !== undefined ? p.bananaSnackUses : 3;
             ctx.save();
-            ctx.font = "bold 12px Arial";
-            ctx.fillStyle = "#ffe600";
-            ctx.shadowColor = "rgba(255, 230, 0, 0.6)";
-            ctx.shadowBlur = 6;
-            ctx.fillText(`🍌 Бананы: ${uCount}/3`, tagOffset, yOffset + 4);
+            ctx.font = "16px sans-serif";
+            for (let b = 0; b < 3; b++) {
+                let bx = tagOffset + b * 22;
+                let by = yOffset + 5;
+                if (b < uCount) {
+                    ctx.globalAlpha = 1.0;
+                    ctx.shadowColor = "rgba(255, 215, 0, 0.8)";
+                    ctx.shadowBlur = 6;
+                } else {
+                    ctx.globalAlpha = 0.22;
+                    ctx.shadowBlur = 0;
+                }
+                ctx.fillText("🍌", bx, by);
+            }
             ctx.restore();
-            tagOffset += 110;
+            tagOffset += 76;
         }
 
         if (tagText) {
@@ -2006,6 +2041,8 @@ function drawMasks() {
     } else {
         let healY = numPlayers === 2 ? 105 : 75;
         ctx.fillStyle = "lime"; ctx.font = "14px Arial"; ctx.fillText("Заряды исцеления:", 20, healY);
+        let hasGen = typeof players !== 'undefined' && players.some(p => p.badges && p.badges.includes('generator'));
+        let genTargetIdx = Math.floor(sharedHeals);
         for (let j = 0; j < maxSharedHeals; j++) {
             let hx = 150 + j * 15; let hy = healY - 5;
             if (j < Math.floor(sharedHeals)) { 
@@ -2019,6 +2056,32 @@ function drawMasks() {
             } else { 
                 ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
                 ctx.strokeStyle = "rgba(0, 255, 0, 0.3)"; ctx.stroke(); 
+            }
+
+            // Generator Badge: Charging Energy Animation on the next diamond in queue!
+            if (hasGen && j === genTargetIdx && j < maxSharedHeals) {
+                ctx.save();
+                let gPulse = 0.35 + 0.35 * Math.sin(Date.now() / 130);
+                ctx.fillStyle = `rgba(50, 255, 120, ${gPulse * 0.75})`;
+                ctx.shadowColor = "#00ff66";
+                ctx.shadowBlur = 8;
+                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath();
+                ctx.fill();
+
+                // Spark streaming inwards towards diamond
+                let sparkAng = (Date.now() / 150) % (Math.PI * 2);
+                for (let s = 0; s < 3; s++) {
+                    let a = sparkAng + (s * Math.PI * 2 / 3);
+                    let dist = 8 + 3 * Math.sin(Date.now() / 90 + s);
+                    let sx = hx + Math.cos(a) * dist;
+                    let sy = hy + Math.sin(a) * dist;
+                    ctx.fillStyle = "#aaffcc";
+                    ctx.shadowBlur = 4;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 1.4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
             }
         }
         

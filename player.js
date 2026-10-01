@@ -677,6 +677,7 @@ function updatePlayers() {
                     // Hero physically rushes forward with rapier thrust, costs 2 charges, refunds 1 if hits boss!
                     p.fireLungeTimer = 11;
                     p.fireLungeHit = false;
+                    p.invuln = Math.max(p.invuln || 0, 18);
                     p.vx = (p.facingRight ? 1 : -1) * 20;
                     if (!onFloor && !onPlatform) p.vy = 0;
                     p.attackCooldown = 22;
@@ -1336,6 +1337,7 @@ function updatePlayers() {
                         };
                         if (rectIntersect(lBox, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
                             p.fireLungeHit = true;
+                            p.invuln = Math.max(p.invuln || 0, 22);
                             let lungeDmg = (p.heatBladeTimer > 0) ? 2.5 : 1.0;
                             tryDamageBoss(lungeDmg, p);
                             if (p.heatBladeTimer > 0) {
@@ -1834,8 +1836,10 @@ function updatePlayers() {
                 }
                 if (!kSpec) p.prevAttackKey = kAttack;
                 if (p.type === 'FIRE') p.prevDashKey = kDash;
-                if (!p.isRopeSliding) p.vy += currentGravity; 
-                // Feather Badge: Glide slowly in air when Jump is held
+                if (!p.isRopeSliding) {
+                    let grav = (p.badges && p.badges.includes('bracelet')) ? (currentGravity * 1.07) : currentGravity;
+                    p.vy += grav;
+                }
                 if (p.badges && p.badges.includes('feather') && kJump && p.vy > 1.2 && !onFloor && !onPlatform && !onWall) {
                     p.vy = 1.2;
                     if (Math.random() < 0.2) applyPhysicsPushToLeaves(p.x + 15, p.y + p.height, 2);
@@ -2517,6 +2521,48 @@ function drawPlayer(p) {
         ctx.textAlign = "center";
         let crownY = p.gnomeSkin ? p.y - 26 : p.y - 6;
         ctx.fillText("👑", p.x + p.width / 2, crownY);
+        ctx.restore();
+    }
+
+    // Light Amulet Badge: Glowing Divine Blue Aura
+    if (p.hasLightAmulet && !p.lightAmuletBroken && !p.isDowned) {
+        ctx.save();
+        let pulse = 0.35 + 0.15 * Math.sin(Date.now() / 220);
+        ctx.strokeStyle = `rgba(56, 189, 248, ${pulse + 0.25})`;
+        ctx.fillStyle = `rgba(56, 189, 248, ${pulse * 0.22})`;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = "#38bdf8";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.ellipse(p.x + p.width / 2, p.y + p.height / 2, p.width * 0.85, p.height * 0.65, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Thunder Dash Badge: Crackling mini lightning trail during dash
+    if (p.isDashing && p.badges && p.badges.includes('dash_strike') && !p.isDowned) {
+        ctx.save();
+        ctx.strokeStyle = (Math.random() < 0.5) ? "#00ffff" : "#fef08a";
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = "#00ffff";
+        ctx.shadowBlur = 8;
+        let bDir = p.facingRight ? -1 : 1;
+        let startX = p.x + (p.facingRight ? 4 : p.width - 4);
+        let startY = p.y + p.height * 0.55;
+        for (let l = 0; l < 3; l++) {
+            let lx = startX + bDir * (4 + l * 8) + (Math.random() * 6 - 3);
+            let ly = startY + (Math.random() * 14 - 7);
+            ctx.beginPath();
+            ctx.moveTo(lx, ly);
+            let midX = lx + bDir * (6 + Math.random() * 6);
+            let midY = ly + (Math.random() * 10 - 5);
+            ctx.lineTo(midX, midY);
+            let endX = midX + bDir * (5 + Math.random() * 6);
+            let endY = midY + (Math.random() * 8 - 4);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+        }
         ctx.restore();
     }
 

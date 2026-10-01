@@ -1,5 +1,5 @@
 // --- CONSTANTS & SHARED STATE ---
-const GAME_VERSION = "v70.0";
+const GAME_VERSION = "v71.0";
 window.GAME_VERSION = GAME_VERSION;
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas ? canvas.getContext("2d") : null;
