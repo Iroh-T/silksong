@@ -50,7 +50,7 @@ function createPlayer(id, type, keysObj, inputType, startX) {
     };
     let baseHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : 6;
     if (type === 'WATER') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#3366ff", atkCdBase: 24, atkRange: 95, jumpPowerBase: -12, type: 'WATER', dmgMulti: 1 }); } 
-    else if (type === 'EARTH') { Object.assign(p, { speed: 5.5, hp: baseHp, maxHp: baseHp, color: "#33cc33", atkCdBase: 12, atkRange: 65, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.75 }); } 
+    else if (type === 'EARTH') { Object.assign(p, { speed: 5.6, hp: baseHp, maxHp: baseHp, color: "#33cc33", atkCdBase: 8, atkRange: 65, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.7 }); } 
     else if (type === 'AIR') { Object.assign(p, { speed: 5.5, hp: baseHp, maxHp: baseHp, color: "#ffdd00", atkCdBase: 20, atkRange: 80, jumpPowerBase: -13, type: 'AIR', dmgMulti: 0.8 }); } 
     else if (type === 'STAMINA') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#b35959", atkCdBase: 24, atkRange: 95, jumpPowerBase: -12, type: 'STAMINA', dmgMulti: 1.5, stamina: 5, maxStamina: 9, isCharging: false, chargeTimer: 0, chargeProjectiles: [] }); }
     else if (type === 'FIRE') { Object.assign(p, { speed: 5.25, hp: baseHp, maxHp: baseHp, color: "#ff5500", atkCdBase: 18, atkRange: 80, jumpPowerBase: -12.5, type: 'FIRE', dmgMulti: 1.25, isParrying: false, parryTimer: 0, orangeHp: 0, orangeHpTimer: 0, isFieryHealing: false, fireDashTimer: 0 }); }
@@ -540,6 +540,10 @@ function updatePlayers() {
                 p.isDowned = tp.isDowned;
                 p.isHealing = tp.isHealing;
                 p.hp = tp.hp;
+                p.onGround = (p.y + p.height >= FLOOR - 3);
+                if (p.onGround && Math.abs(p.vx) > 0.3) {
+                    p.walkDist = (p.walkDist || 0) + Math.abs(p.vx);
+                }
             }
             continue;
         }
@@ -565,6 +569,7 @@ function updatePlayers() {
             p.y = FLOOR - p.height; p.vy = 0; onFloor = true;
             p.lastSafeX = p.x; p.lastSafeY = p.y;
         }
+        p.onGround = (onFloor || onPlatform);
 
         if (p.hasSneakers && Math.abs(p.vx) > 0 && (onFloor || onPlatform) && !p.isDashing && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
             p.runTimer++;
@@ -1879,6 +1884,27 @@ function updatePlayers() {
         if (p.y < ceilingLimit) { p.y = ceilingLimit; if (p.vy < 0) p.vy = 0; } 
         if (p.x < 0) p.x = 0; if (p.x > ARENA_W - p.width) p.x = ARENA_W - p.width;
         if (Math.abs(p.vx) > 0 && p.y + p.height >= FLOOR && !boss.state.startsWith("CINEMATIC")) applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 1);
+        let isGrounded = (p.y + p.height >= FLOOR - 2 || onFloor || onPlatform);
+        p.onGround = isGrounded;
+        if (isGrounded && Math.abs(p.vx) > 0.3 && !boss.state.startsWith("CINEMATIC") && !p.isDowned) {
+            p.walkDist = (p.walkDist || 0) + Math.abs(p.vx);
+            p.stepCounter = (p.stepCounter || 0) + Math.abs(p.vx);
+            if (p.stepCounter >= 18) {
+                p.stepCounter = 0;
+                playSound('step');
+                if (typeof stepPuffs !== 'undefined') {
+                    let puffDir = p.vx > 0 ? -1 : 1;
+                    stepPuffs.push({
+                        x: p.x + p.width / 2 + puffDir * 6,
+                        y: p.y + p.height - 1,
+                        vx: puffDir * (0.3 + Math.random() * 0.4),
+                        vy: -(0.25 + Math.random() * 0.3),
+                        r: 2.8 + Math.random() * 1.5,
+                        alpha: 0.55
+                    });
+                }
+            }
+        }
         if (p.invuln > 0) p.invuln--;
     }
 
@@ -2089,6 +2115,514 @@ function drawGnomeHat(p) {
     ctx.restore();
 }
 
+// --- ARTICULATED STICKMAN HERO SYSTEM (v73) ---
+function drawStickmanWeaponStrike(p, shX, shY, facing, atkProg, patternColor, bodyColor) {
+    ctx.save();
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = bodyColor;
+
+    if (p.type === 'FIRE') {
+        // Fire Rapier Thrust (Fencer lunge)
+        let thrustReach = 10 + Math.sin(atkProg * Math.PI) * 14;
+        let elX = shX + facing * (6 + thrustReach * 0.4);
+        let elY = shY + 2;
+        let handX = shX + facing * (12 + thrustReach);
+        let handY = shY + 2;
+
+        // Rear arm raised for balance
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(shX - facing * 8, shY - 6);
+        ctx.lineTo(shX - facing * 12, shY - 12);
+        ctx.stroke();
+
+        // Front arm thrusting forward
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(elX, elY);
+        ctx.lineTo(handX, handY);
+        ctx.stroke();
+
+        // Steel Rapier with guard and burning tip
+        ctx.strokeStyle = "#e2e8f0";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(handX, handY);
+        ctx.lineTo(handX + facing * 32, handY);
+        ctx.stroke();
+
+        // Bell guard
+        ctx.strokeStyle = "#ffaa00";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(handX + facing * 2, handY, 4, -Math.PI / 2, Math.PI / 2);
+        ctx.stroke();
+
+        // Gleaming fiery tip
+        ctx.fillStyle = (p.heatBladeTimer > 0) ? "#ff2200" : "#ff8800";
+        ctx.shadowColor = "#ff5500";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(handX + facing * 32, handY, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+    } else if (p.type === 'AIR') {
+        // Air Hero: Wind blade materialized from air currents
+        let swingAng = -Math.PI * 0.45 + atkProg * Math.PI * 0.85;
+        let hX = shX + facing * Math.cos(swingAng) * 15;
+        let hY = shY + Math.sin(swingAng) * 15;
+
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(shX + facing * 8, shY - 4);
+        ctx.lineTo(hX, hY);
+        ctx.stroke();
+
+        // Aerodynamic Cyan Wind Blade
+        let tipX = hX + facing * Math.cos(swingAng) * 30;
+        let tipY = hY + Math.sin(swingAng) * 30;
+        ctx.strokeStyle = "#00ffff";
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "#00e5ff";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(hX, hY);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+
+    } else if (p.type === 'EARTH') {
+        // Earth Hero: Она, 2 кинжала, бьет быстро!
+        let isFirstStrike = atkProg < 0.5;
+        let subProg = isFirstStrike ? (atkProg * 2) : ((atkProg - 0.5) * 2);
+
+        // Arm 1 (First dagger slash)
+        let ang1 = -0.4 + (isFirstStrike ? subProg * 0.9 : 0.9);
+        let h1X = shX + facing * (12 + Math.cos(ang1) * 8);
+        let h1Y = shY + 2 + Math.sin(ang1) * 12;
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(shX + facing * 6, shY - 2);
+        ctx.lineTo(h1X, h1Y);
+        ctx.stroke();
+
+        // Dagger 1 (Emerald)
+        ctx.strokeStyle = "#33ff55";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#33ff55";
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(h1X, h1Y);
+        ctx.lineTo(h1X + facing * 16, h1Y + Math.sin(ang1) * 10);
+        ctx.stroke();
+
+        // Arm 2 (Second dagger follow-up slash)
+        let ang2 = 0.5 - (isFirstStrike ? 0 : subProg * 0.9);
+        let h2X = shX + facing * (10 + Math.cos(ang2) * 8);
+        let h2Y = shY + 6 + Math.sin(ang2) * 10;
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(shX + facing * 5, shY + 4);
+        ctx.lineTo(h2X, h2Y);
+        ctx.stroke();
+
+        // Dagger 2 (Jade)
+        ctx.strokeStyle = "#44cc44";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#44cc44";
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(h2X, h2Y);
+        ctx.lineTo(h2X + facing * 16, h2Y + Math.sin(ang2) * 8);
+        ctx.stroke();
+
+    } else if (p.type === 'FIRE_HALBERD') {
+        // Fire Halberd: Two-handed polearm sweep
+        let spinAng = atkProg * Math.PI * 2;
+        let h1X = shX + facing * 6, h1Y = shY + 2;
+        let h2X = shX + facing * 14, h2Y = shY;
+
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(h1X, h1Y);
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(h2X, h2Y);
+        ctx.stroke();
+
+        // Halberd shaft
+        let poleLen = 48;
+        let pTipX = h2X + facing * Math.cos(spinAng) * (poleLen * 0.65);
+        let pTipY = h2Y + Math.sin(spinAng) * (poleLen * 0.65);
+        let pTailX = h2X - facing * Math.cos(spinAng) * (poleLen * 0.35);
+        let pTailY = h2Y - Math.sin(spinAng) * (poleLen * 0.35);
+
+        ctx.strokeStyle = "#854d0e";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(pTailX, pTailY);
+        ctx.lineTo(pTipX, pTipY);
+        ctx.stroke();
+
+        // Axe Head & Spearpoint
+        ctx.fillStyle = "#ffaa00";
+        ctx.shadowColor = "#ff4400";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(pTipX, pTipY, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+
+    } else if (p.type === 'WATER_ROPE') {
+        // Water Rope: Harpoon Thrust / Cast
+        let castX = shX + facing * (12 + Math.sin(atkProg * Math.PI) * 16);
+        let castY = shY + 4;
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(shX + facing * 6, shY);
+        ctx.lineTo(castX, castY);
+        ctx.stroke();
+
+        // Harpoon Tip
+        ctx.strokeStyle = "#00f0ff";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(castX, castY);
+        ctx.lineTo(castX + facing * 24, castY);
+        ctx.stroke();
+
+        // Harpoon barb
+        ctx.fillStyle = "#00ffff";
+        ctx.beginPath();
+        ctx.moveTo(castX + facing * 24, castY);
+        ctx.lineTo(castX + facing * 18, castY - 4);
+        ctx.lineTo(castX + facing * 18, castY + 4);
+        ctx.closePath();
+        ctx.fill();
+
+    } else if (p.type === 'STAMINA') {
+        // Stamina Hero: Whip or Pink Blade
+        if (p.weaponMode === 'PINK') {
+            let slashProg = Math.sin(atkProg * Math.PI);
+            let hX = shX + facing * (10 + slashProg * 14);
+            let hY = shY + (atkProg - 0.5) * 14;
+
+            ctx.beginPath();
+            ctx.moveTo(shX, shY);
+            ctx.lineTo(shX + facing * 6, shY);
+            ctx.lineTo(hX, hY);
+            ctx.stroke();
+
+            // Pink curved blade
+            ctx.strokeStyle = "#ff0088";
+            ctx.lineWidth = 3;
+            ctx.shadowColor = "#ff0077";
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(hX, hY, 14, -Math.PI * 0.4, Math.PI * 0.4);
+            ctx.stroke();
+        } else {
+            // Whip lash
+            let hX = shX + facing * 12;
+            let hY = shY + 2;
+            ctx.beginPath();
+            ctx.moveTo(shX, shY);
+            ctx.lineTo(hX, hY);
+            ctx.stroke();
+
+            // Undulating whip line
+            ctx.strokeStyle = "#00e5ff";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(hX, hY);
+            let wEnd = hX + facing * (24 + Math.sin(atkProg * Math.PI) * 20);
+            let wMidY = hY + Math.sin(atkProg * Math.PI * 3) * 6;
+            ctx.quadraticCurveTo(hX + facing * 12, wMidY, wEnd, hY);
+            ctx.stroke();
+        }
+
+    } else {
+        // Water Hero (Default): Katana Slash
+        let swingAng = -Math.PI * 0.4 + atkProg * Math.PI * 0.75;
+        let armReach = 14;
+        let elX = shX + facing * Math.cos(swingAng - 0.2) * (armReach * 0.6);
+        let elY = shY + Math.sin(swingAng - 0.2) * (armReach * 0.6);
+        let handX = shX + facing * Math.cos(swingAng) * armReach;
+        let handY = shY + Math.sin(swingAng) * armReach;
+
+        // Front arm swinging
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(elX, elY);
+        ctx.lineTo(handX, handY);
+        ctx.stroke();
+
+        // Katana Blade
+        let bladeLen = 28;
+        let tipX = handX + facing * Math.cos(swingAng) * bladeLen;
+        let tipY = handY + Math.sin(swingAng) * bladeLen;
+
+        ctx.strokeStyle = "#e2e8f0";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(handX, handY);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+
+        // Katana Edge Glow (Cyan or Demon Purple)
+        ctx.strokeStyle = (p.type === 'WATER' && p.stance === 'DEMON') ? "#d000ff" : "#00f0ff";
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = ctx.strokeStyle;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(handX, handY);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+function drawStickmanIdleArms(p, shX, shY, facing, bodyColor, patternColor) {
+    ctx.save();
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = bodyColor;
+
+    if (p.isDashing) {
+        // Ninja dash: arms swept back
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(shX - facing * 10, shY + 5);
+        ctx.lineTo(shX - facing * 18, shY + 7);
+        ctx.stroke();
+    } else if (p.type === 'FIRE' && p.isParrying) {
+        // Parry ready stance: rapier held forward
+        let handX = shX + facing * 10, handY = shY;
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(handX, handY);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(handX, handY);
+        ctx.lineTo(handX + facing * 24, handY - 8);
+        ctx.stroke();
+    } else if (p.type === 'EARTH' && !p.isDashing) {
+        // Earth Hero: holds 2 daggers in agile combat guard
+        let breath = Math.sin(Date.now() / 300) * 0.8;
+        let h1X = shX + facing * 8, h1Y = shY + 6 + breath;
+        let h2X = shX - facing * 5, h2Y = shY + 7 + breath;
+        ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(h1X, h1Y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(h2X, h2Y); ctx.stroke();
+        // Dagger 1
+        ctx.strokeStyle = "#33ff55"; ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(h1X, h1Y); ctx.lineTo(h1X + facing * 12, h1Y + 3); ctx.stroke();
+        // Dagger 2
+        ctx.strokeStyle = "#44cc44"; ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(h2X, h2Y); ctx.lineTo(h2X - facing * 10, h2Y + 4); ctx.stroke();
+    } else if ((p.onGround || p.y + p.height >= FLOOR - 3) && Math.abs(p.vx) > 0.3) {
+        // Running arm swing in natural opposition to stepping legs
+        let walkPhase = (p.walkDist || 0) * 0.22;
+        let armSwing = -Math.sin(walkPhase) * 6.5;
+
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(shX + facing * 4 + armSwing, shY + 6);
+        ctx.lineTo(shX + facing * 8 + armSwing * 1.4, shY + 12);
+        ctx.stroke();
+    } else {
+        // Idle ready stance: front arm bent at waist
+        let breath = Math.sin(Date.now() / 300) * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(shX + facing * 5, shY + 6 + breath);
+        ctx.lineTo(shX + facing * 8, shY + 10 + breath);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+function drawStickmanBody(p, bodyColor, cloakColor, patternColor) {
+    if (p.bananaSkin) {
+        drawBananaBody(p, bodyColor, cloakColor);
+        return;
+    }
+
+    ctx.save();
+    let facing = p.facingRight ? 1 : -1;
+    let cx = p.x + p.width / 2;
+    let isGrounded = !!(p.onGround || (p.y + p.height >= FLOOR - 3));
+    let isDash = !!p.isDashing;
+    let isAir = !isGrounded && !isDash;
+    let isMoving = isGrounded && !isDash && Math.abs(p.vx) > 0.3;
+    let isAtk = p.attackTimer > 0;
+    let atkProg = isAtk ? (1 - p.attackTimer / 12) : 0;
+
+    let walkPhase = (p.walkDist || 0) * 0.22;
+    let stepDip = isMoving ? Math.abs(Math.sin(walkPhase)) * 2.5 : 0;
+    let sprintLean = isMoving ? facing * 3.5 : 0;
+
+    // Head
+    let headR = 7;
+    let headOffX = isDash ? facing * 8 : (sprintLean + (isAtk ? facing * 3 : 0));
+    let headOffY = isDash ? 6 : (stepDip + (isMoving ? 0 : Math.sin(Date.now() / 60) * 0.5));
+    let headX = cx + headOffX;
+    let headY = p.y + 11 + headOffY;
+
+    // Neck & Pelvis
+    let neckX = headX - facing * 1;
+    let neckY = headY + headR;
+    let pelvisX = isDash ? (cx - facing * 6) : (cx - (isMoving ? facing * 1.5 : 0));
+    let pelvisY = isDash ? (p.y + 32) : (p.y + 31 + stepDip);
+
+    // Legs
+    ctx.strokeStyle = bodyColor;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    if (isDash) {
+        // Dashing: front leg bent, rear leg trailing
+        let fKneeX = cx + facing * 8, fKneeY = pelvisY + 7;
+        let fFootX = cx + facing * 14, fFootY = pelvisY + 16;
+        let bKneeX = cx - facing * 12, bKneeY = pelvisY + 6;
+        let bFootX = cx - facing * 20, bFootY = pelvisY + 14;
+
+        ctx.beginPath();
+        ctx.moveTo(pelvisX, pelvisY);
+        ctx.lineTo(bKneeX, bKneeY);
+        ctx.lineTo(bFootX, bFootY);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(pelvisX, pelvisY);
+        ctx.lineTo(fKneeX, fKneeY);
+        ctx.lineTo(fFootX, fFootY);
+        ctx.stroke();
+    } else if (isAir) {
+        // Airborne: tucked knees
+        let fKneeX = cx + facing * 6, fKneeY = pelvisY + 7;
+        let fFootX = cx + facing * 5, fFootY = pelvisY + 17;
+        let bKneeX = cx - facing * 5, bKneeY = pelvisY + 6;
+        let bFootX = cx - facing * 3, bFootY = pelvisY + 16;
+
+        ctx.beginPath();
+        ctx.moveTo(pelvisX, pelvisY);
+        ctx.lineTo(bKneeX, bKneeY);
+        ctx.lineTo(bFootX, bFootY);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(pelvisX, pelvisY);
+        ctx.lineTo(fKneeX, fKneeY);
+        ctx.lineTo(fFootX, fFootY);
+        ctx.stroke();
+    } else if (isMoving) {
+        // Expressive step animation with knee lifting, heel strike, and foot sole
+        let s1 = Math.sin(walkPhase);
+        let s2 = Math.sin(walkPhase + Math.PI);
+        let c1 = Math.cos(walkPhase);
+        let c2 = Math.cos(walkPhase + Math.PI);
+
+        // Leg 1 (Front phase)
+        let kneeLift1 = Math.max(0, -c1) * 7;
+        let footLift1 = Math.max(0, -s1) * 6;
+        let k1X = pelvisX + facing * (s1 * 9);
+        let k1Y = pelvisY + 9 - kneeLift1;
+        let f1X = pelvisX + facing * (s1 * 14);
+        let f1Y = (p.y + p.height) - footLift1;
+
+        // Leg 2 (Rear phase)
+        let kneeLift2 = Math.max(0, -c2) * 7;
+        let footLift2 = Math.max(0, -s2) * 6;
+        let k2X = pelvisX + facing * (s2 * 9);
+        let k2Y = pelvisY + 9 - kneeLift2;
+        let f2X = pelvisX + facing * (s2 * 14);
+        let f2Y = (p.y + p.height) - footLift2;
+
+        // Draw rear leg first (depth)
+        ctx.beginPath();
+        ctx.moveTo(pelvisX, pelvisY);
+        ctx.lineTo(k2X, k2Y);
+        ctx.lineTo(f2X, f2Y);
+        ctx.lineTo(f2X + facing * (footLift2 > 1 ? 2 : 6), f2Y);
+        ctx.stroke();
+
+        // Draw front leg
+        ctx.beginPath();
+        ctx.moveTo(pelvisX, pelvisY);
+        ctx.lineTo(k1X, k1Y);
+        ctx.lineTo(f1X, f1Y);
+        ctx.lineTo(f1X + facing * (footLift1 > 1 ? 2 : 6), f1Y);
+        ctx.stroke();
+    } else {
+        // Idle grounded stance
+        let breath = Math.sin(Date.now() / 300) * 0.8;
+        let k1X = pelvisX - 3, k1Y = pelvisY + 9 + breath;
+        let f1X = pelvisX - 5, f1Y = p.y + p.height;
+        let k2X = pelvisX + 4, k2Y = pelvisY + 9 + breath;
+        let f2X = pelvisX + 6, f2Y = p.y + p.height;
+
+        ctx.beginPath();
+        ctx.moveTo(pelvisX, pelvisY);
+        ctx.lineTo(k1X, k1Y);
+        ctx.lineTo(f1X, f1Y);
+        ctx.lineTo(f1X - facing * 3, f1Y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(pelvisX, pelvisY);
+        ctx.lineTo(k2X, k2Y);
+        ctx.lineTo(f2X, f2Y);
+        ctx.lineTo(f2X + facing * 4, f2Y);
+        ctx.stroke();
+    }
+
+    // Spine
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(neckX, neckY);
+    ctx.lineTo(pelvisX, pelvisY);
+    ctx.stroke();
+
+    // Shoulders
+    let shX = neckX;
+    let shY = neckY + 2;
+
+    // Arms & Weapon (Attack or Idle)
+    if (isAtk) {
+        drawStickmanWeaponStrike(p, shX, shY, facing, atkProg, patternColor, bodyColor);
+    } else {
+        drawStickmanIdleArms(p, shX, shY, facing, bodyColor, patternColor);
+    }
+
+    // Head
+    ctx.fillStyle = bodyColor;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(headX, headY, headR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Ninja Visor / Glowing Eye Slit
+    ctx.strokeStyle = patternColor;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = patternColor;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(headX + facing * 0.5, headY - 0.5);
+    ctx.lineTo(headX + facing * 5.5, headY - 0.5);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+}
+
 function drawPlayer(p) {
     if (p.isDowned) {
         ctx.save(); 
@@ -2221,21 +2755,6 @@ function drawPlayer(p) {
     // --- MAIN BODY SHAPE (OR BANANA SKIN) ---
     if (p.bananaSkin) {
         drawBananaBody(p, bodyColor, cloakColor);
-    } else {
-        ctx.beginPath();
-        if (p.facingRight) {
-            ctx.moveTo(p.x, p.y + p.height);
-            ctx.lineTo(p.x, p.y);
-            ctx.lineTo(p.x + p.width - 15, p.y + 10);
-            ctx.quadraticCurveTo(p.x + p.width, p.y + p.height / 2, p.x + p.width - 5, p.y + p.height);
-        } else {
-            ctx.moveTo(p.x + p.width, p.y + p.height);
-            ctx.lineTo(p.x + p.width, p.y);
-            ctx.lineTo(p.x + 15, p.y + 10);
-            ctx.quadraticCurveTo(p.x, p.y + p.height / 2, p.x + 5, p.y + p.height);
-        }
-        ctx.closePath();
-        ctx.fill();
     }
 
     // --- CLOAKS & PATTERNS (Hidden when Banana Skin is equipped!) ---
@@ -2306,6 +2825,11 @@ function drawPlayer(p) {
         ctx.quadraticCurveTo(midX - (trailDir * 8), midY + 12, hemMidX, hemMidY - 3);
         ctx.stroke();
         ctx.restore();
+    }
+
+    // --- ARTICULATED STICKMAN BODY (v73) ---
+    if (!p.bananaSkin) {
+        drawStickmanBody(p, bodyColor, cloakColor, patternColor);
     }
 
     // --- EARTH HERO: BLACK-PURPLE HAIR ---
@@ -2733,3 +3257,5 @@ window.takeDamage = takeDamage;
 window.drawPlayer = drawPlayer;
 window.drawBananaBody = drawBananaBody;
 window.drawGnomeHat = drawGnomeHat;
+window.drawStickmanBody = drawStickmanBody;
+window.drawStickmanWeaponStrike = drawStickmanWeaponStrike;

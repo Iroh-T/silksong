@@ -122,6 +122,15 @@ function playSound(type) {
         osc.start(now); 
         osc.stop(now + 0.4); 
     }
+    else if (type === 'step') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(140 + Math.random() * 25, now);
+        osc.frequency.exponentialRampToValueAtTime(45, now + 0.045);
+        gain.gain.setValueAtTime(0.09, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+        osc.start(now);
+        osc.stop(now + 0.045);
+    }
     else if (type === 'wind') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(140, now);

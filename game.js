@@ -577,22 +577,37 @@ function updateProjectiles() {
         if (sr.r > sr.maxR) screamRings.splice(i, 1); 
     }
 
-    // Chaos balls
+    // Chaos balls (Шарики пустоты в 3 фазе L-режима: больше шариков, преимущественно по углам и по арене, обычный размер)
     if (secretMode && boss.phase >= 3 && !boss.state.startsWith("L_INTRO")) {
-        if (Math.random() < 0.15) { 
+        if (Math.random() < 0.40) { 
+            let spawnCorner = Math.random() < 0.70;
+            let spawnX = spawnCorner ? (Math.random() < 0.5 ? Math.random() * 280 : ARENA_W - Math.random() * 280) : (280 + Math.random() * (ARENA_W - 560));
+            let fromTop = Math.random() < 0.25;
             chaosBalls.push({ 
-                x: Math.random() < 0.5 ? Math.random() * 250 : ARENA_W - Math.random() * 250, 
-                y: camY + GAME_HEIGHT + 50, 
-                vx: (Math.random() - 0.5) * 2, 
-                vy: -1 - Math.random() * 3, 
-                r: 10 + Math.random() * 15 
+                x: spawnX, 
+                y: fromTop ? (camY - 30) : (camY + GAME_HEIGHT + 40), 
+                vx: (Math.random() - 0.5) * 2.2, 
+                vy: fromTop ? (1 + Math.random() * 2.2) : (-1 - Math.random() * 3), 
+                r: 7 + Math.random() * 11 
             }); 
         }
     }
     for (let i = chaosBalls.length - 1; i >= 0; i--) {
         let cb = chaosBalls[i];
         cb.x += cb.vx; cb.y += cb.vy;
-        if (cb.y < camY - 50 || cb.x < -50 || cb.x > ARENA_W + 50) chaosBalls.splice(i, 1);
+        if (cb.y < camY - 50 || cb.y > camY + GAME_HEIGHT + 60 || cb.x < -50 || cb.x > ARENA_W + 50) chaosBalls.splice(i, 1);
+    }
+
+    // Step dust puffs
+    if (typeof stepPuffs !== 'undefined') {
+        for (let i = stepPuffs.length - 1; i >= 0; i--) {
+            let sp = stepPuffs[i];
+            sp.x += sp.vx;
+            sp.y += sp.vy;
+            sp.r += 0.15;
+            sp.alpha -= 0.04;
+            if (sp.alpha <= 0) stepPuffs.splice(i, 1);
+        }
     }
 
     // Void portals
@@ -1354,6 +1369,7 @@ function update() {
     updateProjectiles();
     updateWaterRopes();
     updateWorldEvents();
+    updateBackgroundDust();
     if (typeof isTutorial !== 'undefined' && isTutorial) {
         updateTutorial();
     } else {
@@ -1367,10 +1383,46 @@ function update() {
     }
 }
 
+function updateBackgroundDust() {
+    if (!backgroundDust || backgroundDust.length === 0) {
+        if (typeof initBackgroundDust === 'function') initBackgroundDust();
+        return;
+    }
+    let now = Date.now();
+    for (let d of backgroundDust) {
+        d.x += d.vx + Math.sin(now / 2200 + d.phase) * 0.16;
+        d.y += d.vy;
+        if (d.y < -350) {
+            d.y = FLOOR + 60;
+            d.x = Math.random() * ARENA_W;
+        } else if (d.y > FLOOR + 100) {
+            d.y = -250;
+        }
+        if (d.x < -100) d.x = ARENA_W + 80;
+        if (d.x > ARENA_W + 100) d.x = -80;
+    }
+}
+
 function drawBackground() {
     let bgTop = (boss.phase >= 2.5 || boss.state.startsWith("L_CLIMB") || secretMode) ? -6000 : 0;
     ctx.fillStyle = secretMode ? "#111" : (globalWindMode === "DOWN" ? "#1a100c" : "#2e1a12"); 
     ctx.fillRect(0, bgTop, ARENA_W, FLOOR - bgTop);
+
+    // 1. Atmospheric Black Dust behind everything (Silksong aesthetic for Gandalf)
+    if (typeof backgroundDust !== 'undefined' && backgroundDust.length > 0) {
+        ctx.save();
+        for (let d of backgroundDust) {
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(10, 8, 14, ${d.alpha})`;
+            ctx.fill();
+            // Subtle iridescent rim on the edge
+            ctx.strokeStyle = d.rimHue;
+            ctx.lineWidth = 0.9;
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
     
     if (!secretMode) { 
         ctx.fillStyle = "rgba(255, 250, 220, 0.08)";
@@ -2800,6 +2852,18 @@ function draw() {
                         ctx.restore();
                     }
                 }
+            }
+
+            // Footstep dust puffs under heroes' feet
+            if (typeof stepPuffs !== 'undefined' && stepPuffs.length > 0) {
+                ctx.save();
+                for (let sp of stepPuffs) {
+                    ctx.beginPath();
+                    ctx.arc(sp.x, sp.y, sp.r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(180, 160, 140, ${Math.max(0, sp.alpha)})`;
+                    ctx.fill();
+                }
+                ctx.restore();
             }
 
             drawBoss();

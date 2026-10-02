@@ -1652,6 +1652,8 @@ function drawRapier(b, isPhantom = false) {
         return; 
     }
 
+    if (!isPhantom) return; // Boss now holds the Great Needle directly in her articulated model!
+
     ctx.save(); 
     let flip = b.facingRight ? 1 : -1; 
     ctx.translate(b.x + b.width/2, b.y + b.height/2 - 5); 
@@ -1795,6 +1797,317 @@ function drawTutorialBossModel() {
     ctx.restore();
 }
 
+// --- ARTICULATED SILK HUNTRESS BOSS SYSTEM (v73) ---
+function getBossAttackHintColor(boss) {
+    if (boss.state === "BOSS_STUNNED" || boss.state === "L_PHASE4_STUNNED" || boss.state === "VOID_SINK_STUN") {
+        return "rgba(220, 220, 240, 0.4)";
+    }
+    if (boss.state.startsWith("LUNGE") || boss.state === "DASH_WINDUP") {
+        return "rgba(0, 240, 255, 0.85)"; // Subtle cyan gleam for horizontal lunge
+    }
+    if (boss.state === "PARRY_STANCE" || boss.state === "PARRY_COUNTER_WINDUP") {
+        return "rgba(255, 215, 0, 0.85)"; // Subtle golden gleam for defensive parry
+    }
+    if (boss.state.startsWith("SA1") || boss.state === "AOE" || boss.state === "SHARPEN_WINDUP") {
+        return "rgba(255, 120, 0, 0.85)"; // Subtle ember orange for sweep / spin / flurry
+    }
+    if (boss.state.startsWith("SA3") || boss.state === "VOID_PORTALS" || boss.state === "L_HEAL" || boss.state.startsWith("L_PHASE4")) {
+        return "rgba(168, 85, 247, 0.85)"; // Subtle void purple for dark magic
+    }
+    if (boss.state.startsWith("SA2")) {
+        return "rgba(255, 255, 255, 0.9)"; // Subtle white for precision needle slice
+    }
+    if (boss.state === "CAST_WIND" || boss.state === "WIND_FLY" || boss.state === "CAST_VERTICAL_WIND") {
+        return "rgba(56, 189, 248, 0.85)"; // Subtle air cyan for wind
+    }
+    if (boss.state.startsWith("FEINT")) {
+        return "rgba(200, 200, 220, 0.75)"; // Subtle silver for feints
+    }
+    if (boss.color && boss.color !== "#e6c800") {
+        return boss.color;
+    }
+    return "rgba(255, 215, 0, 0.6)"; // Default subtle golden silk
+}
+
+function drawBossStickmanFigure(boss, bCloakColor, bPatternColor) {
+    ctx.save();
+    let facing = boss.facingRight ? 1 : -1;
+    let bcx = boss.x + boss.width / 2;
+    let bFloorY = boss.y + boss.height;
+    let hintColor = getBossAttackHintColor(boss);
+
+    let isStun = (boss.state === "BOSS_STUNNED" || boss.state === "L_PHASE4_STUNNED" || boss.state === "VOID_SINK_STUN");
+    let isLungeWindup = (boss.state.startsWith("LUNGE_WINDUP") || boss.state === "DASH_WINDUP" || boss.state === "FEINT_WINDUP" || boss.state === "HEAL_PUNISH_DASH");
+    let isLungeActive = (boss.state === "LUNGE" || boss.state === "PARRY_DASH" || boss.state === "FEINT_DASH_FORWARD");
+    let isParry = (boss.state === "PARRY_STANCE" || boss.state === "PARRY_COUNTER_WINDUP");
+    let isPlunge = (boss.state === "CAST_VERTICAL_WIND" || boss.state === "SA1_SLAM" || (boss.vy > 8 && boss.y < FLOOR - 60));
+    let isSpin = (boss.state === "AOE" || boss.state === "SHARPEN_WINDUP" || boss.state === "SA1_WINDUP");
+    let isMagic = (boss.state === "CAST_WIND" || boss.state === "WIND_FLY" || boss.state.startsWith("SA2") || boss.state.startsWith("SA3") || boss.state === "VOID_PORTALS" || boss.state === "L_HEAL" || boss.state === "L_SCREAM");
+    let isMove = (boss.state === "WALK" || boss.state === "CHASE" || Math.abs(boss.vx) > 0.8);
+
+    let neckX, neckY, pelvisX, pelvisY, headX, headY;
+    let pommelX, pommelY, tipX, tipY;
+    let hand1X, hand1Y, hand2X, hand2Y;
+
+    // Body Color: iconic bright golden yellow boss stickman
+    let huntressColor = isStun ? "#888877" : (secretMode ? "#cca000" : "#ffd700");
+
+    ctx.lineWidth = 3.8;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = huntressColor;
+
+    if (isLungeWindup) {
+        // --- 1. LUNGE WINDUP (Deep coiled crouch, needle cocked back horizontally) ---
+        let coilJitter = Math.sin(Date.now() / 35) * 1.2;
+        neckX = bcx + facing * 5; neckY = boss.y + 22 + coilJitter;
+        pelvisX = bcx - facing * 7; pelvisY = boss.y + 35;
+        headX = neckX + facing * 3; headY = neckY - 8;
+
+        // Front leg deeply coiled, back leg bracing
+        let fKneeX = bcx + facing * 11, fKneeY = boss.y + 42;
+        let fFootX = bcx + facing * 15, fFootY = bFloorY;
+        let bKneeX = bcx - facing * 13, bKneeY = boss.y + 39;
+        let bFootX = bcx - facing * 18, bFootY = bFloorY;
+
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bKneeX, bKneeY); ctx.lineTo(bFootX, bFootY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(fKneeX, fKneeY); ctx.lineTo(fFootX, fFootY); ctx.stroke();
+
+        // Hands & Needle pulled back horizontally
+        hand1X = bcx - facing * 12; hand1Y = boss.y + 22;
+        hand2X = bcx - facing * 2; hand2Y = boss.y + 22;
+        pommelX = bcx - facing * 24; pommelY = boss.y + 22;
+        tipX = bcx + facing * 26 + coilJitter; tipY = boss.y + 22;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand2X, hand2Y); ctx.stroke();
+
+    } else if (isLungeActive) {
+        // --- 2. LUNGE ACTIVE (Horizontal spear thrust mid-flight) ---
+        neckX = bcx + facing * 14; neckY = boss.y + 21;
+        pelvisX = bcx - facing * 10; pelvisY = boss.y + 21;
+        headX = neckX + facing * 4; headY = neckY - 5;
+
+        // Horizontal streamlined trailing legs
+        let l1KneeX = bcx - facing * 18, l1KneeY = boss.y + 20;
+        let l1FootX = bcx - facing * 28, l1FootY = boss.y + 19;
+        let l2KneeX = bcx - facing * 16, l2KneeY = boss.y + 23;
+        let l2FootX = bcx - facing * 25, l2FootY = boss.y + 24;
+
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(l1KneeX, l1KneeY); ctx.lineTo(l1FootX, l1FootY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(l2KneeX, l2KneeY); ctx.lineTo(l2FootX, l2FootY); ctx.stroke();
+
+        // Arm thrusting forward, Great Needle extended far ahead
+        hand1X = neckX + facing * 14; hand1Y = neckY;
+        pommelX = neckX + facing * 8; pommelY = neckY;
+        tipX = neckX + facing * 64; tipY = neckY;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+
+    } else if (isParry) {
+        // --- 3. PARRY STANCE (Upright martial poise, Great Needle held vertically guarding torso) ---
+        neckX = bcx; neckY = boss.y + 14;
+        pelvisX = bcx; pelvisY = boss.y + 31;
+        headX = neckX; headY = neckY - 9;
+
+        // Grounded defensive wide feet
+        let lKneeX = bcx - 8, lKneeY = boss.y + 40;
+        let lFootX = bcx - 12, lFootY = bFloorY;
+        let rKneeX = bcx + 8, rKneeY = boss.y + 40;
+        let rFootX = bcx + 12, rFootY = bFloorY;
+
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(lKneeX, lKneeY); ctx.lineTo(lFootX, lFootY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(rKneeX, rKneeY); ctx.lineTo(rFootX, rFootY); ctx.stroke();
+
+        // Hands holding Great Needle VERTICALLY like a guard shield
+        hand1X = bcx + facing * 4; hand1Y = boss.y + 28;
+        pommelX = bcx + facing * 4; pommelY = boss.y + 40;
+        tipX = bcx + facing * 4; tipY = boss.y - 12;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+
+    } else if (isPlunge) {
+        // --- 4. AIR DIVE / PLUNGE (Knees tucked up, Great Needle pointing straight down) ---
+        neckX = bcx; neckY = boss.y + 24;
+        pelvisX = bcx; pelvisY = boss.y + 13;
+        headX = neckX; headY = neckY - 8;
+
+        // Tucked knees
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx - 6, boss.y + 18); ctx.lineTo(bcx - 4, boss.y + 22); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx + 6, boss.y + 18); ctx.lineTo(bcx + 4, boss.y + 22); ctx.stroke();
+
+        // Hands gripping needle pommel, pointing straight down into floor
+        hand1X = bcx; hand1Y = boss.y + 24;
+        pommelX = bcx; pommelY = boss.y + 24;
+        tipX = bcx; tipY = boss.y + 72;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+
+    } else if (isSpin) {
+        // --- 5. SPIN / CYCLONE / AOE (Wide stance, horizontal sweeping needle) ---
+        neckX = bcx; neckY = boss.y + 18;
+        pelvisX = bcx; pelvisY = boss.y + 32;
+        headX = neckX + facing * 1; headY = neckY - 9;
+
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx - 10, boss.y + 40); ctx.lineTo(bcx - 14, bFloorY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx + 10, boss.y + 40); ctx.lineTo(bcx + 14, bFloorY); ctx.stroke();
+
+        hand1X = bcx - facing * 8; hand1Y = boss.y + 22;
+        hand2X = bcx + facing * 8; hand2Y = boss.y + 22;
+        pommelX = bcx - facing * 20; pommelY = boss.y + 22;
+        tipX = bcx + facing * 34; tipY = boss.y + 22;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand2X, hand2Y); ctx.stroke();
+
+    } else if (isMagic) {
+        // --- 6. MAGIC / SUPER ATTACK (Channeling hand, needle pointed aloft to sky) ---
+        neckX = bcx - facing * 2; neckY = boss.y + 14;
+        pelvisX = bcx - facing * 4; pelvisY = boss.y + 32;
+        headX = neckX + facing * 1; headY = neckY - 9;
+
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx - 7, boss.y + 40); ctx.lineTo(bcx - 9, bFloorY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx + 8, boss.y + 40); ctx.lineTo(bcx + 11, bFloorY); ctx.stroke();
+
+        // Channeling forward hand
+        hand1X = bcx + facing * 12; hand1Y = boss.y + 18;
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+
+        // Raised needle hand
+        hand2X = bcx - facing * 6; hand2Y = boss.y + 14;
+        pommelX = bcx - facing * 14; pommelY = boss.y + 24;
+        tipX = bcx + facing * 24; tipY = boss.y - 18;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand2X, hand2Y); ctx.stroke();
+
+    } else if (isStun) {
+        // --- 7. STUNNED (Kneeling slump, head hanging, needle dropped on floor) ---
+        neckX = bcx; neckY = boss.y + 27;
+        pelvisX = bcx - facing * 4; pelvisY = boss.y + 38;
+        headX = bcx + facing * 2; headY = boss.y + 20;
+
+        // Down on one knee
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx - facing * 8, bFloorY); ctx.lineTo(bcx - facing * 14, bFloorY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx + facing * 8, boss.y + 42); ctx.lineTo(bcx + facing * 10, bFloorY); ctx.stroke();
+
+        // Limp arm, needle tip resting on arena floor
+        hand1X = bcx + facing * 6; hand1Y = boss.y + 36;
+        pommelX = bcx - facing * 4; pommelY = boss.y + 36;
+        tipX = bcx + facing * 26; tipY = bFloorY;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+
+    } else if (isMove) {
+        // --- 8. MOVE / CHASE (Fluid predatory stalking stride) ---
+        let movePhase = Date.now() / 85;
+        let stride = Math.sin(movePhase) * 10;
+        neckX = bcx + facing * 3; neckY = boss.y + 15;
+        pelvisX = bcx; pelvisY = boss.y + 31;
+        headX = neckX + facing * 1; headY = neckY - 9;
+
+        let k1X = pelvisX + facing * stride * 0.6, k1Y = boss.y + 40;
+        let f1X = pelvisX + facing * stride, f1Y = bFloorY - Math.max(0, -stride * 0.3);
+        let k2X = pelvisX - facing * stride * 0.6, k2Y = boss.y + 40;
+        let f2X = pelvisX - facing * stride, f2Y = bFloorY - Math.max(0, stride * 0.3);
+
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(k1X, k1Y); ctx.lineTo(f1X, f1Y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(k2X, k2Y); ctx.lineTo(f2X, f2Y); ctx.stroke();
+
+        hand1X = bcx + facing * 6; hand1Y = boss.y + 22;
+        pommelX = bcx - facing * 6; pommelY = boss.y + 18;
+        tipX = bcx + facing * 26; tipY = boss.y + 28;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+
+    } else {
+        // --- 9. IDLE (Breathing combat poise) ---
+        let breath = Math.sin(Date.now() / 250) * 1.2;
+        neckX = bcx; neckY = boss.y + 14 + breath;
+        pelvisX = bcx; pelvisY = boss.y + 31 + breath * 0.5;
+        headX = neckX; headY = neckY - 9;
+
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx - 5, boss.y + 40); ctx.lineTo(bcx - 6, bFloorY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bcx + 5, boss.y + 40); ctx.lineTo(bcx + 6, bFloorY); ctx.stroke();
+
+        hand1X = bcx + facing * 6; hand1Y = boss.y + 22 + breath;
+        pommelX = bcx - facing * 6; pommelY = boss.y + 19 + breath;
+        tipX = bcx + facing * 24; tipY = boss.y + 27 + breath;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+    }
+
+    // Spine
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(neckX, neckY);
+    ctx.lineTo(pelvisX, pelvisY);
+    ctx.stroke();
+
+    // --- THE GREAT NEEDLE (Silver steel with eyelet & subtle attack color spark on tip) ---
+    // 1. Pommel Eyelet
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(pommelX, pommelY, 3.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Delicate silk thread from eyelet
+    ctx.strokeStyle = hintColor;
+    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.55;
+    let wave1 = Math.sin(Date.now() / 90) * 5;
+    ctx.beginPath();
+    ctx.moveTo(pommelX, pommelY);
+    ctx.quadraticCurveTo(pommelX - facing * 12, pommelY + 6 + wave1, pommelX - facing * 24, pommelY + 14 + wave1 * 1.5);
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+
+    // 2. Polished Silver Needle Blade
+    let needleGrad = ctx.createLinearGradient(pommelX, pommelY, tipX, tipY);
+    needleGrad.addColorStop(0, "#cbd5e1");
+    needleGrad.addColorStop(0.5, "#f1f5f9");
+    needleGrad.addColorStop(1, "#94a3b8");
+    ctx.strokeStyle = needleGrad;
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    ctx.moveTo(pommelX, pommelY);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+
+    // 3. SUBTLE ATTACK COLOR TINT ON NEEDLE TIP ("капелька оттенка")
+    ctx.save();
+    ctx.fillStyle = hintColor;
+    ctx.shadowColor = hintColor;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 2.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // --- BOSS STICKMAN HEAD (NO ALIEN HORNS / NO BUG MASK) ---
+    // Sleek stickman warrior head (Yellow)
+    ctx.fillStyle = huntressColor;
+    ctx.strokeStyle = isStun ? "rgba(0, 0, 0, 0.4)" : "#b38600";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(headX, headY, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Focused warrior eye slit with subtle attack color hint ("капелька оттенка")
+    ctx.strokeStyle = hintColor;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = hintColor;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(headX + facing * 0.5, headY - 0.5);
+    ctx.lineTo(headX + facing * 6.5, headY - 0.5);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+}
+
 function drawBoss() {
     if (typeof isTutorial !== 'undefined' && isTutorial) {
         drawTutorialBossModel();
@@ -1911,14 +2224,12 @@ function drawBoss() {
         ctx.fillText(`Примените кинжал света (${hintKey})!`, boss.x + boss.width/2, boss.y - 18);
         ctx.restore();
     } else if (!boss.halfHpSeqActive && boss.x > -1000 && boss.state !== "SA1_ACTIVE" && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB")) {
-        ctx.fillStyle = getBossColor(boss.color);
         ctx.globalAlpha = (boss.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0) ? 0.5 : 1.0;
-        ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
         
         // --- БОСС: ЧЕРНЫЙ ШАРФ И ЖЕЛТЫЙ ПЛАЩ С ОРАНЖЕВЫМИ УЗОРАМИ ---
         ctx.save();
         let isStunColor = (boss.state === "BOSS_STUNNED" || boss.state === "L_PHASE4_STUNNED");
-        let bCloakColor = (secretMode && !isStunColor) ? "#4a3c00" : "#e6c800";
+        let bCloakColor = (secretMode && !isStunColor) ? "#4a3c00" : "#e6b800";
         let bPatternColor = (secretMode && !isStunColor) ? "#8a4500" : "#ff7700";
         
         // --- БОСС: ДИНАМИЧЕСКИЙ РАЗВЕВАЮЩИЙСЯ ЖЕЛТЫЙ ПЛАЩ ---
@@ -1974,6 +2285,9 @@ function drawBoss() {
         ctx.moveTo(bAnchorX + (bTrailDir * 8), bShoulderY + 12);
         ctx.quadraticCurveTo(bMidX - (bTrailDir * 9), bMidY + 12, bHemMidX, bHemMidY - 3);
         ctx.stroke();
+
+        // --- БОСС: АРТИКУЛИРОВАННАЯ ФИГУРА ОХОТНИЦЫ И ВЕЛИКАЯ ИГЛА (v73) ---
+        drawBossStickmanFigure(boss, bCloakColor, bPatternColor);
 
         // Черный шарф вокруг шеи
         ctx.fillStyle = "#111111";
@@ -2130,7 +2444,7 @@ function drawBoss() {
     if (clashFlash && clashFlash.timer > 0) { 
         ctx.beginPath(); 
         ctx.arc(clashFlash.x, clashFlash.y, (15 - clashFlash.timer) * 8, 0, Math.PI*2); 
-        ctx.fillStyle = "rgba(255, 255, 255, 0.8)"; 
+        ctx.fillStyle = "rgba(255, 255, 0, 0.8)"; 
         ctx.fill(); 
         ctx.strokeStyle = "cyan"; 
         ctx.lineWidth = 4; 
@@ -2138,3 +2452,8 @@ function drawBoss() {
         clashFlash.timer--; 
     }
 }
+
+window.drawBoss = drawBoss;
+window.drawBossStickmanFigure = drawBossStickmanFigure;
+window.getBossAttackHintColor = getBossAttackHintColor;
+window.drawRapier = drawRapier;

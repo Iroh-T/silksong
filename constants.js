@@ -1,5 +1,5 @@
 // --- CONSTANTS & SHARED STATE ---
-const GAME_VERSION = "v72.1";
+const GAME_VERSION = "v73.1";
 window.GAME_VERSION = GAME_VERSION;
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas ? canvas.getContext("2d") : null;
@@ -36,6 +36,8 @@ let voidExplosions = [];
 let voidPortals = [];
 let looms = [];
 let chaosBalls = [];
+let backgroundDust = [];
+let stepPuffs = [];
 
 let scarf = { active: false, x: 0, y: 0, width: 0, dir: 1, target: null };
 let clashFlash = null;
@@ -2246,6 +2248,25 @@ for (let i = 0; i < 50; i++) {
         color: `rgba(${100+Math.random()*50}, ${150+Math.random()*100}, 50, 0.8)` 
     });
 }
+
+// Atmospheric Silksong Background Dust (increased count for depth)
+function initBackgroundDust() {
+    backgroundDust = [];
+    for (let i = 0; i < 135; i++) {
+        backgroundDust.push({
+            x: Math.random() * 2600 - 300,
+            y: Math.random() * 800 - 300,
+            vx: (Math.random() - 0.5) * 0.15,
+            vy: -(Math.random() * 0.22 + 0.08),
+            r: Math.random() * 2.2 + 1.8,
+            phase: Math.random() * Math.PI * 2,
+            rimHue: Math.random() < 0.5 ? 'rgba(160, 190, 225, 0.38)' : 'rgba(175, 130, 220, 0.38)',
+            alpha: 0.45 + Math.random() * 0.45
+        });
+    }
+}
+initBackgroundDust();
+window.initBackgroundDust = initBackgroundDust;
 
 function resizeCanvas() {
     if (!canvas || !ctx) return;
