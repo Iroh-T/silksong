@@ -1,7 +1,7 @@
 // ========================================================
 // --- ONLINE MULTIPLAYER ENGINE v72.1 ---
 // --- «Убежище» — Сетевая игра для Создателя и друзей ---
-// --- 60 FPS Real-Time WebRTC P2P + Firebase Signaling ---
+// --- 100% PURE FIREBASE REALTIME STREAMING (SSE / REST) ---
 // ========================================================
 
 // 1. Доступ к закрытому тесту (РЫБа / Тимур, Ярослав, Даша, Gandalf)
@@ -14,31 +14,6 @@ function isOnlineTester(user) {
            u === 'gandalf';
 }
 window.isOnlineTester = isOnlineTester;
-
-// WebRTC ICE / STUN / TURN серверы (Бесплатные Google + Cloudflare + Metered OpenRelay для обхода любых NAT)
-const RTC_CONFIG = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun.cloudflare.com:3478' },
-        {
-            urls: 'turn:openrelay.metered.ca:80',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-        },
-        {
-            urls: 'turn:openrelay.metered.ca:443',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-        },
-        {
-            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-        }
-    ]
-};
 
 // 2. Сетевое состояние
 window.onlineNet = {
@@ -67,12 +42,18 @@ window.onlineNet = {
     teamBadge: 'none',
     challenges: { hp3: false, limitedHeal: false, bossSpeed: false },
 
-    // WebRTC P2P состояние
-    peerConnection: null,
-    dataChannel: null,
-    p2pActive: false,
-    ping: 0,
-    addedCandidates: {},
+    // Firebase EventSource потоки (SSE - нулевая задержка чтения)
+    lobbyEventSource: null,
+    liveEventSource: null,
+    inputsEventSource: null,
+
+    // Контроль сетевой очереди (исключает перегрузку браузера и слайд-шоу)
+    isSendingHostState: false,
+    lastHostStateSent: 0,
+    isSendingGuestInputs: false,
+    lastGuestInputSent: 0,
+    lastSentInputJson: '',
+    lastStatePacketTime: 0,
 
     // Цели интерполяции для сглаживания (60 FPS, 0 слайд-шоу)
     targetBoss: null,
@@ -85,10 +66,8 @@ window.onlineNet = {
 
     // Таймеры
     matchmakingPollTimer: null,
-    lobbyPollTimer: null,
     countdownTimer: null,
-    fbFallbackTimer: null,
-    lastFbInputSent: 0
+    fallbackPollTimer: null
 };
 
 // Проверка видимости кнопки сетевой игры в главном меню
@@ -130,153 +109,6 @@ function generateCleanRoomId(prefix) {
     }
     let rand = Math.floor(1000 + Math.random() * 9000);
     return `${tag}-${rand}`;
-}
-
-// ========================================================
-// --- WEBRTC P2P ИНИЦИАЛИЗАЦИЯ И СИГНАЛИЗАЦИЯ ЧЕРЕЗ FIREBASE ---
-// ========================================================
-async function initWebRTC(isHost, roomId) {
-    closeWebRTC();
-    window.onlineNet.addedCandidates = {};
-
-    try {
-        let pc = new RTCPeerConnection(RTC_CONFIG);
-        window.onlineNet.peerConnection = pc;
-
-        let candIndex = 0;
-        pc.onicecandidate = (event) => {
-            if (event.candidate && roomId && typeof FIREBASE_URL !== 'undefined') {
-                let cid = 'c_' + (candIndex++);
-                let side = isHost ? 'hostIce' : 'guestIce';
-                fetch(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(roomId)}/signal/${side}/${cid}.json`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(event.candidate.toJSON())
-                }).catch(()=>{});
-            }
-        };
-
-        if (isHost) {
-            // Хост создаёт ненадежный, неупорядоченный DataChannel (UDP-скорость для экшена)
-            let dc = pc.createDataChannel('silksong_dc', {
-                ordered: false,
-                maxRetransmits: 0
-            });
-            setupDataChannel(dc);
-
-            let offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-
-            await fetch(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(roomId)}/signal/offer.json`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: offer.type, sdp: offer.sdp })
-            });
-        } else {
-            // Гость ожидает открытие DataChannel
-            pc.ondatachannel = (event) => {
-                setupDataChannel(event.channel);
-            };
-
-            // Гость читает оффер Хоста и отправляет ответ
-            let res = await fetch(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(roomId)}/signal/offer.json`);
-            let offer = await res.json();
-            if (offer && offer.sdp) {
-                await pc.setRemoteDescription(new RTCSessionDescription(offer));
-                let answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-                await fetch(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(roomId)}/signal/answer.json`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: answer.type, sdp: answer.sdp })
-                });
-            }
-        }
-    } catch(err) {
-        console.warn("WebRTC init warning:", err);
-    }
-}
-
-function setupDataChannel(dc) {
-    window.onlineNet.dataChannel = dc;
-
-    dc.onopen = () => {
-        window.onlineNet.p2pActive = true;
-        updateP2PStatusUI(true);
-        // Регулярный пинг для проверки качества связи
-        setInterval(() => {
-            if (window.onlineNet.p2pActive && dc.readyState === 'open') {
-                try { dc.send(JSON.stringify(['p', Date.now()])); } catch(e){}
-            }
-        }, 1500);
-    };
-
-    dc.onclose = () => {
-        window.onlineNet.p2pActive = false;
-        updateP2PStatusUI(false);
-    };
-
-    dc.onerror = (e) => {
-        console.warn("DataChannel error:", e);
-    };
-
-    dc.onmessage = (event) => {
-        handleP2PMessage(event.data);
-    };
-}
-
-function closeWebRTC() {
-    if (window.onlineNet.dataChannel) {
-        try { window.onlineNet.dataChannel.close(); } catch(e){}
-        window.onlineNet.dataChannel = null;
-    }
-    if (window.onlineNet.peerConnection) {
-        try { window.onlineNet.peerConnection.close(); } catch(e){}
-        window.onlineNet.peerConnection = null;
-    }
-    window.onlineNet.p2pActive = false;
-    updateP2PStatusUI(false);
-}
-
-function updateP2PStatusUI(isConnected) {
-    let banners = [
-        document.getElementById('online-input-banner'),
-        document.getElementById('online-hero-banner'),
-        document.getElementById('online-teammate-status-text')
-    ];
-    let badgeHtml = isConnected 
-        ? `<span style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; border-radius: 6px; padding: 2px 8px; font-size: 11px; margin-left: 6px;">🟢 P2P (0-15 мс)</span>`
-        : `<span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b; border-radius: 6px; padding: 2px 8px; font-size: 11px; margin-left: 6px;">🟡 Подключение P2P...</span>`;
-
-    let p2pStatusEl = document.getElementById('online-p2p-live-indicator');
-    if (p2pStatusEl) {
-        p2pStatusEl.innerHTML = badgeHtml;
-    }
-}
-
-// Обработка прямых P2P сообщений
-function handleP2PMessage(raw) {
-    if (!raw) return;
-    try {
-        let msg = JSON.parse(raw);
-        let type = msg[0];
-        let payload = msg[1];
-
-        if (type === 'i') {
-            // Хост получил нажатия кнопок от Гостя (0-15 мс!)
-            window.onlineNet.remoteInputs = payload;
-        } else if (type === 's') {
-            // Гость получил снимок мира от Хоста (60 FPS!)
-            applyHostStatePacket(payload);
-        } else if (type === 'p') {
-            // Ответ на пинг
-            if (window.onlineNet.dataChannel && window.onlineNet.dataChannel.readyState === 'open') {
-                window.onlineNet.dataChannel.send(JSON.stringify(['pong', payload]));
-            }
-        } else if (type === 'pong') {
-            window.onlineNet.ping = Math.max(1, Date.now() - payload);
-        }
-    } catch(e){}
 }
 
 // ========================================================
@@ -340,10 +172,7 @@ async function startOnlineHost() {
         console.warn("Firebase host room creation err:", e);
     }
 
-    // 2. Инициализируем WebRTC (Хост создаёт оффер заранее)
-    initWebRTC(true, roomId);
-
-    // 3. Опрашиваем Firebase: ждём появления гостя
+    // 2. Опрашиваем Firebase: ждём появления гостя
     startHostMatchmakingPoll(roomId);
 }
 window.startOnlineHost = startOnlineHost;
@@ -536,9 +365,6 @@ async function connectToOnlineRoom(roomId, hostName) {
         console.warn("Connect online room err:", e);
     }
 
-    // Инициализируем WebRTC на стороне Гостя
-    initWebRTC(false, roomId);
-
     onMatchFound(roomId);
 }
 window.connectToOnlineRoom = connectToOnlineRoom;
@@ -558,7 +384,7 @@ function onMatchFound(roomId) {
         banner.style.display = 'block';
         let hostNick = window.onlineNet.isHost ? 'Ты (Хост)' : window.onlineNet.peerName;
         let guestNick = window.onlineNet.isHost ? window.onlineNet.peerName : 'Ты (Гость)';
-        banner.innerHTML = `🎉 ИГРА НАЙДЕНА! Команда: <b>${hostNick}</b> и <b>${guestNick}</b> <span id="online-p2p-live-indicator"></span><br><span style="color:#a5f3fc; font-size:11px;">Выбери своё управление:</span>`;
+        banner.innerHTML = `🎉 ИГРА НАЙДЕНА! Команда: <b>${hostNick}</b> и <b>${guestNick}</b><br><span style="color:#a5f3fc; font-size:11px;">Выбери своё управление:</span>`;
     }
 
     // ШАГ 1: ВЫБОР УПРАВЛЕНИЯ
@@ -568,8 +394,8 @@ function onMatchFound(roomId) {
     let in2 = document.getElementById('input-2p');
     if (in2) in2.style.display = 'none';
 
-    // Запускаем непрерывную синхронизацию лобби
-    startLobbyPoll(roomId);
+    // Запускаем непрерывную синхронизацию лобби через Firebase EventSource
+    startLobbyStream(roomId);
 }
 
 // 1. Выбор раскладки (Шаг 1)
@@ -839,22 +665,16 @@ function checkBothReady() {
     }
 }
 
-// Опрос лобби и обмен ICE-кандидатами через Firebase
-function startLobbyPoll(roomId) {
-    if (window.onlineNet.lobbyPollTimer) clearInterval(window.onlineNet.lobbyPollTimer);
+// Мгновенная синхронизация лобби через Firebase SSE (EventSource)
+function startLobbyStream(roomId) {
+    closeLobbyStream();
 
-    window.onlineNet.lobbyPollTimer = setInterval(async () => {
-        if (!window.onlineNet.isActive || window.onlineNet.roomId !== roomId) {
-            clearInterval(window.onlineNet.lobbyPollTimer);
-            return;
-        }
+    try {
+        let es = new EventSource(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(roomId)}.json`);
+        window.onlineNet.lobbyEventSource = es;
 
-        try {
-            let res = await fetch(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(roomId)}.json`);
-            let data = await res.json();
+        let handleLobbyData = (data) => {
             if (!data) return;
-
-            let isH = window.onlineNet.isHost;
             let peerSlot = window.onlineNet.peerSlot;
             let peerData = data[peerSlot];
 
@@ -886,33 +706,77 @@ function startLobbyPoll(roomId) {
                 }
             }
 
-            // Если открыт экран значков — обновляем отображение слотов напарника
+            // Если открыт экран значков — обновляем слоты сокомандника
             let badgeEl = document.getElementById("badge-select");
             if (badgeEl && badgeEl.style.display === "block") {
                 renderPlayerBadgeSlots(peerSlot, window.onlineNet.peerHero, false);
             }
+        };
 
-            // WebRTC обмен сигналами в фоне
-            let pc = window.onlineNet.peerConnection;
-            if (pc && data.signal) {
-                if (isH && data.signal.answer && !pc.currentRemoteDescription) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(data.signal.answer));
-                }
-
-                let remoteIce = isH ? data.signal.guestIce : data.signal.hostIce;
-                if (remoteIce) {
-                    for (let cid in remoteIce) {
-                        if (!window.onlineNet.addedCandidates[cid]) {
-                            window.onlineNet.addedCandidates[cid] = true;
-                            try {
-                                await pc.addIceCandidate(new RTCIceCandidate(remoteIce[cid]));
-                            } catch(e){}
+        es.addEventListener('put', (e) => {
+            try {
+                let parsed = JSON.parse(e.data);
+                if (parsed && parsed.data !== undefined) {
+                    if (parsed.path === "/") {
+                        handleLobbyData(parsed.data);
+                    } else if (parsed.path.startsWith("/" + window.onlineNet.peerSlot)) {
+                        // Точечное обновление
+                        refreshLobbySnapshot(roomId);
+                    } else if (parsed.path === "/teamBadge") {
+                        configBadges.team = parsed.data;
+                        let slotTeam = document.getElementById("slot-team");
+                        if (slotTeam) {
+                            let bDef = (badgesDict && badgesDict[parsed.data]) ? badgesDict[parsed.data].name.split(' (')[0] : '[Пусто]';
+                            slotTeam.innerText = bDef;
                         }
                     }
                 }
+            } catch(err){}
+        });
+
+        es.addEventListener('patch', () => {
+            refreshLobbySnapshot(roomId);
+        });
+
+    } catch(e) {
+        console.warn("EventSource lobby stream error:", e);
+    }
+}
+
+async function refreshLobbySnapshot(roomId) {
+    if (!roomId || typeof FIREBASE_URL === 'undefined') return;
+    try {
+        let res = await fetch(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(roomId)}.json`);
+        let data = await res.json();
+        if (data && window.onlineNet.isActive) {
+            let peerSlot = window.onlineNet.peerSlot;
+            let peerData = data[peerSlot];
+            if (peerData) {
+                if (peerData.hero) window.onlineNet.peerHero = peerData.hero;
+                if (peerData.ready !== undefined) window.onlineNet.peerReady = !!peerData.ready;
+                if (peerData.badges) configBadges[peerSlot] = [...peerData.badges];
+                if (peerData.abilities) configAbilities[peerSlot] = { ...peerData.abilities };
+                updateOnlineHeroBanner();
+                updateReadyButtonUI();
+                checkBothReady();
             }
-        } catch(e){}
-    }, 380);
+            if (data.teamBadge) {
+                configBadges.team = data.teamBadge;
+                let slotTeam = document.getElementById("slot-team");
+                if (slotTeam) {
+                    let bDef = (badgesDict && badgesDict[data.teamBadge]) ? badgesDict[data.teamBadge].name.split(' (')[0] : '[Пусто]';
+                    slotTeam.innerText = bDef;
+                }
+            }
+        }
+    } catch(e){}
+}
+
+function closeLobbyStream() {
+    if (window.onlineNet.lobbyEventSource) {
+        try { window.onlineNet.lobbyEventSource.close(); } catch(e){}
+        window.onlineNet.lobbyEventSource = null;
+    }
 }
 
 // Навигация "Назад" в онлайн-режиме
@@ -940,13 +804,10 @@ function leaveRoom() {
 window.onlineNet.leaveRoom = leaveRoom;
 
 // ========================================================
-// --- ШАГ 4: СТАРТ БИТВЫ (60 FPS REAL-TIME P2P + FIREBASE) ---
+// --- ШАГ 4: СТАРТ БИТВЫ (100% PURE FIREBASE SSE STREAMING) ---
 // ========================================================
 function startOnlineBattle() {
-    if (window.onlineNet.lobbyPollTimer) {
-        clearInterval(window.onlineNet.lobbyPollTimer);
-        window.onlineNet.lobbyPollTimer = null;
-    }
+    closeLobbyStream();
 
     window.isOnlineMatch = true;
     window.numPlayers = 2;
@@ -969,103 +830,180 @@ function startOnlineBattle() {
     if (typeof buildAndStartGame === 'function') {
         buildAndStartGame();
     }
+
+    let roomId = window.onlineNet.roomId;
+    if (isH) {
+        // ХОСТ: Подключает непрерывный SSE поток к /inputs.json для мгновенного чтения кнопок гостя
+        startHostInputsEventSource(roomId);
+    } else {
+        // ГОСТЬ: Подключает непрерывный SSE поток к /live.json для мгновенного чтения мира от хоста
+        startGuestLiveEventSource(roomId);
+    }
 }
 window.onlineNet.startBattle = startOnlineBattle;
 
-// --- ХОСТ: ВЕЩАЕТ СОСТОЯНИЕ МИРА В КАЖДОМ КАДРЕ (60 FPS) ---
+// --- ХОСТ: ПОТОКОВОЕ ЧТЕНИЕ КНОПОК ГОСТЯ ЧЕРЕЗ FIREBASE SSE ---
+function startHostInputsEventSource(roomId) {
+    if (window.onlineNet.inputsEventSource) {
+        try { window.onlineNet.inputsEventSource.close(); } catch(e){}
+    }
+
+    try {
+        let es = new EventSource(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(roomId)}/inputs.json`);
+        window.onlineNet.inputsEventSource = es;
+
+        let handleInputs = (val) => {
+            if (!val) return;
+            window.onlineNet.remoteInputs = val;
+        };
+
+        es.addEventListener('put', (e) => {
+            try {
+                let parsed = JSON.parse(e.data);
+                if (parsed && parsed.data !== undefined) {
+                    handleInputs(parsed.data);
+                }
+            } catch(err){}
+        });
+        es.addEventListener('patch', (e) => {
+            try {
+                let parsed = JSON.parse(e.data);
+                if (parsed && parsed.data !== undefined) {
+                    handleInputs(parsed.data);
+                }
+            } catch(err){}
+        });
+    } catch(err){
+        console.warn("Host inputs EventSource error:", err);
+    }
+}
+
+// --- ХОСТ: ОТПРАВЛЯЕТ МИР БОЯ (КОНТРОЛИРУЕМЫЙ FAST-PUT, 0 ОЧЕРЕДИ) ---
 function broadcastHostBattleFrame() {
     if (!boss || !players || players.length < 2) return;
     let p1 = players[0];
     let p2 = players[1];
 
-    let packet = [
-        // Boss: [x, y, vx, vy, hp, maxHp, state, stateTimer, color, facingDir, phase]
+    let now = Date.now();
+    // Контролируемый интервал ~35 мс (28 обновлений в сек) + защита от наложения запросов в браузере
+    if (window.onlineNet.isSendingHostState || (now - window.onlineNet.lastHostStateSent < 35)) {
+        return;
+    }
+
+    let rId = window.onlineNet.roomId;
+    if (!rId || typeof FIREBASE_URL === 'undefined') return;
+
+    window.onlineNet.lastHostStateSent = now;
+    window.onlineNet.isSendingHostState = true;
+
+    let compactPacket = [
+        // 0: Boss [x, y, vx, vy, hp, maxHp, state, stateTimer, color, facingDir, phase]
         [Math.round(boss.x), Math.round(boss.y), Math.round(boss.vx * 10) / 10, Math.round(boss.vy * 10) / 10,
          boss.hp, boss.maxHp, boss.state, boss.stateTimer, boss.color, boss.facingDir, boss.phase],
 
-        // P1: [x, y, vx, vy, hp, facingRight, attackType, attackTimer, isDashing, isDowned, isHealing]
+        // 1: P1 [x, y, vx, vy, hp, facingRight, attackType, attackTimer, isDashing, isDowned, isHealing]
         [Math.round(p1.x), Math.round(p1.y), Math.round(p1.vx * 10) / 10, Math.round(p1.vy * 10) / 10,
          p1.hp, p1.facingRight ? 1 : 0, p1.attackType || 'none', p1.attackTimer || 0,
          p1.isDashing ? 1 : 0, p1.isDowned ? 1 : 0, p1.isHealing ? 1 : 0],
 
-        // P2 authoritative: [hp, isDowned, downedTimer]
+        // 2: P2 authoritative [hp, isDowned, downedTimer]
         [p2.hp, p2.isDowned ? 1 : 0, p2.downedTimer || 0],
 
-        // Shared: [heals, hitCount, camX, camY]
+        // 3: Shared [heals, hitCount, camX, camY]
         [sharedHeals, sharedHitCount, Math.round(camX), Math.round(camY)],
 
-        // Projectiles
+        // 4: Projectiles
         serializeActiveProjectiles()
     ];
-
-    let dc = window.onlineNet.dataChannel;
-    if (window.onlineNet.p2pActive && dc && dc.readyState === 'open') {
-        try {
-            dc.send(JSON.stringify(['s', packet]));
-        } catch(e){}
-    } else {
-        // Fallback на Firebase если P2P еще настраивается
-        sendHostStateToFirebase(packet);
-    }
-}
-window.onlineNet.broadcastHostBattleFrame = broadcastHostBattleFrame;
-
-function sendHostStateToFirebase(packet) {
-    let now = Date.now();
-    if (now - (window.onlineNet.lastFbSent || 0) < 50) return;
-    window.onlineNet.lastFbSent = now;
-    let rId = window.onlineNet.roomId;
-    if (!rId || typeof FIREBASE_URL === 'undefined') return;
 
     fetch(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(rId)}/live.json`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(packet)
+        body: JSON.stringify(compactPacket)
+    }).finally(() => {
+        window.onlineNet.isSendingHostState = false;
     }).catch(()=>{});
+}
+window.onlineNet.broadcastHostBattleFrame = broadcastHostBattleFrame;
+
+// --- ГОСТЬ: ПОТОКОВОЕ ЧТЕНИЕ МИРА ХОСТА ЧЕРЕЗ FIREBASE SSE ---
+function startGuestLiveEventSource(roomId) {
+    if (window.onlineNet.liveEventSource) {
+        try { window.onlineNet.liveEventSource.close(); } catch(e){}
+    }
+
+    try {
+        let es = new EventSource(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(roomId)}/live.json`);
+        window.onlineNet.liveEventSource = es;
+
+        es.addEventListener('put', (e) => {
+            try {
+                let parsed = JSON.parse(e.data);
+                if (parsed && parsed.data !== undefined) {
+                    applyHostStatePacket(parsed.data);
+                }
+            } catch(err){}
+        });
+
+        es.addEventListener('patch', (e) => {
+            try {
+                let parsed = JSON.parse(e.data);
+                if (parsed && parsed.data !== undefined) {
+                    applyHostStatePacket(parsed.data);
+                }
+            } catch(err){}
+        });
+    } catch(err){
+        console.warn("Guest live EventSource error:", err);
+    }
 }
 
 // --- ГОСТЬ: ОТПРАВКА НАЖАТИЙ КНОПОК И СГЛАЖЕННОЕ ОБНОВЛЕНИЕ КАДРА ---
 function sendGuestInputs() {
     let myCtrl = window.onlineNet.myControl;
     let inKeys = sampleCurrentLocalInputs(myCtrl);
+    let str = JSON.stringify(inKeys);
 
-    let dc = window.onlineNet.dataChannel;
-    if (window.onlineNet.p2pActive && dc && dc.readyState === 'open') {
-        try {
-            dc.send(JSON.stringify(['i', inKeys]));
-        } catch(e){}
-    } else {
-        // Fallback на Firebase
-        let now = Date.now();
-        if (now - window.onlineNet.lastFbInputSent > 45) {
-            window.onlineNet.lastFbInputSent = now;
-            let rId = window.onlineNet.roomId;
-            if (rId && typeof FIREBASE_URL !== 'undefined') {
-                fetch(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(rId)}/inputs.json`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(inKeys)
-                }).catch(()=>{});
-            }
-        }
-    }
+    let now = Date.now();
+    let hasChanged = (str !== window.onlineNet.lastSentInputJson);
+
+    // Если кнопки не менялись — шлем не чаще чем раз в 120 мс для подтверждения связи.
+    // Если изменились — отправляем сразу (с минимальным шагом 30 мс и защитой от перегрузки).
+    if (!hasChanged && (now - window.onlineNet.lastGuestInputSent < 120)) return;
+    if (window.onlineNet.isSendingGuestInputs || (now - window.onlineNet.lastGuestInputSent < 30)) return;
+
+    let rId = window.onlineNet.roomId;
+    if (!rId || typeof FIREBASE_URL === 'undefined') return;
+
+    window.onlineNet.lastGuestInputSent = now;
+    window.onlineNet.lastSentInputJson = str;
+    window.onlineNet.isSendingGuestInputs = true;
+
+    fetch(`${FIREBASE_URL}/onlineGames/${encodeURIComponent(rId)}/inputs.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: str
+    }).finally(() => {
+        window.onlineNet.isSendingGuestInputs = false;
+    }).catch(()=>{});
 }
 
-// Обработка кадра на стороне Гостя (Клиентское предсказание + Плавная интерполяция)
+// Обработка кадра на стороне Гостя (Клиентское предсказание + Плавная интерполяция 60 FPS)
 function updateGuestBattleFrame() {
     // 1. Отправляем кнопки Гостя Хосту
     sendGuestInputs();
 
-    // 2. Если P2P не активен, читаем снимок из Firebase fallback
-    if (!window.onlineNet.p2pActive) {
+    // 2. Страховочный опрос (если SSE поток прервался более чем на 600 мс)
+    let now = Date.now();
+    if (now - (window.onlineNet.lastStatePacketTime || 0) > 650) {
         pollFirebaseStateFallback();
     }
 
-    // 3. Плавная интерполяция Босса к координатам Хоста (Без рывков и телепортов!)
+    // 3. Плавная интерполяция Босса к координатам Хоста (Без рывков и слайд-шоу!)
     if (window.onlineNet.targetBoss && boss) {
         let tb = window.onlineNet.targetBoss;
-        boss.x += (tb.x - boss.x) * 0.45;
-        boss.y += (tb.y - boss.y) * 0.45;
+        boss.x += (tb.x - boss.x) * 0.40 + (tb.vx || 0);
+        boss.y += (tb.y - boss.y) * 0.40 + (tb.vy || 0);
         boss.vx = tb.vx;
         boss.vy = tb.vy;
         boss.hp = tb.hp;
@@ -1096,6 +1034,8 @@ window.onlineNet.updateGuestBattleFrame = updateGuestBattleFrame;
 // Применение пакета состояния от Хоста
 function applyHostStatePacket(data) {
     if (!data || !boss || !players || players.length < 2) return;
+
+    window.onlineNet.lastStatePacketTime = Date.now();
 
     let b = data[0];
     let p1 = data[1];
@@ -1129,8 +1069,8 @@ function applyHostStatePacket(data) {
     if (sh) {
         sharedHeals = sh[0];
         sharedHitCount = sh[1];
-        camX += (sh[2] - camX) * 0.2;
-        camY += (sh[3] - camY) * 0.2;
+        camX += (sh[2] - camX) * 0.25;
+        camY += (sh[3] - camY) * 0.25;
     }
 
     // Синхронизация снарядов от Хоста
@@ -1139,7 +1079,7 @@ function applyHostStatePacket(data) {
     }
 }
 
-// Fallback опрос Firebase если P2P недоступен
+// Страховочный опрос Firebase
 async function pollFirebaseStateFallback() {
     let rId = window.onlineNet.roomId;
     if (!rId || typeof FIREBASE_URL === 'undefined') return;
@@ -1244,11 +1184,15 @@ window.sampleCurrentLocalInputs = sampleCurrentLocalInputs;
 // --- ШАГ 5: ОКОНЧАНИЕ ИГРЫ И ПОЛНОЕ УДАЛЕНИЕ ИЗ FIREBASE ---
 // ========================================================
 function cleanupGame() {
-    closeWebRTC();
+    closeLobbyStream();
 
-    if (window.onlineNet.lobbyPollTimer) {
-        clearInterval(window.onlineNet.lobbyPollTimer);
-        window.onlineNet.lobbyPollTimer = null;
+    if (window.onlineNet.liveEventSource) {
+        try { window.onlineNet.liveEventSource.close(); } catch(e){}
+        window.onlineNet.liveEventSource = null;
+    }
+    if (window.onlineNet.inputsEventSource) {
+        try { window.onlineNet.inputsEventSource.close(); } catch(e){}
+        window.onlineNet.inputsEventSource = null;
     }
     if (window.onlineNet.countdownTimer) {
         clearInterval(window.onlineNet.countdownTimer);
