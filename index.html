@@ -34,7 +34,7 @@
                 </div>
             </div>
             <!-- Discreet Corner Version Tag -->
-            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v73.1</div>
+            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v73.4</div>
         </div>
         <div id="mobile-ui">
             <div id="joy-base"><div id="joy-stick"></div></div>
@@ -120,6 +120,7 @@
                 НАСТРОЙКИ
             </div>
             <div class="menu-btn" onclick="openCreatorReactionModal()" style="border-color: #ffd700; color: #ffd700; text-shadow: 0 0 8px rgba(255,215,0,0.4);">💌 Привет Создателю (РЫБе)</div>
+            <div class="menu-btn" onclick="openHeroCodexModal()" style="border-color: #38bdf8; color: #38bdf8; text-shadow: 0 0 8px rgba(56,189,248,0.4); background: rgba(56,189,248,0.1);">📜 Лист персонажа</div>
             <div id="admin-panel-btn" class="menu-btn" onclick="openScreen('admin-screen')" style="display: none; border-color: #ffd700; color: #ffd700; text-shadow: 0 0 8px rgba(255,215,0,0.5);">👑 ПАНЕЛЬ АДМИНА</div>
             <div class="menu-btn banana-peel-btn" onclick="handleLogout()" style="border-color: #ff3344; color: #ff5566; margin-top: 25px;">
                 <span class="corner-banana corner-tl">🍌</span>
@@ -136,6 +137,8 @@
             <div class="menu-btn btn-tutorial-green" onclick="startTutorial()">🎓 ОБУЧЕНИЕ (Основы боя)</div>
             <div class="menu-btn" onclick="selectMode(1)">1 ИГРОК</div>
             <div class="menu-btn" onclick="selectMode(2)">2 ИГРОКА (Локально)</div>
+            <div class="menu-btn" onclick="selectMode('1P_AI')" style="border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.25); font-weight: bold;">🤖 1 ИГРОК + ИИ</div>
+            <div class="menu-btn" onclick="selectMode('2P_AI')" style="border-color: #a855f7; color: #e9d5ff; box-shadow: 0 0 10px rgba(168,85,247,0.25); font-weight: bold;">🤖 2 ИГРОКА + ИИ (3 Бойца)</div>
             <div id="online-coop-btn" class="menu-btn" style="display: none; border-color: #a855f7; color: #e9d5ff; background: linear-gradient(135deg, rgba(168,85,247,0.25), rgba(59,130,246,0.25)); box-shadow: 0 0 15px rgba(168,85,247,0.4); margin-top: 10px;" onclick="openOnlineHub()">
                 🌐 СЕТЕВАЯ ИГРА ОНЛАЙН (BETA)
             </div>
@@ -274,7 +277,8 @@
                 <span style="color: #64748b; margin: 0 8px;">|</span>
                 <span id="online-hero-p2-text" style="color: #ffd700; font-weight: bold;">Игрок 2: Выбирает...</span>
             </div>
-            <div class="menu-btn easy-boss-btn" onclick="toggleEasyBossMode()" style="margin-bottom: 14px; background: rgba(30, 41, 59, 0.6); border-color: #64748b; color: #94a3b8; font-size: 13px;">🌱 Ослабление Босса: ВЫКЛ (Обычный)</div>
+            <div class="menu-btn easy-boss-btn" onclick="toggleEasyBossMode()" style="margin-bottom: 8px; background: rgba(30, 41, 59, 0.6); border-color: #64748b; color: #94a3b8; font-size: 13px;">🌱 Ослабление Босса: ВЫКЛ (Обычный)</div>
+            <div class="menu-btn" onclick="openHeroCodexModal()" style="margin-bottom: 14px; border-color: #38bdf8; color: #38bdf8; font-size: 13px; background: rgba(56, 189, 248, 0.1);">📜 Лист персонажа</div>
             <div id="p1-select-ui">
                 <div style="color: cyan;"><b>ИГРОК 1:</b></div>
                 <div class="menu-btn" onclick="selectHero1('WATER')" style="color: #3366ff; border-color: #3366ff;">1. Вода</div>
@@ -317,6 +321,21 @@
                         <div style="color: #ffff88; margin-top: 5px;">Способности (Игрок 2):</div>
                         <div id="p2-abilities-container"></div>
                     </div>
+
+                    <div id="ai-badge-area" style="margin-top: 15px; display: none; border-top: 1px dashed rgba(0, 229, 255, 0.4); padding-top: 12px;">
+                        <div style="color: #00e5ff; font-weight: bold; margin-bottom: 6px;">🤖 ИИ-НАПАРНИК (<span id="ai-hero-name-label">Вода</span>):</div>
+                        <div style="color: #ccc; font-size: 13px; margin-bottom: 4px;">Знаки ИИ:</div>
+                        <div id="ai-slots-container"></div>
+                        <div style="color: #ffff88; font-size: 13px; margin: 10px 0 6px 0;">Характер ИИ:</div>
+                        <div id="ai-personality-container" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button id="ai-pers-btn-TACTICIAN" class="menu-btn" style="flex: 1; min-width: 130px; font-size: 12px; padding: 8px; margin: 0; border-color: #00e5ff; color: #00e5ff;" onclick="setAiPersonality('TACTICIAN')">🏹 Тактик (Саппорт)</button>
+                            <button id="ai-pers-btn-AGGRESSIVE" class="menu-btn" style="flex: 1; min-width: 130px; font-size: 12px; padding: 8px; margin: 0; border-color: #64748b; color: #94a3b8;" onclick="setAiPersonality('AGGRESSIVE')">⚔️ Штурмовик (Атака)</button>
+                            <button id="ai-pers-btn-DEFENDER" class="menu-btn" style="flex: 1; min-width: 130px; font-size: 12px; padding: 8px; margin: 0; border-color: #64748b; color: #94a3b8;" onclick="setAiPersonality('DEFENDER')">🛡️ Телохранитель (Защита)</button>
+                        </div>
+                        <div id="ai-pers-desc" style="font-size: 11px; color: #94a3b8; margin-top: 6px; font-style: italic;">
+                            Держится на средней дистанции, атакует сюрикенами/спец-ударами, приоритетно бежит воскрешать напарника при падении.
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Правая колонка: Панель Усложнений и Опции битвы -->
@@ -352,6 +371,7 @@
                     </div>
 
                     <div class="menu-btn easy-boss-btn" onclick="toggleEasyBossMode()" style="margin: 4px 0 0 0; background: rgba(30, 41, 59, 0.6); border-color: #64748b; color: #94a3b8; font-size: 12px; padding: 8px 10px; width: 100%; box-sizing: border-box;">🌱 Ослабление Босса: ВЫКЛ (Обычный)</div>
+                    <button class="menu-btn" onclick="openHeroCodexModal()" style="margin: 4px 0 0 0; background: rgba(56, 189, 248, 0.15); border-color: #38bdf8; color: #38bdf8; font-size: 12px; padding: 8px 10px; width: 100%; box-sizing: border-box; cursor: pointer;">📜 Лист персонажа</button>
                     
                     <!-- Exclusive Banana Skin Toggle for Timur (РЫБа) & carrots_44444 -->
                     <div id="banana-skin-sidebar-box" style="display: none; margin: 4px 0;">
@@ -531,7 +551,7 @@
             </div>
         </div>
         <!-- Discreet Overlay Version Tag -->
-        <div class="game-version-display" style="position: absolute; bottom: 8px; right: 12px; font-size: 11px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; user-select: none;">v73.1</div>
+        <div class="game-version-display" style="position: absolute; bottom: 8px; right: 12px; font-size: 11px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; user-select: none;">v74</div>
     </div>
 
     <!-- Creator Reaction Modal -->
@@ -605,15 +625,50 @@
         </div>
     </div>
 
+    <!-- Hero & Boss Codex (Лист Персонажа) Modal -->
+    <div id="hero-codex-modal" style="display: none; position: fixed; inset: 0; background: rgba(4, 8, 18, 0.94); backdrop-filter: blur(10px); z-index: 1090; align-items: center; justify-content: center; padding: 12px; box-sizing: border-box;">
+        <div style="background: linear-gradient(150deg, #091124 0%, #0d1a33 100%); border: 2px solid #38bdf8; box-shadow: 0 0 50px rgba(56, 189, 248, 0.35); border-radius: 16px; max-width: 940px; width: 100%; max-height: 94vh; display: flex; flex-direction: column; overflow: hidden; color: #e2e8f0; position: relative;">
+            <!-- Header -->
+            <div style="padding: 14px 20px; border-bottom: 1.5px solid rgba(56, 189, 248, 0.25); display: flex; justify-content: space-between; align-items: center; background: rgba(13, 22, 43, 0.92);">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 26px; filter: drop-shadow(0 0 8px rgba(56,189,248,0.5));">📜</span>
+                    <div>
+                        <div style="font-size: 20px; font-weight: 900; color: #38bdf8; letter-spacing: 1.5px; text-shadow: 0 0 10px rgba(56,189,248,0.4);">ЛИСТ ПЕРСОНАЖА</div>
+                        <div style="font-size: 11.5px; color: #94a3b8;">Полная техническая база: механики X и S, режимы стоек, объем хила, тайминги и разбор босса</div>
+                    </div>
+                </div>
+                <button onclick="closeHeroCodexModal()" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #cbd5e1; font-size: 18px; cursor: pointer; line-height: 1; padding: 6px 12px; transition: all 0.2s;" onmouseover="this.style.borderColor='#ff4466'; this.style.color='#ff6688';" onmouseout="this.style.borderColor='rgba(255,255,255,0.15)'; this.style.color='#cbd5e1';" title="Закрыть">✕</button>
+            </div>
+
+            <!-- Navigation Tabs Bar -->
+            <div id="codex-tabs-bar" style="display: flex; gap: 6px; padding: 10px 16px; background: rgba(7, 13, 26, 0.95); overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,0.08); scrollbar-width: thin;">
+                <button class="codex-tab-btn active" onclick="selectCodexHero('WATER')" data-hero="WATER">💧 Вода</button>
+                <button class="codex-tab-btn" onclick="selectCodexHero('WATER_ROPE')" data-hero="WATER_ROPE">🌊 Трос</button>
+                <button class="codex-tab-btn" onclick="selectCodexHero('FIRE')" data-hero="FIRE">🔥 Огонь</button>
+                <button class="codex-tab-btn" onclick="selectCodexHero('FIRE_HALBERD')" data-hero="FIRE_HALBERD">⚡ Алебарда</button>
+                <button class="codex-tab-btn" onclick="selectCodexHero('EARTH')" data-hero="EARTH">🌿 Земля</button>
+                <button class="codex-tab-btn" onclick="selectCodexHero('AIR')" data-hero="AIR">💨 Воздух</button>
+                <button class="codex-tab-btn" onclick="selectCodexHero('STAMINA')" data-hero="STAMINA">🌸 4-й Герой</button>
+                <button id="codex-boss-tab-btn" class="codex-tab-btn codex-boss-btn" onclick="selectCodexHero('BOSS')" data-hero="BOSS" style="display: none;">👑 ОХОТНИЦА (БОСС)</button>
+            </div>
+
+            <!-- Scrollable Content Body -->
+            <div id="codex-content-body" style="padding: 16px 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px;">
+                <!-- Populated dynamically via selectCodexHero() -->
+            </div>
+        </div>
+    </div>
+
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=73.1"></script>
-    <script src="audio.js?v=73.1"></script>
-    <script src="controls.js?v=73.1"></script>
-    <script src="player.js?v=73.1"></script>
-    <script src="boss.js?v=73.1"></script>
-    <script src="game.js?v=73.1"></script>
+    <script src="constants.js?v=74"></script>
+    <script src="audio.js?v=74"></script>
+    <script src="controls.js?v=74"></script>
+    <script src="ai.js?v=74"></script>
+    <script src="player.js?v=74"></script>
+    <script src="boss.js?v=74"></script>
+    <script src="game.js?v=74"></script>
 
     <!-- Pure Firebase Online Multiplayer Module -->
-    <script src="network.js?v=73.1"></script>
+    <script src="network.js?v=74"></script>
 </body>
 </html>

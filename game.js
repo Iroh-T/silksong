@@ -1,4 +1,51 @@
-// --- GAME ENGINE & MAIN LOOP MODULE ---
+// --- EXTERNAL ASSETS (ITCH PACKS) ---
+const externalGameAssets = {
+    blueFlowers: [],
+    plants1: [],
+    plants2: [],
+    plants3: [],
+    slimes: [],
+    loaded: false
+};
+
+function loadExternalGameAssets() {
+    if (typeof Image === 'undefined') return;
+    try {
+        let flowerFrames = ['00000', '00005', '00010', '00015', '00020', '00025', '00030', '00035', '00040', '00045', '00050', '00055'];
+        flowerFrames.forEach(f => {
+            let fl = new Image();
+            fl.src = `assets/plants/blue_flower/opt/BlueFlower_${f}.png`;
+            fl.onload = () => { externalGameAssets.blueFlowers.push(fl); };
+        });
+
+        let plantFrames = ['00000', '00008', '00016', '00024', '00032', '00040', '00048', '00056', '00064', '00072', '00080', '00088'];
+        plantFrames.forEach(f => {
+            let p1 = new Image();
+            p1.src = `assets/plants/plant1/opt/Plant1_${f}.png`;
+            p1.onload = () => { externalGameAssets.plants1.push(p1); };
+
+            let p2 = new Image();
+            p2.src = `assets/plants/plant2/opt/Plant2_${f}.png`;
+            p2.onload = () => { externalGameAssets.plants2.push(p2); };
+
+            let p3 = new Image();
+            p3.src = `assets/plants/plant3/opt/Plant3_${f}.png`;
+            p3.onload = () => { externalGameAssets.plants3.push(p3); };
+        });
+
+        let slimeFrames = ['00000', '00004', '00008', '00012', '00016', '00020', '00024', '00028'];
+        slimeFrames.forEach(s => {
+            let sl = new Image();
+            sl.src = `assets/slime/opt/SlimeBasic_${s}.png`;
+            sl.onload = () => { externalGameAssets.slimes.push(sl); };
+        });
+
+        externalGameAssets.loaded = true;
+    } catch (e) {
+        console.warn("External assets load error:", e);
+    }
+}
+loadExternalGameAssets();
 
 function buildAndStartGame() {
     try {
@@ -95,13 +142,8 @@ function buildAndStartGame() {
         applyBadgesToPlayer(p1, true); 
         players.push(p1);
 
-        if (numPlayers === 1) {
-            boss.maxHp = secretMode ? 60 : 25; 
-            phase2Hp = secretMode ? 39 : 18; 
-            phase3Hp = secretMode ? 20 : 10; 
-            maxSharedHeals = 3;
-        } else {
-            let startX2 = secretMode ? ARENA_W/2 + 50 : 200;
+        if (numPlayers === 2) {
+            let startX2 = secretMode ? ARENA_W/2 : (hasAiCompanion ? 190 : 200);
             let p2 = createPlayer(2, p2HeroSelection, p2Keys, p2InputType, startX2);
             p2.abilities = { ...(configAbilities.p2 || defaultAbilities[p2HeroSelection] || {}) };
             p2.bananaSkin = !!(typeof bananaSkinP2 !== 'undefined' && bananaSkinP2 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
@@ -110,16 +152,53 @@ function buildAndStartGame() {
             if (p2.bananaSkin || p2AbList.includes('banana_snack')) p2.bananaSnackUses = 3;
             applyBadgesToPlayer(p2, false); 
             players.push(p2);
-            
-            let isLoreDuo = (p1HeroSelection === 'WATER' && p2HeroSelection === 'EARTH') || (p1HeroSelection === 'EARTH' && p2HeroSelection === 'WATER');
-            if (isLoreDuo) { 
-                players[0].maxHp = 7; players[0].hp = 7; 
-                players[1].maxHp = 7; players[1].hp = 7; 
+        }
+
+        // Add AI companion if enabled (v74)
+        if (typeof hasAiCompanion !== 'undefined' && hasAiCompanion) {
+            let aiHero = (aiCompanionConfig && aiCompanionConfig.hero) ? aiCompanionConfig.hero : (p1HeroSelection === 'WATER' ? 'EARTH' : 'WATER');
+            let aiId = players.length + 1;
+            let startXAi = secretMode ? ARENA_W/2 + 80 : (players.length === 2 ? 260 : 200);
+            let pAi = createPlayer(aiId, aiHero, {}, 'AI', startXAi);
+            pAi.isAi = true;
+            pAi.aiPersonality = (aiCompanionConfig && aiCompanionConfig.personality) ? aiCompanionConfig.personality : 'TACTICIAN';
+            pAi.abilities = { ...(defaultAbilities[aiHero] || {}) };
+            applyBadgesToPlayer(pAi, false, 'ai');
+            players.push(pAi);
+        }
+
+        // Lore Duo bonus for Water + Earth
+        if (players.length >= 2) {
+            let hasWater = players.some(p => p.type === 'WATER');
+            let hasEarth = players.some(p => p.type === 'EARTH');
+            if (hasWater && hasEarth) {
+                for (let p of players) {
+                    if (p.type === 'WATER' || p.type === 'EARTH') {
+                        p.maxHp = Math.max(p.maxHp, 7);
+                        p.hp = p.maxHp;
+                    }
+                }
             }
+        }
+
+        // Boss HP and Shared Heals scaling based on total fighters
+        if (players.length === 1) {
+            boss.maxHp = secretMode ? 60 : 25; 
+            phase2Hp = secretMode ? 39 : 18; 
+            phase3Hp = secretMode ? 20 : 10; 
+            maxSharedHeals = 3;
+        } else if (players.length === 2) {
+            // 2 fighters (2 humans OR 1 human + 1 AI)
             boss.maxHp = secretMode ? 100 : 50; 
             phase2Hp = secretMode ? 66 : 36; 
             phase3Hp = secretMode ? 33 : 20; 
             maxSharedHeals = 4;
+        } else {
+            // 3 fighters (2 humans + 1 AI): Boss has 20% more HP than duo, 5 heal charges
+            boss.maxHp = Math.round((secretMode ? 100 : 50) * 1.2); 
+            phase2Hp = Math.round(boss.maxHp * 0.66); 
+            phase3Hp = Math.round(boss.maxHp * 0.33); 
+            maxSharedHeals = 5;
         }
 
         if (secretMode) { 
@@ -281,7 +360,7 @@ function resetGameParams() {
             if (p.badges && p.badges.includes('fish_scale')) baseHp += 1;
             p.maxHp = baseHp;
         } else if (p.type === 'WATER_ROPE') {
-            let baseHp = 5;
+            let baseHp = secretMode ? 6 : 4;
             if (p.badges && p.badges.includes('fish_scale')) baseHp += 1;
             p.maxHp = baseHp;
         }
@@ -298,6 +377,16 @@ function resetGameParams() {
         p.invigBrews = abList.includes('invig') ? 3 : 0;
         p.bananaSnackUses = (p.bananaSkin || abList.includes('banana_snack')) ? 3 : 0;
         p.dashBurstTimer = 0; p.airDashed = false;
+        p.ropeUltAttempts = 3;
+        p.staminaUltAttempts = 2;
+        p.waterDrop = null;
+        p.waterDropActive = false;
+        p.isSilkRunning = false;
+        p.silkRunTimer = 0;
+        p.halberdVaultTimer = 0;
+        p.halberdVaultSwinging = false;
+        p.airAttackTimer = 0;
+        p.fireBlastTimer = 0;
         if (p.type === 'STAMINA') { p.stamina = 5; p.isCharging = false; p.chargeTimer = 0; p.chargeProjectiles = []; } 
         if (p.type === 'FIRE') { p.isParrying = false; p.parryTimer = 0; p.orangeHp = 0; p.orangeHpTimer = 0; p.isFieryHealing = false; p.fireDashTimer = 0; }
         if (p.type === 'FIRE_HALBERD') { p.halberdBuffTimer = 0; p.halberdVampiricReady = false; p.halberdCombos = 0; p.halberdComboTimer = 0; p.whirlwindTimer = 0; }
@@ -317,6 +406,7 @@ function resetGameParams() {
     voidExplosions = []; voidPortals = []; looms = []; chaosBalls = []; screamRings = [];
     loomThreads = []; lightAmuletWaves = []; battleAnnouncements = [];
     waterRopes = []; fallingBananaPeels = []; slowMoTimer = 0;
+    if (typeof initArenaLeaves === 'function') initArenaLeaves();
     
     if (boss) {
         boss.hp = boss.maxHp || 25; boss.phase = 1; boss.damageBonus = 0; boss.x = ARENA_W/2; boss.y = FLOOR - 50; 
@@ -1403,6 +1493,109 @@ function updateBackgroundDust() {
     }
 }
 
+function drawAbyssFloorMirror() {
+    if (!secretMode || boss.state.startsWith("L_CLIMB") || boss.phase === 2.5) return;
+    
+    let isPhase3 = (boss.phase === 3 || boss.state.startsWith("L_PHASE3") || boss.state.startsWith("SA") || boss.state === "VOID_SINK_STUN");
+    let dirtiness = 0;
+    if (isPhase3) {
+        let p3Total = (typeof phase3Hp !== 'undefined' && phase3Hp > 0) ? phase3Hp : 40;
+        let hpRatio = Math.max(0, Math.min(1, boss.hp / p3Total));
+        // В начале 3 фазы пол уже грязный (0.52). К концу фазы становится еще грязнее (до 0.96)
+        dirtiness = 0.52 + 0.44 * (1 - hpRatio);
+    }
+
+    ctx.save();
+    // Область отражения — строго в пределах пола Бездны
+    ctx.beginPath();
+    ctx.rect(0, FLOOR, ARENA_W, 140);
+    ctx.clip();
+
+    // Вертикальное зеркальное отражение через линию FLOOR
+    ctx.translate(0, 2 * FLOOR);
+    ctx.scale(1, -1);
+    
+    // В 3 фазе отражает значительно слабее и угасает по мере загрязнения
+    let reflAlpha = isPhase3 ? Math.max(0.02, 0.13 * (1 - (dirtiness - 0.52) / 0.48)) : 0.28;
+    ctx.globalAlpha = reflAlpha;
+
+    // Отражение босса
+    if (boss.y + boss.height >= FLOOR - 160) {
+        drawBoss();
+    }
+    // Отражение игроков
+    for (let p of players) {
+        if (p && p.y + p.height >= FLOOR - 140) {
+            drawPlayer(p);
+        }
+    }
+
+    ctx.restore();
+
+    // Накладываем глубокий глянцевый градиент черного обсидианового стекла
+    ctx.save();
+    let glassGrad = ctx.createLinearGradient(0, FLOOR, 0, FLOOR + 100);
+    if (!isPhase3) {
+        glassGrad.addColorStop(0, "rgba(5, 2, 12, 0.45)");
+        glassGrad.addColorStop(0.35, "rgba(3, 1, 8, 0.75)");
+        glassGrad.addColorStop(1, "rgba(2, 0, 5, 0.98)");
+    } else {
+        // В 3 фазе стекло матовое, покрытое темным пеплом
+        glassGrad.addColorStop(0, `rgba(10, 4, 14, ${0.7 + dirtiness * 0.25})`);
+        glassGrad.addColorStop(0.35, `rgba(6, 2, 8, ${0.85 + dirtiness * 0.12})`);
+        glassGrad.addColorStop(1, "rgba(2, 0, 4, 1.0)");
+    }
+    ctx.fillStyle = glassGrad;
+    ctx.fillRect(0, FLOOR, ARENA_W, 140);
+
+    // В 3 фазе: налет сажи, копоти и грязи на полу (становится всё грязнее)
+    if (isPhase3 && dirtiness > 0) {
+        ctx.save();
+        // Темная зола и пепел
+        for (let i = 0; i < 28; i++) {
+            let sx = (i * 97) % ARENA_W;
+            let sw = 45 + (i % 6) * 22;
+            let sy = FLOOR + (i % 5) * 16;
+            let sh = 10 + (i % 4) * 8;
+            let sootAlpha = (0.25 + (i % 3) * 0.15) * dirtiness;
+            ctx.fillStyle = `rgba(8, 4, 9, ${sootAlpha})`;
+            ctx.fillRect(sx, sy, sw, sh);
+        }
+        // Трещинки и следы копоти на зеркале
+        ctx.strokeStyle = `rgba(20, 10, 25, ${dirtiness * 0.8})`;
+        ctx.lineWidth = 1.5;
+        for (let j = 0; j < 12; j++) {
+            let jx = (j * 211) % ARENA_W;
+            ctx.beginPath();
+            ctx.moveTo(jx, FLOOR);
+            ctx.lineTo(jx + (j % 2 === 0 ? 15 : -15), FLOOR + 18 + (j % 3) * 10);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // Зеркальная неоново-фиолетовая фаска на линии пола
+    let rimAlpha = isPhase3 ? Math.max(0.1, 0.35 * (1 - (dirtiness - 0.52) / 0.48)) : 0.65;
+    ctx.strokeStyle = `rgba(180, 100, 255, ${rimAlpha})`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(0, FLOOR);
+    ctx.lineTo(ARENA_W, FLOOR);
+    ctx.stroke();
+
+    // Тонкий белый блик стекла (исчезает в 3 фазе под слоем грязи)
+    if (!isPhase3 || dirtiness < 0.65) {
+        let glintAlpha = isPhase3 ? (0.35 * (1 - dirtiness)) : 0.35;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${glintAlpha})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, FLOOR - 1);
+        ctx.lineTo(ARENA_W, FLOOR - 1);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
 function drawBackground() {
     let bgTop = (boss.phase >= 2.5 || boss.state.startsWith("L_CLIMB") || secretMode) ? -6000 : 0;
     ctx.fillStyle = secretMode ? "#111" : (globalWindMode === "DOWN" ? "#1a100c" : "#2e1a12"); 
@@ -1450,8 +1643,7 @@ function drawBackground() {
         ctx.stroke();
         
         ctx.fillStyle = "rgba(255, 180, 100, 0.1)"; ctx.fillRect(lx + 15, ly + 70, 130, 40);
-        ctx.fillStyle = "#4a3022"; ctx.fillRect(lx + 5, ly + 65, 150, 6);
-    }
+        ctx.fillStyle = "#4a3022"; ctx.fillRect(lx + 5, ly + 65, 150, 6);    }
 
     // Speedlines during the 2-second abyss free-fall
     if (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120) {
@@ -1475,10 +1667,72 @@ function drawBackground() {
     ctx.fillRect(0, FLOOR, ARENA_W, ARENA_H > FLOOR ? ARENA_H : 2000);
 
     if (!boss.state.startsWith("L_CLIMB")) {
-        ctx.strokeStyle = secretMode ? "#555" : "#111"; 
+        ctx.strokeStyle = secretMode ? "#2a1538" : "#111"; 
         ctx.lineWidth = 4; ctx.beginPath(); 
         ctx.moveTo(0, FLOOR); ctx.lineTo(ARENA_W, FLOOR);
         ctx.stroke();
+    }
+
+    // Растительность в обычном режиме: анимированные Цветки 1 на поле боя и Растения 1, 2, 3 по краям арены
+    if (!secretMode && !boss.state.startsWith("L_CLIMB") && externalGameAssets.loaded) {
+        ctx.save();
+        let now = Date.now();
+
+        // 1. Несколько анимированных цветков 1 (BlueFlower1) на поле боя
+        if (externalGameAssets.blueFlowers && externalGameAssets.blueFlowers.length > 0) {
+            let flCount = externalGameAssets.blueFlowers.length;
+            let flowerPositions = [210, 390, 630, 800];
+            flowerPositions.forEach((fx, idx) => {
+                let frameIdx = Math.floor(now / 140 + idx * 3) % flCount;
+                let flImg = externalGameAssets.blueFlowers[frameIdx];
+                if (flImg) {
+                    let fw = 34, fh = 34;
+                    // Слегка притапливаем в пол на 4px, чтобы естественно росли из камня
+                    ctx.drawImage(flImg, fx, FLOOR - fh + 4, fw, fh);
+                }
+            });
+        }
+
+        // 2. Анимированные Растения 1, 2, 3 ближе к краям арены (чуть подрезаны у основания полом)
+        let p1Frames = externalGameAssets.plants1;
+        let p2Frames = externalGameAssets.plants2;
+        let p3Frames = externalGameAssets.plants3;
+
+        // Левый край арены: Plant 1, Plant 2, Plant 3
+        if (p1Frames && p1Frames.length > 0) {
+            let f1 = Math.floor(now / 110) % p1Frames.length;
+            let img = p1Frames[f1];
+            if (img) ctx.drawImage(img, 28, FLOOR - 46, 48, 52); // +6px утоплено в пол
+        }
+        if (p2Frames && p2Frames.length > 0) {
+            let f2 = Math.floor(now / 125 + 2) % p2Frames.length;
+            let img = p2Frames[f2];
+            if (img) ctx.drawImage(img, 76, FLOOR - 42, 44, 48);
+        }
+        if (p3Frames && p3Frames.length > 0) {
+            let f3 = Math.floor(now / 115 + 4) % p3Frames.length;
+            let img = p3Frames[f3];
+            if (img) ctx.drawImage(img, 126, FLOOR - 40, 42, 46);
+        }
+
+        // Правый край арены: Plant 3, Plant 2, Plant 1
+        if (p3Frames && p3Frames.length > 0) {
+            let f3r = Math.floor(now / 115 + 6) % p3Frames.length;
+            let img = p3Frames[f3r];
+            if (img) ctx.drawImage(img, ARENA_W - 170, FLOOR - 40, 42, 46);
+        }
+        if (p2Frames && p2Frames.length > 0) {
+            let f2r = Math.floor(now / 125 + 8) % p2Frames.length;
+            let img = p2Frames[f2r];
+            if (img) ctx.drawImage(img, ARENA_W - 122, FLOOR - 42, 44, 48);
+        }
+        if (p1Frames && p1Frames.length > 0) {
+            let f1r = Math.floor(now / 110 + 10) % p1Frames.length;
+            let img = p1Frames[f1r];
+            if (img) ctx.drawImage(img, ARENA_W - 74, FLOOR - 46, 48, 52);
+        }
+
+        ctx.restore();
     }
     
     for (let p of platforms) {
@@ -1951,6 +2205,35 @@ function drawMasks() {
                 ctx.fillStyle = "#ffcc00"; ctx.fill();
                 ctx.strokeStyle = "#ff5500"; ctx.lineWidth = 2; ctx.stroke();
             }
+            if (p.invigBrews > 0) brewX += p.invigBrews * 16 + 10;
+        }
+
+        // Water Rope Ult Indicator (3 glowing cyan circles)
+        if (p.type === 'WATER_ROPE') {
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.arc(brewX + i * 16, yOffset, 6, 0, Math.PI * 2);
+                ctx.fillStyle = i < (p.ropeUltAttempts || 0) ? "#00ffff" : "rgba(0, 255, 255, 0.2)";
+                ctx.fill();
+                ctx.strokeStyle = "#0088cc";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+            brewX += 3 * 16 + 10;
+        }
+
+        // 4G Stamina Pink Ult Indicator (2 glowing pink circles)
+        if (p.type === 'STAMINA' && (p.weaponMode === 'PINK' || p.stance === 'PINK')) {
+            for (let i = 0; i < 2; i++) {
+                ctx.beginPath();
+                ctx.arc(brewX + i * 16, yOffset, 6, 0, Math.PI * 2);
+                ctx.fillStyle = i < (p.staminaUltAttempts || 0) ? "#ff33aa" : "rgba(255, 51, 170, 0.2)";
+                ctx.fill();
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+            brewX += 2 * 16 + 10;
         }
 
         let tagOffset = brewX + 10;
@@ -1965,10 +2248,10 @@ function drawMasks() {
         if (p.type === 'WATER') {
             let canDemon = !(!secretMode && numPlayers === 2);
             if (p.stance === 'DEMON') {
-                tagText = "[ДЕМОНСКАЯ СИЛА] (S)";
+                tagText = secretMode ? "[ДЕМОНСКАЯ СИЛА] (F+Вниз: Бездна | C+F: Бег | S)" : "[ДЕМОНСКАЯ СИЛА] (C+F: Бег | S)";
                 tagColor = "#d000ff";
             } else {
-                tagText = canDemon ? "[СВЕТЛАЯ СИЛА] (S)" : "[СВЕТЛАЯ СИЛА]";
+                tagText = canDemon ? "[СВЕТЛАЯ СИЛА] (X+F: Капля | C+F: Бег | S)" : "[СВЕТЛАЯ СИЛА] (X+F: Капля | C+F: Бег)";
                 tagColor = "#00e5ff";
             }
         } else if (p.type === 'EARTH') {
@@ -1986,44 +2269,44 @@ function drawMasks() {
                 dodgeVal += 5;
                 if (p.hasLuckyCharm) dodgeVal += 2;
             }
-            tagText = `[КИНЖАЛЫ ТЕНИ] (Крит: ${critVal}%${dodgeVal > 0 ? ` | Уворот: ${dodgeVal}%` : ''})`;
+            tagText = `[КИНЖАЛЫ ТЕНИ] (X+C: Удар-сальто | Крит: ${critVal}%${dodgeVal > 0 ? ` | Уворот: ${dodgeVal}%` : ''})`;
             tagColor = "#55ff77";
         } else if (p.type === 'AIR') {
-            tagText = "[КЛИНКИ ВЕТРА]";
+            tagText = "[КЛИНКИ ВЕТРА] (S: Воздушная атака | Удерживай Z: Прыжок выше)";
             tagColor = "#fff066";
         } else if (p.type === 'STAMINA') {
-            if (p.stance === 'PINK') {
-                tagText = "[ВИРУСНЫЙ МЕЧ | x2.5] (S)";
+            if (p.stance === 'PINK' || p.weaponMode === 'PINK') {
+                tagText = `[ВИРУСНЫЙ МЕЧ | x2.5] (X+S: Ульта [${p.staminaUltAttempts !== undefined ? p.staminaUltAttempts : 2}] | S: Режим)`;
                 tagColor = "#ff33aa";
             } else {
-                tagText = "[СИНИЕ КИНЖАЛЫ | СЕРИЯ] (S)";
+                tagText = "[СИНИЕ КИНЖАЛЫ | СЕРИЯ] (S: Режим)";
                 tagColor = "#33ffff";
             }
         } else if (p.type === 'FIRE') {
             if (p.heatBladeTimer > 0) {
-                tagText = `[НАГРЕВ КЛИНКА: ${(p.heatBladeTimer/60).toFixed(1)}с] (S: Выпад 2.5)`;
+                tagText = `[НАГРЕВ КЛИНКА: ${(p.heatBladeTimer/60).toFixed(1)}с] (S: Выпад 2.5 | Shift: Взрыв)`;
                 tagColor = "#ff4400";
             } else {
-                tagText = "[ШПАГА ОГНЯ] (S: Выпад | F: Парир 0.5х | F+X: Нагрев 0.5х)";
+                tagText = "[ШПАГА ОГНЯ] (Shift: Взрыв огня | S: Выпад | C+F: Бег)";
                 tagColor = "#ffaa33";
             }
         } else if (p.type === 'FIRE_HALBERD') {
             if (p.heatBladeTimer > 0) {
-                tagText = `[ОГНЕННАЯ ВОЛНА: ${(p.heatBladeTimer/60).toFixed(1)}с] (+1.25 урон)`;
+                tagText = `[ОГНЕННАЯ ВОЛНА: ${(p.heatBladeTimer/60).toFixed(1)}с] (+1.25 урон | S: Прыжок-шест)`;
                 tagColor = "#ff3300";
             } else {
-                tagText = "[АЛЕБАРДА ОГНЯ] (F: Замах | F+Вверх: Сюрикены)";
+                tagText = "[АЛЕБАРДА ОГНЯ] (S: Прыжок-шест с ударом 3.0 | F: Замах)";
                 tagColor = "#ff7733";
             }
         } else if (p.type === 'WATER_ROPE') {
             if (p.concentrateReady) {
-                tagText = "[ФОКУС ГОТОВ!] (Отпусти X: Удар 2.5 | X+C: Рывок 2.75)";
+                tagText = `[ФОКУС ГОТОВ!] (Отпусти X: Удар 2.5 | X+S: Гарпун [${p.ropeUltAttempts !== undefined ? p.ropeUltAttempts : 3}])`;
                 tagColor = "#00ffff";
             } else if (p.concentrateTimer > 0) {
                 tagText = `[ФОКУС: ${Math.round((p.concentrateTimer/60)*100)}%]`;
                 tagColor = "#38bdf8";
             } else {
-                tagText = "[МАЛЫШ ВОДЫ] (Зажми X: Фокус | Трос: Движение)";
+                tagText = `[МАЛЫШ ВОДЫ] (X+S: Гарпун-захват [${p.ropeUltAttempts !== undefined ? p.ropeUltAttempts : 3}] | Трос: Движение)`;
                 tagColor = "#00e5ff";
             }
         }
@@ -2076,7 +2359,7 @@ function drawMasks() {
     }
 
     if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal) {
-        let healY = numPlayers === 2 ? 105 : 75;
+        let healY = 25 + (players.length * 35) + 15;
         ctx.fillStyle = "#ffaa00"; 
         ctx.font = "bold 13px Arial"; 
         ctx.fillText(`Ограниченный хил: ${sharedHealPoints}/12`, 20, healY);
@@ -2106,7 +2389,7 @@ function drawMasks() {
         ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
         ctx.fillText("Хил: 8 | F: 4 | Огонь A+Вверх: 12", 20, barY + segH + 15);
     } else {
-        let healY = numPlayers === 2 ? 105 : 75;
+        let healY = 25 + (players.length * 35) + 15;
         ctx.fillStyle = "lime"; ctx.font = "14px Arial"; ctx.fillText("Заряды исцеления:", 20, healY);
         let hasGen = typeof players !== 'undefined' && players.some(p => p.badges && p.badges.includes('generator'));
         let genTargetIdx = Math.floor(sharedHeals);
@@ -2573,6 +2856,8 @@ function draw() {
         if (boss.state === "VOID_FLOOR_WARN") { ctx.fillStyle = "rgba(150,0,255,0.2)"; ctx.fillRect(0, FLOOR-10, ARENA_W, 10); }
         if (boss.state === "VOID_FLOOR_ACTIVE") { ctx.fillStyle = "rgba(150,0,255,0.6)"; ctx.fillRect(0, FLOOR-15, ARENA_W, 15); }
 
+        // Boss Wind attack has NO visual overlays/lines; strictly background leaf movement as requested by Timur!
+
         if (secretMode && boss.saLines) { 
             for (let l of boss.saLines) {
                 ctx.save();
@@ -2871,6 +3156,11 @@ function draw() {
                 if (p) drawPlayer(p);
             }
 
+            // Чёрное зеркало в L-режиме: отражение босса и героев в обсидиановом полу Бездны
+            if (secretMode && typeof drawAbyssFloorMirror === 'function') {
+                drawAbyssFloorMirror();
+            }
+
             if (secretMode && players.some(p => (p.hallucinationHits || 0) >= ((p.hasLightAmulet && !p.lightAmuletBroken) ? 4 : 3) && !(p.type === 'WATER' && p.stance === 'DEMON'))) {
                 let time = Date.now();
                 let pMain = players[0];
@@ -2949,25 +3239,57 @@ function draw() {
                     ctx.save();
                     ctx.translate(trg.x, trg.y);
                     let pulse = Math.sin(now / 200) * 2;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, trg.r + pulse, 0, Math.PI * 2);
-                    ctx.strokeStyle = "#ff0077";
-                    ctx.lineWidth = 2.5;
-                    ctx.shadowColor = "#ff0077";
-                    ctx.shadowBlur = 10;
-                    ctx.stroke();
 
-                    ctx.beginPath();
-                    ctx.arc(0, 0, trg.r * 0.55, 0, Math.PI * 2);
-                    ctx.fillStyle = "rgba(255, 50, 100, 0.4)";
-                    ctx.fill();
+                    // Отрисовка живого анимированного оранжевого слизня из itch-библиотеки!
+                    if (externalGameAssets.slimes && externalGameAssets.slimes.length > 0) {
+                        let sFrame = Math.floor(now / 110) % externalGameAssets.slimes.length;
+                        let sImg = externalGameAssets.slimes[sFrame];
+                        if (sImg) {
+                            // Мягкое оранжевое свечение
+                            let glow = ctx.createRadialGradient(0, 4, 2, 0, 4, 30);
+                            glow.addColorStop(0, "rgba(255, 140, 0, 0.45)");
+                            glow.addColorStop(1, "rgba(255, 100, 0, 0)");
+                            ctx.fillStyle = glow;
+                            ctx.beginPath();
+                            ctx.arc(0, 4, 30, 0, Math.PI * 2);
+                            ctx.fill();
 
-                    ctx.strokeStyle = "#ffffff";
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(-trg.r - 4, 0); ctx.lineTo(trg.r + 4, 0);
-                    ctx.moveTo(0, -trg.r - 4); ctx.lineTo(0, trg.r + 4);
-                    ctx.stroke();
+                            // Анимированное дыхание/пружинистость
+                            let squish = 1.0 + Math.sin(now / 140) * 0.08;
+                            let sW = 54 * squish;
+                            let sH = 38 / squish;
+                            ctx.drawImage(sImg, -sW / 2, -sH / 2, sW, sH);
+
+                            // Стильная пунктирная прицельная рамка вокруг слизня
+                            ctx.beginPath();
+                            ctx.arc(0, 0, trg.r + pulse + 4, 0, Math.PI * 2);
+                            ctx.strokeStyle = "rgba(255, 160, 50, 0.85)";
+                            ctx.lineWidth = 2;
+                            ctx.setLineDash([4, 4]);
+                            ctx.stroke();
+                            ctx.setLineDash([]);
+                        }
+                    } else {
+                        ctx.beginPath();
+                        ctx.arc(0, 0, trg.r + pulse, 0, Math.PI * 2);
+                        ctx.strokeStyle = "#ff0077";
+                        ctx.lineWidth = 2.5;
+                        ctx.shadowColor = "#ff0077";
+                        ctx.shadowBlur = 10;
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.arc(0, 0, trg.r * 0.55, 0, Math.PI * 2);
+                        ctx.fillStyle = "rgba(255, 50, 100, 0.4)";
+                        ctx.fill();
+
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(-trg.r - 4, 0); ctx.lineTo(trg.r + 4, 0);
+                        ctx.moveTo(0, -trg.r - 4); ctx.lineTo(0, trg.r + 4);
+                        ctx.stroke();
+                    }
                     ctx.restore();
                 }
             }
@@ -3523,5 +3845,411 @@ function loop(time) {
     draw();
     requestAnimationFrame(loop);
 }
+
+// --- HERO & BOSS CODEX / TECHNICAL DATASHEET SYSTEM (v73.2) ---
+let currentCodexHero = 'WATER';
+let currentCodexBossMode = 'NORMAL';
+let codexAnimFrameId = null;
+
+function isBossCodexUnlocked() {
+    try {
+        let u = (typeof getCurrentUser === 'function' ? getCurrentUser() : '') || '';
+        u = u.trim().toLowerCase();
+        let isDevice = false;
+        try { isDevice = localStorage.getItem('shelter_is_creator_device') === 'true'; } catch(e){}
+        if (isDevice) return true;
+        if (!u) return false;
+        if (u === 'рыба' || u === 'admin' || u === 'тимур' || u === '降卋神通' || u === 'creator') return true;
+        if (typeof isCarrotsUser === 'function' && isCarrotsUser(u)) return true;
+        if (u.includes('ярослав') || u.includes('carrots')) return true;
+        if (typeof isDashaUser === 'function' && isDashaUser(u)) return true;
+        if (u.includes('даша') || u.includes('dasha')) return true;
+        if (u.includes('gandalf') || u.includes('гэндальф') || u.includes('гендальф')) return true;
+        return false;
+    } catch(e) {
+        return false;
+    }
+}
+window.isBossCodexUnlocked = isBossCodexUnlocked;
+
+function openHeroCodexModal(initialHeroId = 'WATER') {
+    let modal = document.getElementById('hero-codex-modal');
+    if (!modal) return;
+    
+    // Check boss tab unlock for Timur, Yaroslav, Dasha & Gandalf
+    let bossBtn = document.getElementById('codex-boss-tab-btn');
+    if (bossBtn) {
+        bossBtn.style.display = isBossCodexUnlocked() ? 'inline-block' : 'none';
+    }
+    
+    modal.style.display = 'flex';
+    selectCodexHero(initialHeroId);
+    if (typeof playSound === 'function') playSound('select');
+}
+window.openHeroCodexModal = openHeroCodexModal;
+
+function closeHeroCodexModal() {
+    let modal = document.getElementById('hero-codex-modal');
+    if (modal) modal.style.display = 'none';
+    if (codexAnimFrameId) {
+        cancelAnimationFrame(codexAnimFrameId);
+        codexAnimFrameId = null;
+    }
+}
+window.closeHeroCodexModal = closeHeroCodexModal;
+
+function selectCodexHero(heroId) {
+    if (heroId === 'BOSS' && !isBossCodexUnlocked()) return;
+    currentCodexHero = heroId;
+
+    let tabs = document.querySelectorAll('.codex-tab-btn');
+    tabs.forEach(btn => {
+        if (btn.getAttribute('data-hero') === heroId) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    renderCodexHeroContent(heroId);
+    startCodexPreviewAnimation();
+}
+window.selectCodexHero = selectCodexHero;
+
+function toggleCodexBossMode(mode) {
+    currentCodexBossMode = mode;
+    renderCodexBossContent();
+    if (typeof playSound === 'function') playSound('select');
+}
+window.toggleCodexBossMode = toggleCodexBossMode;
+
+function renderCodexHeroContent(heroId) {
+    let container = document.getElementById('codex-content-body');
+    if (!container) return;
+    
+    if (heroId === 'BOSS') {
+        renderCodexBossContent();
+        return;
+    }
+    
+    let h = (typeof HERO_CODEX_DATA !== 'undefined' && HERO_CODEX_DATA[heroId]) || null;
+    if (!h) {
+        container.innerHTML = `<div style="padding: 20px; color: #94a3b8;">Герой не найден</div>`;
+        return;
+    }
+
+    let passivesHtml = (h.passives || []).map(p => `<li style="margin-bottom: 5px;">${p}</li>`).join('');
+    let keyXDetailsHtml = (h.keyX && h.keyX.details || []).map(d => `<li style="margin-bottom: 6px;">${d}</li>`).join('');
+    let keySDetailsHtml = (h.keyS && h.keyS.details || []).map(d => `<li style="margin-bottom: 6px;">${d}</li>`).join('');
+    
+    let ywSlots = h.yellowWhiteSlots || {};
+    let slotsListHtml = (ywSlots.slotsList || []).map(s => `
+        <div style="background: rgba(0,0,0,0.35); padding: 7px 12px; border-radius: 6px; border-left: 3px solid #ffd700; margin-bottom: 6px; font-size: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+            <div>
+                <b style="color: #ffd700;">${s.slot}:</b> <span style="color: #cbd5e1; margin-left: 6px;">${s.desc}</span>
+            </div>
+            <span class="codex-badge-tag" style="border-color: #ffd700; color: #fff; font-weight: bold; background: rgba(255,215,0,0.15);">${s.key}</span>
+        </div>
+    `).join('');
+
+    let poolHtml = (ywSlots.abilitiesPool || []).map(ab => `
+        <span style="display: inline-block; background: rgba(255,215,0,0.12); border: 1px solid rgba(255,215,0,0.3); border-radius: 4px; padding: 3px 8px; margin: 3px 4px 3px 0; font-size: 11px; color: #fef08a;">${ab}</span>
+    `).join('');
+
+    let movesHtml = (h.moves || []).map(m => `
+        <tr>
+            <td style="white-space: nowrap;"><span class="codex-badge-tag" style="border-color: ${h.color}; color: #fff;">${m.keys}</span></td>
+            <td style="font-weight: bold; color: ${h.color};">${m.name}</td>
+            <td><b style="color: #ffdd44; font-size: 13px;">${m.dmg}</b></td>
+            <td style="white-space: nowrap; color: #38bdf8; font-size: 11.5px;"><b>[${m.timing}]</b></td>
+            <td style="font-size: 12px; color: #cbd5e1;">${m.desc}</td>
+        </tr>
+    `).join('');
+
+    container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- Top Hero Banner -->
+            <div style="background: rgba(15, 23, 42, 0.85); border: 2px solid ${h.color}; border-radius: 12px; padding: 14px 20px; box-shadow: 0 0 25px ${h.color}33; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 34px; filter: drop-shadow(0 0 10px ${h.color});">${h.icon}</span>
+                    <div>
+                        <div style="font-size: 22px; font-weight: 900; color: ${h.color}; letter-spacing: 1px;">${h.name}</div>
+                        <div style="font-size: 12px; color: #94a3b8;">${h.tagline}</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 12px; font-size: 12px;">
+                        <span style="color: #f87171;">🩸 HP:</span> <b style="color: #fff;">${h.hp}</b>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 12px; font-size: 12px;">
+                        <span style="color: #fbbf24;">⚔️ Базовый урон:</span> <b style="color: #fff;">${h.baseDmg}</b>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 12px; font-size: 12px;">
+                        <span style="color: #38bdf8;">⚡ Скорость:</span> <b style="color: #fff;">${h.speed}</b>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 12px; font-size: 12px;">
+                        <span style="color: #a855f7;">🎯 Радиус:</span> <b style="color: #fff;">${h.atkRange} px</b>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats & Equipment Specs -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px 16px; font-size: 12.5px;">
+                <b style="color: #e2e8f0;">🗡️ Основное оружие:</b> <span style="color: ${h.color}; font-weight: bold;">${h.weapon}</span> &nbsp;|&nbsp; 
+                <span style="color: #94a3b8; font-size: 12px;">⏱️ Кулдаун удара: <b style="color: #fff;">${h.atkCd} кадров</b> (~${Math.round(h.atkCd * 16.6)} мс)</span>
+            </div>
+
+            <!-- SECTION: YELLOW-WHITE SLOTS (F ABILITIES) -->
+            <div style="background: rgba(255, 215, 0, 0.08); border: 1.5px solid #ffd700; border-radius: 12px; padding: 14px 18px; box-shadow: 0 0 20px rgba(255, 215, 0, 0.12);">
+                <div style="font-size: 14px; font-weight: 900; color: #ffd700; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>🟡</span> ${ywSlots.title || 'Желто-белые слоты (Настройка способностей на клавишу F)'}
+                    </div>
+                    <span style="font-size: 12px; padding: 3px 10px; border-radius: 4px; font-weight: bold; background: rgba(255, 215, 0, 0.25); color: #ffd700; border: 1px solid #ffd700;">
+                        ${ywSlots.countText || 'Настройка F'}
+                    </span>
+                </div>
+                <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 10px; line-height: 1.5;">
+                    В меню выбора снаряжения в эти слоты настраиваются боевые спец-способности, которые активируются в бою клавишей <b>F</b>:
+                </div>
+                <div style="margin-bottom: 10px;">
+                    ${slotsListHtml}
+                </div>
+                <div style="font-size: 11.5px; color: #94a3b8; line-height: 1.5; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 6px;">
+                    <b style="color: #ffd700;">Доступные способности для установки в слоты:</b><br>
+                    ${poolHtml}
+                </div>
+            </div>
+
+            <!-- SECTION: HEAL VOLUME & MECHANICS -->
+            <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(15, 23, 42, 0.8)); border: 1.5px solid #22c55e; border-radius: 12px; padding: 14px 18px; box-shadow: 0 0 20px rgba(34, 197, 94, 0.15);">
+                <div style="font-size: 14px; font-weight: 900; color: #4ade80; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <span>🩸</span> МЕХАНИКА И ОБЪЕМ ХИЛА (ЛЕЧЕНИЯ):
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; font-size: 12px; margin-bottom: 10px;">
+                    <div style="background: rgba(0,0,0,0.4); padding: 10px 12px; border-radius: 8px; border: 1.5px solid rgba(74, 222, 128, 0.4);">
+                        <span style="color: #86efac; font-size: 11px; font-weight: bold;">ЗАВЕРШЕНИЕ ХИЛА (ОБЪЕМ):</span><br>
+                        <b style="color: #4ade80; font-size: 14px;">${h.heal.restoresText}</b>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                        <span style="color: #94a3b8; font-size: 11px;">ВРЕМЯ КАСТА (УДЕРЖАНИЕ):</span><br>
+                        <b style="color: #fff; font-size: 12.5px;">${h.heal.castTime}</b>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                        <span style="color: #94a3b8; font-size: 11px;">ПЕРЕЗАРЯДКА ХИЛА:</span><br>
+                        <b style="color: #ffd700; font-size: 12.5px;">${h.heal.recharge}</b>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                        <span style="color: #94a3b8; font-size: 11px;">КОМАНДНЫЙ ЗАПАС:</span><br>
+                        <b style="color: #38bdf8; font-size: 12.5px;">${h.heal.teamPool}</b>
+                    </div>
+                </div>
+                <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 6px;">
+                    🤝 <b>Воскрешение союзника:</b> ${h.heal.allyRevive}<br>
+                    ⚠️ <b>Прерывание:</b> ${h.heal.vulnerability}
+                </div>
+            </div>
+
+            <!-- SECTION: KEY X MECHANICS -->
+            <div style="background: rgba(15, 23, 42, 0.75); border: 1.5px solid #38bdf8; border-radius: 12px; padding: 14px 18px; box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);">
+                <div style="font-size: 14px; font-weight: 900; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>⚔️</span> ${h.keyX.title}
+                    </div>
+                    <span style="font-size: 11px; color: #94a3b8; font-weight: normal;">(Базовые удары, атаки направления и концентрация)</span>
+                </div>
+                <ul style="margin: 0; padding-left: 20px; font-size: 12.5px; color: #cbd5e1; line-height: 1.6;">
+                    ${keyXDetailsHtml}
+                </ul>
+            </div>
+
+            <!-- SECTION: KEY S MECHANICS & MODE SWITCH -->
+            <div style="background: rgba(15, 23, 42, 0.75); border: 1.5px solid #c084fc; border-radius: 12px; padding: 14px 18px; box-shadow: 0 0 20px rgba(192, 132, 252, 0.15);">
+                <div style="font-size: 14px; font-weight: 900; color: #c084fc; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>🔄</span> ${h.keyS.title}
+                    </div>
+                    <span style="font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: bold; background: ${h.keyS.changesMode ? 'rgba(192, 132, 252, 0.25); color: #e9d5ff;' : 'rgba(56, 189, 248, 0.2); color: #38bdf8;'}">
+                        ${h.keyS.changesMode ? '🔄 МЕНЯЕТ РЕЖИМ' : '🛡️ БОЕВОЙ НАВЫК СТОЙКИ'}
+                    </span>
+                </div>
+                <ul style="margin: 0; padding-left: 20px; font-size: 12.5px; color: #cbd5e1; line-height: 1.6;">
+                    ${keySDetailsHtml}
+                </ul>
+            </div>
+
+            <!-- SECTION: PASSIVES -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px 18px;">
+                <div style="font-size: 14px; font-weight: 900; color: #ffd700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <span>✨</span> ОСОБЕННОСТИ И ПАССИВНЫЕ ЭФФЕКТЫ:
+                </div>
+                <ul style="margin: 0; padding-left: 20px; font-size: 12.5px; color: #cbd5e1; line-height: 1.6;">
+                    ${passivesHtml}
+                </ul>
+            </div>
+
+            <!-- SECTION: MOVESET TABLE -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px 18px; overflow-x: auto;">
+                <div style="font-size: 14px; font-weight: 900; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>🥋</span> ТАБЛИЦА ПРИЕМОВ, КЛАВИШ И ТАЙМИНГОВ
+                    </div>
+                    <span style="font-size: 11px; color: #94a3b8; font-weight: normal;">(Базовые приемы, атаки направления, стойка S и спец-атаки F)</span>
+                </div>
+                <table class="codex-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 18%;">Клавиши</th>
+                            <th style="width: 24%;">Прием</th>
+                            <th style="width: 12%;">Урон</th>
+                            <th style="width: 16%;">Тайминг</th>
+                            <th style="width: 30%;">Описание и эффект</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${movesHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function renderCodexBossContent() {
+    let container = document.getElementById('codex-content-body');
+    if (!container) return;
+
+    let b = (typeof BOSS_CODEX_DATA !== 'undefined' && BOSS_CODEX_DATA[currentCodexBossMode]) || null;
+    if (!b) return;
+
+    let isNormal = currentCodexBossMode === 'NORMAL';
+    let phasesHtml = (b.phases || []).map(p => `
+        <div style="background: rgba(0,0,0,0.35); padding: 10px 14px; border-radius: 8px; border-left: 3px solid #ffd700; margin-bottom: 8px;">
+            <b style="color: #ffd700; font-size: 13px;">${p.title}</b>
+            <div style="font-size: 12px; color: #cbd5e1; margin-top: 3px; line-height: 1.4;">${p.desc}</div>
+        </div>
+    `).join('');
+
+    let attacksHtml = (b.attacks || []).map(a => {
+        let isSA = a.type && a.type.includes('СУПЕРАТАКА');
+        let typeBadge = a.type 
+            ? `<div style="margin-top: 3px;"><span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; ${isSA ? 'background: rgba(168,85,247,0.25); border: 1px solid #a855f7; color: #d8b4fe;' : 'background: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.3); color: #38bdf8;'}">${a.type}</span></div>` 
+            : '';
+        return `
+        <tr style="${isSA ? 'background: rgba(168,85,247,0.06);' : ''}">
+            <td style="font-weight: bold; color: ${isSA ? '#c084fc' : '#ffd700'};">
+                ${a.name}${typeBadge}
+            </td>
+            <td style="color: #38bdf8; font-size: 12px; white-space: nowrap;"><b>[${a.windup}]</b></td>
+            <td><b style="color: #ff5544; font-size: 13px;">${a.dmg}</b></td>
+            <td style="font-size: 12px; color: #cbd5e1; line-height: 1.4;">${a.desc}</td>
+        </tr>`;
+    }).join('');
+
+    let modeBanner = isNormal
+        ? `<div style="background: rgba(234, 179, 8, 0.1); border: 1.5px solid rgba(234, 179, 8, 0.4); border-radius: 10px; padding: 10px 16px; color: #fef08a; font-size: 12px; line-height: 1.5;">
+            👑 <b>Классический арсенал:</b> В обычном режиме босс сражается шпагой, шелковым шарфом и ветром. <b>Суператаки (SA1, SA2, SA3), шары пустоты и хил в коконе пробуждаются ТОЛЬКО в Секретном L-режиме!</b>
+           </div>`
+        : `<div style="background: rgba(168, 85, 247, 0.12); border: 1.5px solid rgba(168, 85, 247, 0.5); border-radius: 10px; padding: 10px 16px; color: #e9d5ff; font-size: 12px; line-height: 1.5;">
+            🌑 <b>Сила Бездны:</b> В секретном L-режиме босс применяет весь разрушительный арсенал — <b>Землетрясение (SA1), Бурю нитей (SA2), Теневых фантомов (SA3), тройные комбо, хил в коконе (+10 HP) и шары пустоты!</b>
+           </div>`;
+
+    container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- Mode Switcher Bar -->
+            <div style="display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap;">
+                <div style="font-size: 13px; color: #94a3b8; font-weight: bold; margin-right: 4px;">РЕЖИМ БОССА:</div>
+                <button class="codex-tab-btn ${isNormal ? 'active' : ''}" onclick="toggleCodexBossMode('NORMAL')" style="font-size: 13px; padding: 8px 20px;">
+                    ⚔️ Обычный режим
+                </button>
+                <button class="codex-tab-btn codex-boss-btn ${!isNormal ? 'active' : ''}" onclick="toggleCodexBossMode('L_MODE')" style="font-size: 13px; padding: 8px 20px;">
+                    🌑 Секретный L-режим
+                </button>
+            </div>
+
+            ${modeBanner}
+
+            <!-- Boss Title Card -->
+            <div style="background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(15, 23, 42, 0.9)); border: 2px solid #ffd700; border-radius: 12px; padding: 14px 20px; box-shadow: 0 0 30px rgba(255, 215, 0, 0.25); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div>
+                    <div style="font-size: 22px; font-weight: 900; color: #ffd700; letter-spacing: 1px;">👑 ${b.name}</div>
+                    <div style="font-size: 12px; color: #94a3b8; font-style: italic;">«Главная владычица Убежища и мастер Серебряной Иглы»</div>
+                </div>
+                <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,215,0,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12.5px;">
+                    <span style="color: #f87171; font-weight: bold;">🩸 Здоровье:</span> <b style="color: #fff;">${b.hp}</b>
+                </div>
+            </div>
+
+            <!-- SECTION: VISUALS & STICKMAN BODY -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,215,0,0.3); border-radius: 12px; padding: 14px 18px;">
+                <div style="font-size: 14px; font-weight: 900; color: #ffd700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <span>👁️</span> МОДЕЛЬ, АНИМАЦИЯ И ГРАФИКА:
+                </div>
+                <ul style="margin: 0; padding-left: 20px; font-size: 12.5px; color: #cbd5e1; line-height: 1.6;">
+                    <li><b>Тело:</b> стикмен ярко-желтого цвета (#ffd700). Никаких рогов и масок насекомых — изящная инопланетная воительница!</li>
+                    <li><b>Атаки и Движения:</b> атаки определяются стойками, глубокими замахами и шагами, а не цветовой подсветкой (на кончике иглы видна лишь капелька оттенка атаки).</li>
+                    <li><b>Пыль на заднем фоне:</b> черные медленные частицы за всеми объектами арены с легким переливом по краям для создания глубокой атмосферы.</li>
+                    <li><b>Шарики Пустоты:</b> появляются только в L-режиме (начиная с 3-й фазы), вылетают преимущественно из углов и по арене.</li>
+                </ul>
+            </div>
+
+            <!-- SECTION: BOSS HEALING -->
+            <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(15, 23, 42, 0.8)); border: 1.5px solid #f87171; border-radius: 12px; padding: 14px 18px;">
+                <div style="font-size: 14px; font-weight: 900; color: #f87171; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <span>🩸</span> ${b.heal.title}:
+                </div>
+                <div style="font-size: 12.5px; color: #cbd5e1; line-height: 1.5;">
+                    <b style="color: #ffdd44; font-size: 13px;">${b.heal.amount}</b><br>
+                    ${b.heal.desc ? b.heal.desc : ''}
+                </div>
+            </div>
+
+            <!-- SECTION: PHASES & SHARPEN -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,215,0,0.3); border-radius: 12px; padding: 14px 18px;">
+                <div style="font-size: 14px; font-weight: 900; color: #ffd700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <span>⚡</span> ФАЗЫ БИТВЫ И ЗАТОЧКА ШПАГИ (УСИЛЕНИЯ БОССА):
+                </div>
+                ${phasesHtml}
+            </div>
+
+            <!-- SECTION: EXHAUSTIVE BOSS ATTACKS TABLE -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px 18px; overflow-x: auto;">
+                <div style="font-size: 14px; font-weight: 900; color: #ffd700; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>🥋</span> СПИСОК ВСЕХ АТАК, ЗАМАХОВ И ТАЙМИНГОВ БОССА
+                    </div>
+                    <span style="font-size: 11px; color: #94a3b8; font-weight: normal;">${isNormal ? '(Обычные выпады, Шарф, Штопор, Линия ветра и Шелковый бег)' : '(Включая SA1, SA2, SA3, Тройные комбо, Врата тьмы и Хил)'}</span>
+                </div>
+                <table class="codex-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Атака</th>
+                            <th style="width: 18%;">Замах / Окно</th>
+                            <th style="width: 22%;">Урон и эффекты</th>
+                            <th style="width: 35%;">Визуальный сигнал и поведение босса</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${attacksHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function startCodexPreviewAnimation() {
+    // No-op: Full text encyclopedia layout active
+}
+
+// Global Escape listener to close codex modal
+window.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        let modal = document.getElementById('hero-codex-modal');
+        if (modal && modal.style.display !== 'none') {
+            closeHeroCodexModal();
+        }
+    }
+});
 
 requestAnimationFrame(loop);

@@ -941,3 +941,75 @@ canvas {
 .banana-peel-btn:hover .corner-gnome.corner-br {
     transform: rotate(165deg) scale(1.25);
 }
+
+/* --- HERO & BOSS CODEX / TECHNICAL SHEET MODAL (v73.2) --- */
+.codex-tab-btn {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1.5px solid #475569;
+    color: #cbd5e1;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+.codex-tab-btn:hover {
+    border-color: #38bdf8;
+    color: #fff;
+    background: rgba(56, 189, 248, 0.15);
+}
+.codex-tab-btn.active {
+    border-color: #38bdf8;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.25);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+}
+.codex-boss-btn {
+    border-color: #ffd700 !important;
+    color: #ffd700 !important;
+    background: rgba(255, 215, 0, 0.15) !important;
+}
+.codex-boss-btn:hover {
+    background: rgba(255, 215, 0, 0.25) !important;
+    box-shadow: 0 0 14px rgba(255, 215, 0, 0.5) !important;
+}
+.codex-boss-btn.active {
+    background: rgba(255, 215, 0, 0.3) !important;
+    box-shadow: 0 0 16px rgba(255, 215, 0, 0.6) !important;
+}
+.codex-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 8px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.codex-table th {
+    background: rgba(30, 41, 59, 0.85);
+    color: #94a3b8;
+    text-align: left;
+    padding: 8px 10px;
+    font-weight: bold;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.codex-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    color: #cbd5e1;
+}
+.codex-table tr:hover td {
+    background: rgba(56, 189, 248, 0.06);
+}
+.codex-badge-tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}

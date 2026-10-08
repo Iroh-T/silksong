@@ -1,6 +1,8 @@
 // --- CONTROLS & INPUT MODULE ---
 
 function isKeyPressed(codes) { 
+    if (!codes) return false;
+    if (typeof codes === 'string') return !!keys[codes];
     for (let c of codes) { 
         if (keys[c]) return true; 
     } 
@@ -199,14 +201,13 @@ window.addEventListener("keydown", e => {
 
     // Player 2 keyboard hero selection in menu
     if (gameState === "MENU" && document.getElementById("hero-select").style.display === "block" && numPlayers === 2) {
-        let p2Status = document.getElementById('p2-status');
-        if (e.key === "1") { p2HeroSelection = 'WATER'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Вода"; p2Status.style.color = "lime"; } checkDuoStart(); }
-        if (e.key === "2") { p2HeroSelection = 'AIR'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Воздух"; p2Status.style.color = "lime"; } checkDuoStart(); }
-        if (e.key === "3") { p2HeroSelection = 'EARTH'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Земля"; p2Status.style.color = "lime"; } checkDuoStart(); }
-        if (e.key === "4") { p2HeroSelection = 'STAMINA'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: 4-й Герой"; p2Status.style.color = "lime"; } checkDuoStart(); }
-        if (e.key === "5" && window.fireHeroUnlocked) { p2HeroSelection = 'FIRE'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Огонь"; p2Status.style.color = "#ff5500"; } checkDuoStart(); }
-        if (e.key === "6") { p2HeroSelection = 'FIRE_HALBERD'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Алебарда"; p2Status.style.color = "#ff4422"; } checkDuoStart(); }
-        if (e.key === "7") { p2HeroSelection = 'WATER_ROPE'; if (p2Status) { p2Status.innerText = "Игрок 2 Готов: Малыш Воды"; p2Status.style.color = "#00e5ff"; } checkDuoStart(); }
+        if (e.key === "1") selectHero2('WATER');
+        if (e.key === "2") selectHero2('AIR');
+        if (e.key === "3") selectHero2('EARTH');
+        if (e.key === "4") selectHero2('STAMINA');
+        if (e.key === "5" && window.fireHeroUnlocked) selectHero2('FIRE');
+        if (e.key === "6") selectHero2('FIRE_HALBERD');
+        if (e.key === "7") selectHero2('WATER_ROPE');
     }
 
     // Restart key [R] (from Game Over or Boss Defeat straight to layout selection with saved accounts!)
@@ -432,30 +433,79 @@ async function handleAuthSubmit() {
 }
 window.handleAuthSubmit = handleAuthSubmit;
 
+const HEROES_LIST = [
+    { id: 'WATER', num: 1, name: 'Вода', color: '#3366ff' },
+    { id: 'AIR', num: 2, name: 'Воздух', color: '#ffdd00' },
+    { id: 'EARTH', num: 3, name: 'Земля', color: '#33cc33' },
+    { id: 'STAMINA', num: 4, name: '4-й Герой', color: '#b35959' },
+    { id: 'FIRE', num: 5, name: 'Огонь', color: '#ff5500', reqFire: true },
+    { id: 'FIRE_HALBERD', num: 6, name: 'Огненная Алебарда', color: '#ff4422' },
+    { id: 'WATER_ROPE', num: 7, name: 'Малыш Воды (Трос)', color: '#00e5ff' }
+];
+
+function getHeroDisplayName(type) {
+    let f = HEROES_LIST.find(h => h.id === type);
+    return f ? f.name : (type || '—');
+}
+window.getHeroDisplayName = getHeroDisplayName;
+
 function updateHeroSelectUI() {
     let p1Ui = document.getElementById("p1-select-ui");
-    let fireBtn = document.getElementById("btn-hero-fire");
-    let p2Text = document.getElementById("p2-options-text");
+    if (!p1Ui) return;
 
-    if (window.fireHeroUnlocked) {
-        if (p1Ui && !document.getElementById("btn-hero-fire")) {
-            let div = document.createElement("div");
-            div.id = "btn-hero-fire";
-            div.className = "menu-btn";
-            div.setAttribute("onclick", "selectHero1('FIRE')");
-            div.style.color = "#ff5500";
-            div.style.borderColor = "#ff5500";
-            div.innerText = "5. Огонь";
-            p1Ui.appendChild(div);
+    let availableHeroes = HEROES_LIST.filter(h => !h.reqFire || window.fireHeroUnlocked);
+
+    let html = `<div style="color: cyan; margin-bottom: 8px;"><b>ИГРОК 1 (выбор кликом):</b></div>`;
+    if (typeof hasAiCompanion !== 'undefined' && hasAiCompanion) {
+        html += `<div style="font-size: 12px; color: #00e5ff; margin-bottom: 10px; background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3); border-radius: 6px; padding: 6px 10px;">🤖 <b>Кружочек справа</b> — выбор героя для ИИ-напарника (галочка ✓)</div>`;
+    }
+
+    for (let h of availableHeroes) {
+        let isP1 = (p1HeroSelection === h.id);
+        let isP2 = (numPlayers === 2 && p2HeroSelection === h.id);
+        let isAi = (typeof hasAiCompanion !== 'undefined' && hasAiCompanion && aiCompanionConfig && aiCompanionConfig.hero === h.id);
+
+        let borderStyle = isP1 
+            ? 'border-color: #ffffff; background: rgba(255,255,255,0.18); box-shadow: 0 0 12px ' + h.color + ';' 
+            : (isP2 ? 'border-color: #ffd700; background: rgba(255,215,0,0.12);' : `border-color: ${h.color};`);
+        let tagText = isP1 ? ' 👑 [Игрок 1]' : (isP2 ? ' 👤 [Игрок 2]' : '');
+
+        html += `
+        <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px auto; max-width: 340px;">
+            <div class="menu-btn hero-btn" onclick="selectHero1('${h.id}')" style="flex: 1; margin: 0; color: ${h.color}; ${borderStyle} text-align: left; padding: 10px 14px; cursor: pointer;">
+                ${h.num}. ${h.name}${tagText}
+            </div>
+            ${(typeof hasAiCompanion !== 'undefined' && hasAiCompanion) ? `
+            <div id="ai-circle-${h.id}" class="ai-hero-circle" onclick="event.stopPropagation(); toggleAiHero('${h.id}')" title="Выбрать для ИИ-напарника" style="width: 36px; height: 36px; min-width: 36px; border-radius: 50%; border: 2px solid ${isAi ? '#ffffff' : '#00e5ff'}; background: ${isAi ? '#00e5ff' : 'rgba(0,229,255,0.1)'}; color: ${isAi ? '#000000' : 'transparent'}; box-shadow: ${isAi ? '0 0 14px #00e5ff' : 'none'}; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 19px; font-weight: 900; user-select: none; transition: all 0.2s;">
+                ✓
+            </div>` : ''}
+        </div>`;
+    }
+
+    html += `<div id="p1-status" style="margin-top: 10px; font-weight: bold; min-height: 20px;"></div>`;
+    p1Ui.innerHTML = html;
+
+    // Update P1 status message
+    let p1Status = document.getElementById('p1-status');
+    if (p1Status) {
+        if (typeof hasAiCompanion !== 'undefined' && hasAiCompanion) {
+            let p1Text = p1HeroSelection ? `${getHeroDisplayName(p1HeroSelection)} ✓` : 'Не выбран';
+            let aiText = (aiCompanionConfig && aiCompanionConfig.hero) ? `${getHeroDisplayName(aiCompanionConfig.hero)} ✓` : 'Не выбран (нажмите кружок)';
+            p1Status.innerHTML = `<span style="color: cyan;">Игрок 1: ${p1Text}</span> | <span style="color: #00e5ff;">ИИ: ${aiText}</span>`;
+        } else {
+            if (p1HeroSelection) {
+                p1Status.innerText = `Игрок 1: ${getHeroDisplayName(p1HeroSelection)} ✓`;
+                p1Status.style.color = "lime";
+            }
         }
-        if (p2Text) {
+    }
+
+    // Update P2 hint text
+    let p2Text = document.getElementById("p2-options-text");
+    if (p2Text) {
+        if (window.fireHeroUnlocked) {
             p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff5500;'>5</b>-Огонь | <b style='color:#ff4422;'>6</b>-Алебарда | <b style='color:#00e5ff;'>7</b>-Малыш";
-        }
-    } else {
-        if (fireBtn) {
-            fireBtn.remove();
-        }
-        if (p2Text) {
+        } else {
             p2Text.innerHTML = "<b>1</b>-Вода | <b>2</b>-Воздух | <b>3</b>-Земля | <b>4</b>-4-й Герой | <b style='color:#ff4422;'>6</b>-Алебарда | <b style='color:#00e5ff;'>7</b>-Малыш";
         }
     }
@@ -976,20 +1026,46 @@ window.handleP2AuthSubmit = handleP2AuthSubmit;
 function proceedToInputSelectDuo() {
     numPlayers = 2;
     openScreen('input-select');
-    document.getElementById("input-1p").style.display = "none";
-    document.getElementById("input-2p").style.display = "block";
+    let in1 = document.getElementById("input-1p");
+    let in2 = document.getElementById("input-2p");
+    if (in1) in1.style.display = "none";
+    if (in2) in2.style.display = "block";
     updateDuoSubOptions();
 }
 window.proceedToInputSelectDuo = proceedToInputSelectDuo;
 
 function selectMode(mode, keepP2 = false) {
-    numPlayers = mode;
-    if (mode === 1) {
+    let in1 = document.getElementById("input-1p");
+    let in2 = document.getElementById("input-2p");
+    if (mode === '1P_AI') {
+        gameMode = '1P_AI';
+        hasAiCompanion = true;
+        numPlayers = 1;
         setP2User(null);
         openScreen('input-select');
-        document.getElementById("input-1p").style.display = "block"; 
-        document.getElementById("input-2p").style.display = "none";
+        if (in1) in1.style.display = "block"; 
+        if (in2) in2.style.display = "none";
+    } else if (mode === '2P_AI') {
+        gameMode = '2P_AI';
+        hasAiCompanion = true;
+        numPlayers = 2;
+        if (keepP2 && getP2User()) {
+            proceedToInputSelectDuo();
+        } else {
+            openP2AccountScreen();
+        }
+    } else if (mode === 1) {
+        gameMode = '1P';
+        hasAiCompanion = false;
+        numPlayers = 1;
+        setP2User(null);
+        openScreen('input-select');
+        if (in1) in1.style.display = "block"; 
+        if (in2) in2.style.display = "none";
     } else {
+        gameMode = '2P';
+        hasAiCompanion = false;
+        numPlayers = 2;
         if (keepP2 && getP2User()) {
             proceedToInputSelectDuo();
         } else {
@@ -2057,24 +2133,124 @@ function selectHero1(type) {
         window.onlineNet.handleSelectHero(type);
         return;
     }
+
+    // Prevent duplicates
+    if (typeof hasAiCompanion !== 'undefined' && hasAiCompanion && aiCompanionConfig && aiCompanionConfig.hero === type) {
+        let p1Status = document.getElementById('p1-status');
+        if (p1Status) {
+            p1Status.innerText = `Этот герой (${getHeroDisplayName(type)}) уже выбран для ИИ-напарника! Выберите другого.`;
+            p1Status.style.color = "orange";
+        }
+        playSound('parry');
+        return;
+    }
+    if (numPlayers === 2 && p2HeroSelection === type) {
+        let p1Status = document.getElementById('p1-status');
+        if (p1Status) {
+            p1Status.innerText = `Этот герой (${getHeroDisplayName(type)}) уже выбран Игроком 2!`;
+            p1Status.style.color = "orange";
+        }
+        playSound('parry');
+        return;
+    }
+
     p1HeroSelection = type; 
     if (!configAbilities || typeof configAbilities !== 'object') {
         configAbilities = { p1: {}, p2: {} };
     }
     if (!configAbilities.p1) configAbilities.p1 = {};
     Object.assign(configAbilities.p1, defaultAbilities[type] || {}); 
-    if (numPlayers === 1) { 
+    playSound('slash');
+    updateHeroSelectUI();
+
+    if (gameMode === '1P') { 
         prepBadgeMenu(); 
+    } else if (gameMode === '1P_AI') {
+        if (p1HeroSelection && aiCompanionConfig && aiCompanionConfig.hero) {
+            setTimeout(() => { prepBadgeMenu(); }, 250);
+        }
     } else { 
-        let p1Status = document.getElementById('p1-status');
-        if (p1Status) p1Status.innerText = "Игрок 1 Готов!"; 
         checkDuoStart(); 
     } 
 }
 window.selectHero1 = selectHero1;
 
+function selectHero2(type) {
+    let p2Status = document.getElementById('p2-status');
+    if (p1HeroSelection === type) {
+        if (p2Status) {
+            p2Status.innerText = `Игрок 1 уже выбрал ${getHeroDisplayName(type)}! Выберите другого.`;
+            p2Status.style.color = "orange";
+        }
+        playSound('parry');
+        return;
+    }
+    if (typeof hasAiCompanion !== 'undefined' && hasAiCompanion && aiCompanionConfig && aiCompanionConfig.hero === type) {
+        if (p2Status) {
+            p2Status.innerText = `${getHeroDisplayName(type)} уже выбран для ИИ-напарника! Выберите другого.`;
+            p2Status.style.color = "orange";
+        }
+        playSound('parry');
+        return;
+    }
+
+    p2HeroSelection = type;
+    if (p2Status) {
+        p2Status.innerText = `Игрок 2: ${getHeroDisplayName(type)} ✓`;
+        p2Status.style.color = "lime";
+    }
+    playSound('slash');
+    updateHeroSelectUI();
+    checkDuoStart();
+}
+window.selectHero2 = selectHero2;
+
+function toggleAiHero(type) {
+    if (p1HeroSelection === type) {
+        let p1Status = document.getElementById('p1-status');
+        if (p1Status) {
+            p1Status.innerText = `Игрок 1 уже выбрал ${getHeroDisplayName(type)}!`;
+            p1Status.style.color = "orange";
+        }
+        playSound('parry');
+        return;
+    }
+    if (numPlayers === 2 && p2HeroSelection === type) {
+        let p1Status = document.getElementById('p1-status');
+        if (p1Status) {
+            p1Status.innerText = `Игрок 2 уже выбрал ${getHeroDisplayName(type)}!`;
+            p1Status.style.color = "orange";
+        }
+        playSound('parry');
+        return;
+    }
+
+    if (typeof aiCompanionConfig === 'undefined') {
+        aiCompanionConfig = { hero: type, personality: 'TACTICIAN', slots: ['none','none','none'] };
+    } else {
+        aiCompanionConfig.hero = type;
+    }
+    playSound('parry');
+    updateHeroSelectUI();
+
+    if (gameMode === '1P_AI') {
+        if (p1HeroSelection && aiCompanionConfig.hero) {
+            setTimeout(() => { prepBadgeMenu(); }, 250);
+        }
+    } else if (gameMode === '2P_AI') {
+        checkDuoStart();
+    }
+}
+window.toggleAiHero = toggleAiHero;
+
 function checkDuoStart() { 
-    if (p1HeroSelection && p2HeroSelection) { 
+    let isReady = false;
+    if (gameMode === '2P_AI') {
+        isReady = !!(p1HeroSelection && p2HeroSelection && aiCompanionConfig && aiCompanionConfig.hero);
+    } else {
+        isReady = !!(p1HeroSelection && p2HeroSelection);
+    }
+    if (isReady) { 
         if (!configAbilities || typeof configAbilities !== 'object') {
             configAbilities = { p1: {}, p2: {} };
         }
@@ -2129,8 +2305,15 @@ function prepBadgeMenu() {
 
     let titleTeam = document.getElementById("team-slot-title");
     let slotTeam = document.getElementById("slot-team");
-    if (slotTeam) slotTeam.style.display = "inline-block"; 
-    if (titleTeam) titleTeam.style.display = "block";
+    let isFireSolo = (numPlayers === 1 && p1HeroSelection === 'FIRE');
+    let isFireDuo = (numPlayers === 2 && p1HeroSelection === 'FIRE' && p2HeroSelection === 'FIRE');
+    if (isFireSolo || isFireDuo) {
+        if (slotTeam) slotTeam.style.display = "none"; 
+        if (titleTeam) titleTeam.style.display = "none";
+    } else {
+        if (slotTeam) slotTeam.style.display = "inline-block"; 
+        if (titleTeam) titleTeam.style.display = "block";
+    }
 
     let p1BadgeTitle = document.querySelector("#p1-badge-area > div:first-child");
     if (p1BadgeTitle) p1BadgeTitle.innerText = "Знаки (Игрок 1):";
@@ -2141,9 +2324,15 @@ function prepBadgeMenu() {
         let savedKey = (configBadges.p1 && configBadges.p1[i]) ? configBadges.p1[i] : 'none';
         let bName = (savedKey === 'none' || !badgesDict[savedKey]) ? '[Пусто]' : badgesDict[savedKey].name.split(' (')[0];
         let isSpecialBlue = (p1HeroSelection === 'WATER_ROPE' && i === 0);
-        let slotStyle = isSpecialBlue ? 'border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.4);' : '';
-        let slotTitle = isSpecialBlue ? ` title="Особый синий слот (работает только на тебе)"` : '';
-        p1html += `<div class="badge-slot" id="slot-p1_${i}" onclick="openBadgeList('p1_${i}')" style="${slotStyle}"${slotTitle}>${isSpecialBlue && savedKey === 'none' ? '[Синий слот]' : bName}</div>`;
+        let slotStyle = '';
+        let slotTitle = '';
+        let defaultLabel = '[Пусто]';
+        if (isSpecialBlue) {
+            slotStyle = 'border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.4);';
+            slotTitle = ` title="Особый синий слот (работает только на тебе)"`;
+            defaultLabel = '[Синий слот]';
+        }
+        p1html += `<div class="badge-slot" id="slot-p1_${i}" onclick="openBadgeList('p1_${i}')" style="${slotStyle}"${slotTitle}>${savedKey === 'none' ? defaultLabel : bName}</div>`;
     }
     let p1sc = document.getElementById("p1-slots-container");
     if (p1sc) p1sc.innerHTML = p1html;
@@ -2170,9 +2359,15 @@ function prepBadgeMenu() {
             let savedKey = (configBadges.p2 && configBadges.p2[i]) ? configBadges.p2[i] : 'none';
             let bName = (savedKey === 'none' || !badgesDict[savedKey]) ? '[Пусто]' : badgesDict[savedKey].name.split(' (')[0];
             let isSpecialBlue = (p2HeroSelection === 'WATER_ROPE' && i === 0);
-            let slotStyle = isSpecialBlue ? 'border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.4);' : '';
-            let slotTitle = isSpecialBlue ? ` title="Особый синий слот (работает только на тебе)"` : '';
-            p2html += `<div class="badge-slot" id="slot-p2_${i}" onclick="openBadgeList('p2_${i}')" style="${slotStyle}"${slotTitle}>${isSpecialBlue && savedKey === 'none' ? '[Синий слот]' : bName}</div>`;
+            let slotStyle = '';
+            let slotTitle = '';
+            let defaultLabel = '[Пусто]';
+            if (isSpecialBlue) {
+                slotStyle = 'border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.4);';
+                slotTitle = ` title="Особый синий слот (работает только на тебе)"`;
+                defaultLabel = '[Синий слот]';
+            }
+            p2html += `<div class="badge-slot" id="slot-p2_${i}" onclick="openBadgeList('p2_${i}')" style="${slotStyle}"${slotTitle}>${savedKey === 'none' ? defaultLabel : bName}</div>`;
         }
         let p2sc = document.getElementById("p2-slots-container");
         if (p2sc) p2sc.innerHTML = p2html;
@@ -2185,6 +2380,29 @@ function prepBadgeMenu() {
         }
         let p2ac = document.getElementById("p2-abilities-container");
         if (p2ac) p2ac.innerHTML = a2html;
+    }
+
+    let aiArea = document.getElementById("ai-badge-area");
+    if (typeof hasAiCompanion !== 'undefined' && hasAiCompanion) {
+        if (aiArea) aiArea.style.display = "block";
+        let aiHero = (aiCompanionConfig && aiCompanionConfig.hero) ? aiCompanionConfig.hero : 'WATER';
+        let lbl = document.getElementById("ai-hero-name-label");
+        if (lbl) lbl.innerText = getHeroDisplayName(aiHero);
+
+        if (!configBadges.ai || !Array.isArray(configBadges.ai)) {
+            configBadges.ai = ['none', 'none', 'none'];
+        }
+        let aiHtml = '';
+        for (let i = 0; i < 3; i++) {
+            let savedKey = configBadges.ai[i] || 'none';
+            let bName = (savedKey === 'none' || !badgesDict[savedKey]) ? '[Пусто]' : badgesDict[savedKey].name.split(' (')[0];
+            aiHtml += `<div class="badge-slot" id="slot-ai_${i}" onclick="openBadgeList('ai_${i}')" style="border-color: #00e5ff; color: #ffffff;">${bName}</div>`;
+        }
+        let aiSc = document.getElementById("ai-slots-container");
+        if (aiSc) aiSc.innerHTML = aiHtml;
+        if (typeof updateAiSettingsUI === 'function') updateAiSettingsUI();
+    } else {
+        if (aiArea) aiArea.style.display = "none";
     }
 }
 window.prepBadgeMenu = prepBadgeMenu;
@@ -2204,10 +2422,11 @@ function openBadgeList(slotId) {
     if (!listDiv) return;
     
     let isTopSlot = (slotId === 'team');
+    let isAiSlot = slotId.startsWith('ai_');
     let isSpecialBlueSlot = (slotId === 'p1_0' && p1HeroSelection === 'WATER_ROPE') || (slotId === 'p2_0' && p2HeroSelection === 'WATER_ROPE');
     let isL = (typeof secretMode !== 'undefined' && !!secretMode) || (typeof window !== 'undefined' && !!window.secretMode);
     
-    let titleText = isTopSlot ? "💎 КОМАНДНЫЙ ЗНАК (Голубой)" : (isSpecialBlueSlot ? "🌀 СИНИЙ ЗНАК" : "🛡️ ЗНАЧОК ДЛЯ СЛОТА");
+    let titleText = isTopSlot ? "💎 КОМАНДНЫЙ ЗНАК (Голубой)" : (isAiSlot ? "🤖 ЗНАК ДЛЯ ИИ-НАПАРНИКА" : (isSpecialBlueSlot ? "🌀 СИНИЙ ЗНАК" : "🛡️ ЗНАЧОК ДЛЯ СЛОТА"));
 
     let html = `
         <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(0,229,255,0.4); padding-bottom: 10px; margin-bottom: 14px;">
@@ -2222,7 +2441,7 @@ function openBadgeList(slotId) {
         let b = badgesDict[key];
         if (b.lModeOnly && !isL) continue; // Амулет света доступен ТОЛЬКО в L-режиме
         if (isTopSlot && b.teamAllowed !== true && b.teamAllowed !== 'both') continue; 
-        if (!isTopSlot && !isSpecialBlueSlot && b.teamAllowed === true) continue; 
+        if (!isTopSlot && !isSpecialBlueSlot && b.teamAllowed === true) continue;  
         
         let colorStyle = (b.teamAllowed === true || isTopSlot) 
             ? 'color: #00e5ff; border-color: #00e5ff; background: rgba(0, 229, 255, 0.1);' 

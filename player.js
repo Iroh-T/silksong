@@ -1,20 +1,24 @@
 // --- PLAYER MODULE ---
 
-function applyBadgesToPlayer(p, isP1) {
+function applyBadgesToPlayer(p, isP1, targetKey = null) {
     p.badges = [];
     if (!configBadges || typeof configBadges !== 'object') {
-        configBadges = { team: 'none', p1: ['none', 'none', 'none'], p2: ['none', 'none', 'none'] };
+        configBadges = { team: 'none', p1: ['none', 'none', 'none'], p2: ['none', 'none', 'none'], ai: ['none', 'none', 'none'] };
     }
     if (!Array.isArray(configBadges.p1)) configBadges.p1 = ['none', 'none', 'none'];
     if (!Array.isArray(configBadges.p2)) configBadges.p2 = ['none', 'none', 'none'];
+    if (!Array.isArray(configBadges.ai)) configBadges.ai = ['none', 'none', 'none'];
 
-    let rawSlots = isP1 ? configBadges.p1 : configBadges.p2;
+    let rawSlots = (targetKey === 'ai' || p.isAi) ? configBadges.ai : (isP1 ? configBadges.p1 : configBadges.p2);
     let slots = Array.isArray(rawSlots) 
         ? rawSlots.map(b => (typeof b === 'string' ? b : 'none'))
         : ['none', 'none', 'none'];
     p.badges.push(...slots);
-    if (configBadges.team && typeof configBadges.team === 'string' && configBadges.team !== 'none') {
-        p.badges.push(configBadges.team); 
+    // Огонь — одиночка: использует 3 серых слота и не получает командный (синий) знак
+    if (p.type !== 'FIRE') {
+        if (configBadges.team && typeof configBadges.team === 'string' && configBadges.team !== 'none') {
+            p.badges.push(configBadges.team); 
+        }
     }
     if (p.badges.includes('accel')) p.healFramesTotal = 96;
     if (p.badges.includes('multi')) { p.isMultiHeal = true; p.healFramesTotal = 120; } 
@@ -35,6 +39,7 @@ function createPlayer(id, type, keysObj, inputType, startX) {
     let p = { 
         id: id, x: startX, y: FLOOR - 50, width: 30, height: 50, vx: 0, vy: 0, facingRight: true, attackTimer: 0, attackCooldown: 0, attackType: "NORMAL", 
         invuln: 0, healTimer: 0, isHealing: false, isAoEHealing: false, prevHealKey: false, prevDaggerKey: false, prevAttackKey: false, prevComboKey: false, prevJumpKey: false, prevDashKey: false, prevStanceKey: false,
+        prevWaterDropKey: false, prevUltKey: false, prevLightKey: false,
         wallJumpCooldown: 0, bleedTimer: 0, tied: false, tieClicks: 0, hasPressedTie: false, keys: keysObj, inputType: inputType, isDowned: false, downedTimer: 0, 
         isDashing: false, purpleHp: 0, tpCooldown: 0, tpDebuffTimer: 0, jumps: 0, maxJumps: 1, healFramesTotal: 120, isMultiHeal: false, glassDebuff: false, hasSharpening: false, dmgDealtMod: 1, genTimer: 0, lightCharge: 0, saHit: false, pendingDmgTimer: 0, pendingDmg: 0, healCost: 1,
         recoilResist: false, attackSpamCount: 0, overheatTimer: 0, heatLevel: 0, lastSafeX: startX, lastSafeY: FLOOR - 50, badges: [], abilities: {}, chillBrews: 0, invigBrews: 0, chillTimer: 0, invigTimer: 0,
@@ -46,8 +51,14 @@ function createPlayer(id, type, keysObj, inputType, startX) {
         hasCrackedLife: false, crackedShieldBroken: false, crackedImmuneTimer: 0, hasLuckyCharm: false,
         hasLightAmulet: false, lightAmuletBroken: false, lightAmuletStreak: 0,
         dodgeFlashTimer: 0, crackedBreakFlash: 0,
-        dashBurstTimer: 0, dashDir: 0, airDashed: false, fireLungeTimer: 0, fireLungeHit: false
+        dashBurstTimer: 0, dashDir: 0, airDashed: false, fireLungeTimer: 0, fireLungeHit: false,
+        // v74 fields
+        jumpHoldTimer: 0, waterDrop: null, waterDropActive: false, isSilkRunning: false, silkRunTimer: 0,
+        ropeUltAttempts: 3, staminaUltAttempts: 2, halberdVaultTimer: 0, halberdVaultSwinging: false,
+        airAttackTimer: 0, fireBlastTimer: 0, fireBadgeSlot: null,
+        earthFlipTimer: 0, earthFlipDir: 0, holdingBossRope: false, ropeHarpoon: null
     };
+    let isL = (typeof secretMode !== 'undefined' && !!secretMode) || (typeof window !== 'undefined' && !!window.secretMode);
     let baseHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : 6;
     if (type === 'WATER') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#3366ff", atkCdBase: 24, atkRange: 95, jumpPowerBase: -12, type: 'WATER', dmgMulti: 1 }); } 
     else if (type === 'EARTH') { Object.assign(p, { speed: 5.6, hp: baseHp, maxHp: baseHp, color: "#33cc33", atkCdBase: 8, atkRange: 65, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.7 }); } 
@@ -55,12 +66,13 @@ function createPlayer(id, type, keysObj, inputType, startX) {
     else if (type === 'STAMINA') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#b35959", atkCdBase: 24, atkRange: 95, jumpPowerBase: -12, type: 'STAMINA', dmgMulti: 1.5, stamina: 5, maxStamina: 9, isCharging: false, chargeTimer: 0, chargeProjectiles: [] }); }
     else if (type === 'FIRE') { Object.assign(p, { speed: 5.25, hp: baseHp, maxHp: baseHp, color: "#ff5500", atkCdBase: 18, atkRange: 80, jumpPowerBase: -12.5, type: 'FIRE', dmgMulti: 1.25, isParrying: false, parryTimer: 0, orangeHp: 0, orangeHpTimer: 0, isFieryHealing: false, fireDashTimer: 0 }); }
     else if (type === 'FIRE_HALBERD') { Object.assign(p, { speed: 5.1, hp: baseHp, maxHp: baseHp, color: "#ff3322", atkCdBase: 28, atkRange: 130, jumpPowerBase: -12.2, type: 'FIRE_HALBERD', dmgMulti: 1.0, halberdBuffTimer: 0, halberdVampiricReady: false, halberdCombos: 0, halberdComboTimer: 0, whirlwindTimer: 0 }); }
-    else if (type === 'WATER_ROPE') { let rHp = Math.max(1, baseHp - 1); Object.assign(p, { width: 22, height: 38, speed: 5.4, hp: rHp, maxHp: rHp, color: "#00e5ff", atkCdBase: 18, atkRange: 58, jumpPowerBase: -11.8, type: 'WATER_ROPE', dmgMulti: 0.75, concentrateTimer: 0, concentrateReady: false, ropeA: null, ropeB: null, ropeActive: false, ropeDrainTimer: 0, ropeSlideTimer: 0, isRopeSliding: false, ropeT: 0 }); }
+    else if (type === 'WATER_ROPE') { let rHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : (isL ? 6 : 4); Object.assign(p, { width: 22, height: 38, speed: 5.4, hp: rHp, maxHp: rHp, color: "#00e5ff", atkCdBase: 18, atkRange: 58, jumpPowerBase: -11.8, type: 'WATER_ROPE', dmgMulti: 0.75, concentrateTimer: 0, concentrateReady: false, ropeA: null, ropeB: null, ropeActive: false, ropeDrainTimer: 0, ropeSlideTimer: 0, isRopeSliding: false, ropeT: 0, ropeUltAttempts: 3 }); }
     return p;
 }
 
 function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassInvuln = false) {
     if (godModeActive || window.godModeActive) return;
+    if (p.isSilkRunning) return; // Герой во время шелкового бега находится в безопасности!
     if (p.crackedImmuneTimer > 0) return; // 100% immune during Cracked Life multi-tick survival window
     if (!isBleed && !boss.state.startsWith("CINEMATIC") && !activeCinematic && !bypassInvuln && !boss.state.startsWith("L_SCREAM") && !boss.state.startsWith("L_INTRO")) { 
         boss.directAttackHit = true; 
@@ -69,6 +81,10 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
     
     if (boss.hunterInfected > 0 && !isBleed && !isStaminaBleed && amount > 0) amount = Math.max(0.5, amount - 1.5);
     if (p.isMobile && !isBleed && amount > 0) amount = Math.max(0, amount - 0.5);
+    // Вода в демоническом состоянии в L-режиме получает на 0.5 меньше урона!
+    if (p.type === 'WATER' && p.stance === 'DEMON' && secretMode && !isBleed && !isStaminaBleed && amount > 0) {
+        amount = Math.max(0.5, amount - 0.5);
+    }
 
     if (p.isParrying && !isBleed && !isStaminaBleed && !bypassInvuln) {
         p.isParrying = false; 
@@ -236,10 +252,14 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
                 }
                 return;
             } else {
-                p.hp -= amount;
+                amount = Math.round(amount * 2) / 2;
+                p.hp = Math.max(0, Math.round((p.hp - amount) * 2) / 2);
             }
         } else {
-            if (amount > 0) p.hp -= amount; 
+            if (amount > 0) {
+                amount = Math.round(amount * 2) / 2;
+                p.hp = Math.max(0, Math.round((p.hp - amount) * 2) / 2);
+            }
         } 
         if (!isBleed && !bypassInvuln) {
             p.invuln = 60; 
@@ -252,11 +272,11 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         if (p.type === 'STAMINA') p.isCharging = false; 
         playSound('hitPlayer'); 
         if (p.hp <= 0) {
-            let otherP = players.find(pl => pl.id !== p.id);
-            if (numPlayers === 2 && otherP && otherP.hp > 0 && !otherP.isDowned && !p.isDowned) { 
+            let activeAllies = players.filter(pl => pl.id !== p.id && pl.hp > 0 && !pl.isDowned);
+            if (players.length > 1 && activeAllies.length > 0 && !p.isDowned) { 
                 p.isDowned = true; 
                 p.hp = 0.1; 
-                p.downedTimer = 600; 
+                p.downedTimer = 900; // 15 секунд (900 кадров при 60 FPS)
             } else { 
                 p.hp = 0; 
             }
@@ -565,7 +585,7 @@ function updatePlayers() {
             }
         }
         let onFloor = false;
-        if (!onPlatform && p.y + p.height >= FLOOR) {
+        if (!onPlatform && p.y + p.height >= FLOOR && !p.isUnderFloor) {
             p.y = FLOOR - p.height; p.vy = 0; onFloor = true;
             p.lastSafeX = p.x; p.lastSafeY = p.y;
         }
@@ -623,13 +643,20 @@ function updatePlayers() {
         }
         if (p.hp <= 0) continue; 
 
-        let kLeft=false, kRight=false, kDown=false, kUp=false, kJump=false, kAttack=false, kHeal=false, kSpec=false, kDash=false, kLight=false, kStance=false;
+        let kLeft=false, kRight=false, kDown=false, kUp=false, kJump=false, kAttack=false, kHeal=false, kSpec=false, kDash=false, kLight=false, kStance=false, kUlt=false, kWaterDrop=false;
 
-        if (p.inputType === 'ONLINE_REMOTE' && window.onlineNet && window.onlineNet.remoteInputs) {
+        if (p.inputType === 'AI' || p.isAi) {
+            let aiIn = (typeof runAiCompanion === 'function') ? runAiCompanion(p) : {};
+            kLeft = !!aiIn.left; kRight = !!aiIn.right; kUp = !!aiIn.up; kDown = !!aiIn.down;
+            kJump = !!aiIn.jump; kAttack = !!aiIn.attack; kHeal = !!aiIn.heal; kDash = !!aiIn.dash;
+            kSpec = !!aiIn.special; kStance = !!aiIn.stance; kLight = !!aiIn.light;
+            kUlt = !!aiIn.ult; kWaterDrop = !!aiIn.waterDrop;
+        } else if (p.inputType === 'ONLINE_REMOTE' && window.onlineNet && window.onlineNet.remoteInputs) {
             let ri = window.onlineNet.remoteInputs;
             kLeft = !!ri.left; kRight = !!ri.right; kUp = !!ri.up; kDown = !!ri.down;
             kJump = !!ri.jump; kAttack = !!ri.attack; kHeal = !!ri.heal; kDash = !!ri.dash;
             kSpec = !!ri.special; kStance = !!ri.stance; kLight = !!ri.light;
+            kUlt = !!ri.ult; kWaterDrop = !!ri.waterDrop;
         } else if (p.inputType === 'GAMEPAD') {
             let targetIndex = p.id === 1 ? 0 : 1;
             if (numPlayers === 2 && p1InputType.startsWith('KEYBOARD') && p.id === 2) targetIndex = 0;
@@ -652,6 +679,69 @@ function updatePlayers() {
             kStance = (p.keys && p.keys.stance) ? isKeyPressed(p.keys.stance) : isKeyPressed(['KeyS', 'KeyT', 'KeyV']);
         }
 
+        let rawAttack = kAttack;
+        let rawStance = kStance;
+        let rawSpec = kSpec;
+
+        // 1. Проверка одновременного нажатия C и F:
+        // Если игрок нажал одновременно C и F, спец-способность слота F (сюрикен / парирование) блокируется!
+        if (p.inputType !== 'AI' && !p.isAi && p.inputType !== 'ONLINE_REMOTE') {
+            let isKeyCPressed = isKeyPressed(['KeyC', 'KeyС']);
+            let isKeyFPressed = isKeyPressed(['KeyF', 'KeyА']);
+            let isCFSimultaneous = (isKeyCPressed && isKeyFPressed) || (kDash && isKeyFPressed) || (kDash && kSpec);
+            if (isCFSimultaneous) {
+                p.prevDaggerKey = true; // предотвращает срабатывание способности (сюрикен, парирование)
+            }
+
+            // 2. Комбинации:
+            // Действие Q = Атака + Смена стойки (X + S) -> Ультимейт (Вода с тросом / Выносливость в розовом режиме)
+            // Действие W = Атака + Способность (X + F) -> Капелька воды (Вода в светлом режиме)
+            let inTutorial = (typeof isTutorial !== 'undefined' && isTutorial);
+            if (!inTutorial) {
+                if (p.comboBufferAtkTimer === undefined) p.comboBufferAtkTimer = 0;
+                if (p.comboBufferStanceTimer === undefined) p.comboBufferStanceTimer = 0;
+                if (p.comboBufferSpecTimer === undefined) p.comboBufferSpecTimer = 0;
+
+                if (rawAttack && !p.prevAttackKey) p.comboBufferAtkTimer = 5;
+                else if (p.comboBufferAtkTimer > 0) p.comboBufferAtkTimer--;
+
+                if (rawStance && !p.prevStanceKey) p.comboBufferStanceTimer = 5;
+                else if (p.comboBufferStanceTimer > 0) p.comboBufferStanceTimer--;
+
+                if (rawSpec && !p.prevDaggerKey && !isCFSimultaneous) p.comboBufferSpecTimer = 5;
+                else if (p.comboBufferSpecTimer > 0) p.comboBufferSpecTimer--;
+
+                let canDoComboQ = (p.type === 'WATER_ROPE') || (p.type === 'STAMINA' && p.weaponMode === 'PINK');
+                let canDoComboW = (p.type === 'WATER' && p.stance === 'LIGHT');
+
+                let directQ = isKeyPressed(['KeyQ', 'KeyЙ']);
+                let directW = isKeyPressed(['KeyW', 'KeyЦ']);
+
+                let wantComboQ = canDoComboQ && (directQ || (kAttack && kStance) || (p.comboBufferAtkTimer > 0 && kStance) || (p.comboBufferStanceTimer > 0 && kAttack));
+                let wantComboW = canDoComboW && !isCFSimultaneous && (directW || (kAttack && kSpec) || (p.comboBufferAtkTimer > 0 && kSpec) || (p.comboBufferSpecTimer > 0 && kAttack));
+
+                if (wantComboQ) {
+                    kUlt = true;
+                    kAttack = false;
+                    kStance = false;
+                    p.comboBufferAtkTimer = 0;
+                    p.comboBufferStanceTimer = 0;
+                    p.prevAttackKey = true;
+                    p.prevStanceKey = true;
+                    p.attackTimer = 0;
+                } else if (wantComboW) {
+                    kWaterDrop = true;
+                    kAttack = false;
+                    kSpec = false;
+                    p.comboBufferAtkTimer = 0;
+                    p.comboBufferSpecTimer = 0;
+                    p.prevAttackKey = true;
+                    p.prevDaggerKey = true;
+                    p.attackTimer = 0;
+                }
+            }
+        }
+
         // Tutorial Input Restrictions
         if (typeof isTutorial !== 'undefined' && isTutorial) {
             if (tutorialStep === 'WALK') {
@@ -671,9 +761,9 @@ function updatePlayers() {
             }
         }
 
-        // Stance / Weapon mode switching (Key S)
+        // Stance / Weapon mode switching & S-Abilities (Key S)
         if (kStance && !p.prevStanceKey && p.overheatTimer <= 0 && !boss.state.startsWith("CINEMATIC")) {
-            let cost = (p.type === 'FIRE') ? 2 : 1;
+            let cost = (p.type === 'FIRE') ? 2 : ((p.type === 'FIRE_HALBERD') ? 6 : ((p.type === 'AIR') ? 3 : 1));
             let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
             let canAfford = isLimited ? (sharedHealPoints >= cost) : ((sharedHeals * 8 + sharedHitCount) >= cost);
 
@@ -703,7 +793,6 @@ function updatePlayers() {
                     actionTaken = true;
                 } else if (p.type === 'FIRE') {
                     // Physical LUNGE (Выпад) on Key S!
-                    // Hero physically rushes forward with rapier thrust, costs 2 charges, refunds 1 if hits boss!
                     p.fireLungeTimer = 11;
                     p.fireLungeHit = false;
                     p.invuln = Math.max(p.invuln || 0, 18);
@@ -715,6 +804,71 @@ function updatePlayers() {
                     playSound('slash');
                     triggerVibration('attack');
                     applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 12);
+                    actionTaken = true;
+                } else if (p.type === 'FIRE_HALBERD') {
+                    // Огненная алебарда S-комбо: полукруговой прыжок на алебарде как на шесте, замах со спины и удар через голову при приземлении (3.0 урона, 6 очков хила)
+                    p.halberdVaultTimer = 26;
+                    p.halberdVaultSwinging = false;
+                    p.invuln = Math.max(p.invuln || 0, 26);
+                    let facing = p.facingRight ? 1 : -1;
+                    p.vx = facing * 9.5;
+                    p.vy = -11.5;
+                    p.attackCooldown = 32;
+                    playSound('wind');
+                    playSound('bladeSpin');
+                    applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 14);
+                    actionTaken = true;
+                } else if (p.type === 'AIR') {
+                    // Воздух S-способность: «Воздушные атаки» (урон 0.5, 3 очка хила, 1.75 алебарды = 227.5 px, отменяет атаки босса воздух/ветер, сбивает сюрикены, отбрасывает)
+                    p.airAttackTimer = 18;
+                    p.attackCooldown = 24;
+                    p.invuln = Math.max(p.invuln || 0, 18);
+                    let facing = p.facingRight ? 1 : -1;
+                    let reach = 227.5;
+                    let windBox = {
+                        x: p.facingRight ? p.x + p.width : p.x - reach,
+                        y: p.y - 20,
+                        width: reach,
+                        height: p.height + 40
+                    };
+                    playSound('wind');
+                    playSound('throw');
+                    triggerVibration('attack');
+                    triggerShake(5, 10);
+                    applyPhysicsPushToLeaves(p.x + (p.facingRight ? reach / 2 : -reach / 2), p.y + p.height / 2, 22);
+
+                    // Моментально прерывает вертикальные ветра вверх и вниз, влияющие на гравитацию
+                    if (typeof globalWindMode !== 'undefined' && globalWindMode !== "NONE") {
+                        globalWindMode = "NONE";
+                        globalWindTimer = 0;
+                    }
+
+                    // Моментально прерывает и уничтожает все сюрикены в обычном режиме
+                    if (!secretMode) {
+                        airBlades = [];
+                        blackDaggers = [];
+                    }
+
+                    let isBossWindAttack = [
+                        "CAST_WIND", "CAST_VERTICAL_WIND", "WIND_FLY", "WIND_LINE_WINDUP", "WIND_LINE_ACTIVE"
+                    ].includes(boss.state);
+                    if (isBossWindAttack || (rectIntersect(windBox, boss) && boss.invuln <= 0)) {
+                        if (isBossWindAttack) {
+                            boss.state = "IDLE";
+                            boss.stateTimer = 25;
+                            boss.windLineY = undefined;
+                            playSound('parry');
+                            playSound('slash');
+                            triggerShake(8, 14);
+                            triggerVibration('clash');
+                            voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y + boss.height/2, timer: 20, isWhite: true, r: 75 });
+                        }
+                        if (rectIntersect(windBox, boss)) {
+                            tryDamageBoss(0.5, p);
+                            boss.vx = facing * 10;
+                            playSound('hitBoss');
+                        }
+                    }
                     actionTaken = true;
                 } else if (p.type === 'WATER_ROPE') {
                     if (p.ropeActive) {
@@ -737,7 +891,6 @@ function updatePlayers() {
                             voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y + boss.height/2, timer: 15, isWhite: false, isOrange: false, r: 40 });
                         }
                         voidExplosions.push({ x: p.ropeA.x, y: p.ropeA.y, timer: 15, isWhite: true, isOrange: false, r: 25 });
-                        // Setting Point A does not deduct charge yet (whole rope costs 1 charge on Point B)
                     } else if (p.ropeA && !p.ropeActive) {
                         p.ropeB = { x: p.x + p.width/2, y: p.y + p.height/2 };
                         p.ropeActive = true;
@@ -747,7 +900,7 @@ function updatePlayers() {
                         p.isRopeSliding = false;
                         playSound('teleport');
                         voidExplosions.push({ x: p.ropeB.x, y: p.ropeB.y, timer: 15, isWhite: true, isOrange: false, r: 25 });
-                        actionTaken = true; // Completes rope for 1 charge
+                        actionTaken = true;
                     }
                 }
 
@@ -789,10 +942,6 @@ function updatePlayers() {
         if (p.heatBladeTimer > 0) p.heatBladeTimer--;
         if (p.demonRageTimer > 0) p.demonRageTimer--;
         if (p.shadowStepCooldown > 0) p.shadowStepCooldown--;
-        if (p.comboTimer > 0) {
-            p.comboTimer--;
-            if (p.comboTimer <= 0) p.comboHits = 0;
-        }
 
         // Water Demon delayed bleed
         if (p.delayedBleedArr && p.delayedBleedArr.length > 0) {
@@ -808,24 +957,20 @@ function updatePlayers() {
             }
         }
 
-        // Water Demon L-mode Abyss Plunge (F + Down held for 0.5s)
+        // Water Demon L-mode Abyss Plunge (F + Down): мгновенное погружение под пол арены
         if (p.type === 'WATER' && p.stance === 'DEMON' && secretMode) {
-            if (kDown && kSpec && !p.isHealing && p.overheatTimer <= 0) {
-                p.holdDownSpecTimer = (p.holdDownSpecTimer || 0) + 1;
-                if (p.holdDownSpecTimer >= 30 && !p.isUnderFloor) {
-                    p.isUnderFloor = true;
-                    p.y = FLOOR + 60;
-                    p.vy = 0;
-                    playSound('teleport');
-                    triggerShake(6, 12);
-                    voidExplosions.push({ x: p.x + 15, y: FLOOR, timer: 20, isWhite: false, isOrange: false, r: 80 });
-                }
-            } else {
-                p.holdDownSpecTimer = 0;
+            if (kDown && kSpec && !p.isHealing && p.overheatTimer <= 0 && !p.isUnderFloor) {
+                p.isUnderFloor = true;
+                p.y = FLOOR + 70;
+                p.vy = 0;
+                p.prevDaggerKey = true; // блокирует параллельный каст способности слота F
+                playSound('teleport');
+                triggerShake(6, 12);
+                voidExplosions.push({ x: p.x + 15, y: FLOOR, timer: 20, isWhite: false, isOrange: false, r: 80 });
             }
             if (p.isUnderFloor) {
                 p.underFloorTimer = (p.underFloorTimer || 0) + 1;
-                if (p.underFloorTimer >= 120) { // every 2 seconds drains 0.25 heal
+                if (p.underFloorTimer >= 120) { // каждые 2 секунды тратит 0.25 хила
                     p.underFloorTimer = 0;
                     if (sharedHeals >= 0.25) {
                         sharedHeals -= 0.25;
@@ -834,7 +979,7 @@ function updatePlayers() {
                     }
                 }
                 if (p.y + p.height <= FLOOR) {
-                    p.isUnderFloor = false; // back into arena
+                    p.isUnderFloor = false; // выход при прыжке выше пола
                 }
             }
         }
@@ -868,6 +1013,13 @@ function updatePlayers() {
             if (boss.state === "CINEMATIC_TIE_WAIT") { 
                 if (kSpec && !p.prevDaggerKey && !p.hasPressedTie && sharedHeals >= 0.5 && p.overheatTimer<=0) { 
                     sharedHeals -= 0.5; p.hasPressedTie = true; playSound('throw'); 
+                    // При нажатии F человеком, ИИ-напарник автоматически бросает свои нити за компанию!
+                    for (let pl of players) {
+                        if (pl.isAi && !pl.isDowned && pl.hp > 0 && !pl.hasPressedTie) {
+                            pl.hasPressedTie = true;
+                            playSound('throw');
+                        }
+                    }
                 } 
             }
             p.prevDaggerKey = kSpec; p.vx = 0; p.vy = 0; p.isHealing = false; p.isAoEHealing = false; 
@@ -1044,6 +1196,287 @@ function updatePlayers() {
                 }
                 p.lightCharge = 0; 
             }
+
+            // Fire Hero: Shift attack (in Normal and L-mode)
+            // Стоимость: 2 очка шкалы хила. Дальность: 1.5 алебарды (195 px). Урон: 0.75.
+            // Эффект: +1 к поджогу (при 3 стаках босс горит) и отбрасывает босса.
+            if (p.type === 'FIRE') {
+                if (kLight && !p.prevLightKey && p.attackCooldown <= 0 && !p.isHealing && p.overheatTimer <= 0) {
+                    let cost = 2;
+                    let canAfford = isLimited ? (sharedHealPoints >= cost) : ((sharedHeals * 8 + sharedHitCount) >= cost);
+                    if (canAfford) {
+                        if (isLimited) {
+                            sharedHealPoints -= cost;
+                            sharedHitCount = sharedHealPoints % 8;
+                            sharedHeals = Math.floor(sharedHealPoints / 8);
+                        } else {
+                            let totalHits = sharedHeals * 8 + sharedHitCount - cost;
+                            sharedHitCount = totalHits % 8;
+                            sharedHeals = Math.floor(totalHits / 8);
+                        }
+                        p.attackCooldown = 26;
+                        p.attackTimer = 16;
+                        p.attackType = "FIRE_BLAST";
+                        p.fireBlastTimer = 16;
+                        playSound('fireCast');
+                        playSound('slash');
+                        triggerShake(6, 10);
+                        triggerVibration('attack');
+                        let range = 195; // 1.5 алебарды
+                        let blastBox = {
+                            x: p.facingRight ? p.x + p.width : p.x - range,
+                            y: p.y - 15,
+                            width: range,
+                            height: p.height + 30
+                        };
+                        for (let i = 0; i < 16; i++) {
+                            voidExplosions.push({
+                                x: p.facingRight ? p.x + p.width + (i / 16) * range : p.x - (i / 16) * range,
+                                y: p.y + p.height / 2 + (Math.random() - 0.5) * 30,
+                                timer: 18,
+                                isWhite: false,
+                                isOrange: true,
+                                r: 22 + Math.random() * 14
+                            });
+                        }
+                        applyPhysicsPushToLeaves(p.x + (p.facingRight ? range / 2 : -range / 2), p.y + p.height / 2, 16);
+                        if (rectIntersect(blastBox, boss)) {
+                            tryDamageBoss(0.75, p);
+                            boss.bossIgniteStacks = (boss.bossIgniteStacks || 0) + 1;
+                            if (boss.bossIgniteStacks >= 3) {
+                                boss.bossBurnTimer = 180;
+                                boss.bossBurnTicks = 3;
+                                boss.bossIgniteStacks = 0;
+                                playSound('heatIgnite');
+                            }
+                            boss.vx = (p.facingRight ? 1 : -1) * 6; // умеренное отбрасывание огня (между 0 и воздухом 10)
+                            playSound('hitBoss');
+                            triggerShake(8, 14);
+                        }
+                    }
+                }
+            }
+            p.prevLightKey = kLight;
+
+            // «Шелковый бег» на C + F (Вода и Огонь):
+            // Зажатие C + F при наличии хила. Тратит 1 очко шкалы хила за каждые 0.25 сек (15 кадров).
+            // Мир замедляется в 2 раза (0.5x), герой бежит в 2.5 раза быстрее обычного.
+            // Полупрозрачный силуэт, урона врагам не наносит.
+            if ((p.type === 'WATER' || p.type === 'FIRE') && kDash && kSpec && !p.isHealing && !p.tied && p.overheatTimer <= 0) {
+                let totalPts = isLimited ? sharedHealPoints : (sharedHeals * 8 + sharedHitCount);
+                if (totalPts >= 1) {
+                    p.isSilkRunning = true;
+                    slowMoTimer = Math.max(slowMoTimer, 2);
+                    p.silkRunTimer = (p.silkRunTimer || 0) + 1;
+                    if (p.silkRunTimer >= 15) {
+                        p.silkRunTimer = 0;
+                        if (isLimited) {
+                            sharedHealPoints = Math.max(0, sharedHealPoints - 1);
+                            sharedHitCount = sharedHealPoints % 8;
+                            sharedHeals = Math.floor(sharedHealPoints / 8);
+                        } else {
+                            let curHits = sharedHeals * 8 + sharedHitCount - 1;
+                            sharedHeals = Math.max(0, Math.floor(curHits / 8));
+                            sharedHitCount = Math.max(0, curHits % 8);
+                        }
+                    }
+                } else {
+                    p.isSilkRunning = false;
+                    p.silkRunTimer = 0;
+                }
+            } else {
+                p.isSilkRunning = false;
+                p.silkRunTimer = 0;
+            }
+
+            // Вода: Светлый режим W (Капелька воды)
+            // Стоимость: 3 очка хила. Замедление времени мира: 0.75x.
+            // Тело героя стоит на месте, игрок рулит полетом капли стрелками.
+            // Двойная концентрация: Z или X заставляет тело реагировать, расходуя 1 очко хила.
+            // Капля: босс -> 1.0 урона (без накопления хита шкалы хила); союзник -> +0.5 HP; пол/стена -> брызги.
+            if (p.type === 'WATER' && p.stance === 'LIGHT') {
+                if (kWaterDrop && !p.prevWaterDropKey && !p.waterDropActive && !p.isHealing && p.overheatTimer <= 0) {
+                    let cost = 3;
+                    let canAfford = isLimited ? (sharedHealPoints >= cost) : ((sharedHeals * 8 + sharedHitCount) >= cost);
+                    if (canAfford) {
+                        if (isLimited) {
+                            sharedHealPoints -= cost;
+                            sharedHitCount = sharedHealPoints % 8;
+                            sharedHeals = Math.floor(sharedHealPoints / 8);
+                        } else {
+                            let totalHits = sharedHeals * 8 + sharedHitCount - cost;
+                            sharedHitCount = totalHits % 8;
+                            sharedHeals = Math.floor(totalHits / 8);
+                        }
+                        p.waterDropActive = true;
+                        p.waterDrop = {
+                            x: p.x + p.width/2,
+                            y: p.y + p.height/2,
+                            vx: (p.facingRight ? 1 : -1) * 5,
+                            vy: -1,
+                            timer: 300
+                        };
+                        playSound('waterSplash');
+                    }
+                }
+            }
+            p.prevWaterDropKey = kWaterDrop;
+
+            // Обновление Капельки воды
+            if (p.waterDropActive && p.waterDrop) {
+                slowMoTimer = Math.max(slowMoTimer, 2);
+                p.waterDrop.timer--;
+                let dropSpd = 5.5;
+                if (kLeft) p.waterDrop.vx = -dropSpd;
+                else if (kRight) p.waterDrop.vx = dropSpd;
+                else p.waterDrop.vx *= 0.94;
+
+                if (kUp) p.waterDrop.vy = -dropSpd;
+                else if (kDown) p.waterDrop.vy = dropSpd;
+                else p.waterDrop.vy *= 0.94;
+
+                p.waterDrop.x += p.waterDrop.vx;
+                p.waterDrop.y += p.waterDrop.vy;
+
+                let pressedBodyAction = (kJump && !p.prevJumpKey) || (kAttack && !p.prevAttackKey);
+                if (pressedBodyAction) {
+                    let pts = isLimited ? sharedHealPoints : (sharedHeals * 8 + sharedHitCount);
+                    if (pts >= 1) {
+                        if (isLimited) {
+                            sharedHealPoints -= 1;
+                            sharedHitCount = sharedHealPoints % 8;
+                            sharedHeals = Math.floor(sharedHealPoints / 8);
+                        } else {
+                            let totalHits = sharedHeals * 8 + sharedHitCount - 1;
+                            sharedHitCount = totalHits % 8;
+                            sharedHeals = Math.floor(totalHits / 8);
+                        }
+                        triggerShake(2, 4);
+                    } else {
+                        kJump = false;
+                        kAttack = false;
+                    }
+                } else {
+                    p.vx = 0;
+                }
+
+                let dropHitBox = { x: p.waterDrop.x - 12, y: p.waterDrop.y - 12, width: 24, height: 24 };
+                if (rectIntersect(dropHitBox, boss) && boss.invuln <= 0) {
+                    tryDamageBoss(1.0, null);
+                    playSound('hitBoss');
+                    playSound('waterSplash');
+                    triggerShake(5, 8);
+                    voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 18, isWhite: false, isOrange: false, r: 35 });
+                    p.waterDropActive = false;
+                    p.waterDrop = null;
+                } else if (numPlayers === 2) {
+                    let ally = players.find(pl => pl.id !== p.id && !pl.isDowned && pl.hp > 0);
+                    if (ally && rectIntersect(dropHitBox, ally)) {
+                        ally.hp = Math.min(ally.maxHp, ally.hp + 0.5);
+                        playSound('heal');
+                        playSound('waterSplash');
+                        voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 18, isWhite: true, isOrange: false, r: 30 });
+                        p.waterDropActive = false;
+                        p.waterDrop = null;
+                    }
+                }
+                if (p.waterDrop && (p.waterDrop.y >= FLOOR || p.waterDrop.x <= 0 || p.waterDrop.x >= ARENA_W || p.waterDrop.timer <= 0)) {
+                    playSound('waterSplash');
+                    voidExplosions.push({ x: p.waterDrop.x, y: Math.min(FLOOR, p.waterDrop.y), timer: 15, isWhite: false, isOrange: false, r: 25 });
+                    p.waterDropActive = false;
+                    p.waterDrop = null;
+                }
+            }
+
+            // Вода с тросом: Ультимейт на Q (Кинжал с тросом и захват босса)
+            if (p.type === 'WATER_ROPE') {
+                if (kUlt && !p.prevUltKey && (p.ropeUltAttempts || 0) > 0 && !p.isHealing && p.overheatTimer <= 0 && !p.ropeHarpoon) {
+                    p.ropeUltAttempts--;
+                    p.ropeActive = false;
+                    p.ropeA = null;
+                    p.ropeB = null;
+                    p.isRopeSliding = false;
+                    playSound('throw');
+                    playSound('bladeSpin');
+                    triggerVibration('attack');
+                    let targetX = boss.x + boss.width / 2;
+                    let targetY = boss.y + boss.height / 2;
+                    let originX = p.x + (p.facingRight ? p.width : 0);
+                    let originY = p.y + 20;
+                    let dx = targetX - originX;
+                    let dy = targetY - originY;
+                    let dist = Math.hypot(dx, dy) || 1;
+                    let spd = 28;
+                    p.ropeHarpoon = {
+                        x: originX,
+                        y: originY,
+                        vx: (dx / dist) * spd,
+                        vy: (dy / dist) * spd,
+                        active: true
+                    };
+                }
+
+                // Полет кинжала-гарпуна с тросом
+                if (p.ropeHarpoon && p.ropeHarpoon.active) {
+                    p.ropeHarpoon.x += p.ropeHarpoon.vx;
+                    p.ropeHarpoon.y += p.ropeHarpoon.vy;
+
+                    let hHitBox = { x: p.ropeHarpoon.x - 12, y: p.ropeHarpoon.y - 12, width: 24, height: 24 };
+                    if (rectIntersect(hHitBox, boss) && boss.invuln <= 0) {
+                        p.ropeHarpoon.active = false;
+                        boss.state = "TIED";
+                        let bindSeconds = secretMode ? Math.ceil(p.hp / 0.75) : Math.ceil(p.hp);
+                        boss.stateTimer = Math.max(60, bindSeconds * 60);
+                        boss.tiedFromWaterRope = true;
+                        boss.tiedDamageHero = p;
+                        p.holdingBossRope = true; // Держит трос — сам бить не может!
+                        playSound('parry');
+                        playSound('hitBoss');
+                        triggerShake(8, 14);
+                        triggerVibration('sa_hit');
+                        voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y + boss.height/2, timer: 30, isWhite: true, isOrange: false, r: 85 });
+                    } else if (p.ropeHarpoon.x < -100 || p.ropeHarpoon.x > ARENA_W + 100 || p.ropeHarpoon.y < -100 || p.ropeHarpoon.y > FLOOR + 50) {
+                        p.ropeHarpoon = null;
+                    }
+                }
+
+                // Проверка удержания троса: пока босс связан этим тросом, игрок держит трос и не может бить
+                if (boss.state === "TIED" && boss.tiedFromWaterRope && boss.tiedDamageHero === p) {
+                    p.holdingBossRope = true;
+                } else if (p.holdingBossRope) {
+                    p.holdingBossRope = false;
+                    p.ropeHarpoon = null;
+                }
+            }
+
+            // 4-й герой (STAMINA): в розовом режиме Ультимейт на Q
+            if (p.type === 'STAMINA' && p.weaponMode === 'PINK') {
+                if (kUlt && !p.prevUltKey && (p.staminaUltAttempts || 0) > 0 && p.hp > 0.5 && !p.isHealing && p.overheatTimer <= 0) {
+                    p.staminaUltAttempts--;
+                    let spentStamina = p.stamina || 0;
+                    p.stamina = 0;
+                    p.maxHp = Math.max(0.5, p.maxHp - 1);
+                    p.hp = Math.min(p.hp, p.maxHp);
+                    let ultDmg = Math.round(spentStamina * 2.5 * 4) / 4;
+                    playSound('demonRoar');
+                    playSound('rockCrit');
+                    playSound('slash');
+                    triggerShake(16, 25);
+                    triggerVibration('sa_hit');
+                    freezeFrames = 10;
+                    voidExplosions.push({
+                        x: boss.x + boss.width/2,
+                        y: boss.y + boss.height/2,
+                        timer: 35,
+                        isWhite: false,
+                        isOrange: false,
+                        isPink: true,
+                        r: 125
+                    });
+                    tryDamageBoss(ultDmg, p);
+                }
+            }
+            p.prevUltKey = kUlt;
 
             let wallDir = 0; 
             let topWallLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) ? -2000 : (secretMode ? FLOOR/2 - 100 : FLOOR/2);
@@ -1253,6 +1686,20 @@ function updatePlayers() {
                         if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2); 
                         if (p.type !== 'FIRE') consumeCompletedHeal(); 
                         if (typeof healsUsedInBattle !== 'undefined') healsUsedInBattle++;
+
+                        // Любой успешный хил (включая мультисвязыватель) обязательно поднимает упавших союзников!
+                        let didRevive = false;
+                        for (let pl of players) {
+                            if (pl.isDowned) {
+                                pl.isDowned = false;
+                                pl.hp = 1.5;
+                                pl.stamina = 2;
+                                pl.downedTimer = 0;
+                                didRevive = true;
+                            }
+                        }
+                        if (didRevive) playSound('lightChime');
+
                         p.isHealing = false; 
                         p.healTimer = 0; 
                         p.hallucinationHits = 0; 
@@ -1260,9 +1707,16 @@ function updatePlayers() {
                 } else {
                     let targetTime = (p.type === 'WATER' && p.stance === 'DEMON') ? 60 : (p.isAoEHealing ? 240 : p.healFramesTotal);
                     if (p.healTimer >= targetTime) { 
-                        p.hallucinationHits = 0; // Healing resets hallucination counter!
-                        let downedAlly = players.find(pl => pl.isDowned);
                         let didRevive = false;
+                        for (let pl of players) {
+                            if (pl.isDowned) {
+                                pl.isDowned = false;
+                                pl.hp = 1.5;
+                                pl.stamina = 2;
+                                pl.downedTimer = 0;
+                                didRevive = true;
+                            }
+                        }
                         let revivingHp = p.hp;
                         if (typeof healsUsedInBattle !== 'undefined') healsUsedInBattle++;
                         if (p.type === 'WATER' && p.stance === 'DEMON') {
@@ -1280,12 +1734,10 @@ function updatePlayers() {
                         } 
                         else if (p.type === 'WATER') {
                             p.hp = Math.min(p.maxHp, p.hp + 3);
-                            if (downedAlly) { downedAlly.isDowned = false; downedAlly.hp = 1.5; downedAlly.stamina = 2; downedAlly.downedTimer=0; didRevive = true; }
                             consumeCompletedHeal();
                         }
                         else if (p.type === 'FIRE') {
                             p.hp = Math.min(p.maxHp, p.hp + 2.5);
-                            if (downedAlly) { downedAlly.isDowned = false; downedAlly.hp = 1.5; downedAlly.stamina = 2; downedAlly.downedTimer=0; didRevive = true; }
                             if (p.isFieryHealing) {
                                 // Massive fire pillar eruption across half the arena
                                 let fPillar = { x: p.x - (ARENA_W / 4), y: -1000, width: ARENA_W / 2, height: 3000 };
@@ -1295,19 +1747,18 @@ function updatePlayers() {
                                 playSound('heatIgnite');
                                 voidExplosions.push({ x: p.x, y: FLOOR - 100, timer: 30, isWhite: false, isOrange: true, r: 250 });
                             }
+                            consumeCompletedHeal();
                         }
                         else if (p.type === 'FIRE_HALBERD') {
                             p.hp = Math.min(p.maxHp, p.hp + 1.5);
                             p.halberdBuffTimer = 300; // 5s buff: +0.5 dmg, attack cd as water (24)
                             p.halberdVampiricReady = true; // next hit vampiric heal +1 HP
-                            if (downedAlly) { downedAlly.isDowned = false; downedAlly.hp = 1.5; downedAlly.stamina = 2; downedAlly.downedTimer=0; didRevive = true; }
                             consumeCompletedHeal();
                             playSound('heatIgnite');
                             voidExplosions.push({ x: p.x + p.width/2, y: p.y + p.height/2, timer: 20, isWhite: true, isOrange: true, r: 60 });
                         }
                         else if (p.type === 'WATER_ROPE') {
                             p.hp = Math.min(p.maxHp, p.hp + 2.5);
-                            if (downedAlly) { downedAlly.isDowned = false; downedAlly.hp = 1.5; downedAlly.stamina = 2; downedAlly.downedTimer=0; didRevive = true; }
                             consumeCompletedHeal();
                             if (isLimited) {
                                 sharedHealPoints = Math.min(MAX_HEAL_POINTS, sharedHealPoints + 1);
@@ -1325,7 +1776,6 @@ function updatePlayers() {
                         else { 
                             let amt = p.type === 'EARTH' ? 2 : (p.type === 'AIR' || p.type === 'STAMINA' ? 2.5 : 3); p.hp = Math.min(p.maxHp, p.hp + amt); 
                             if (p.type === 'STAMINA' && !p.isDowned) p.stamina = Math.min(p.maxStamina, p.stamina + 2); 
-                            if (downedAlly) { downedAlly.isDowned = false; downedAlly.hp = 1.5; downedAlly.stamina = 2; downedAlly.downedTimer=0; didRevive = true; }
                             consumeCompletedHeal();
                         }
 
@@ -1364,6 +1814,43 @@ function updatePlayers() {
                             width: p.width + lReach,
                             height: p.height + 20
                         };
+
+                        // Phase 4: Fire Lunge destroys purple monoliths/orbs!
+                        if (boss.phase === 4 && boss.lPhase4Orbs) {
+                            for (let orb of boss.lPhase4Orbs) {
+                                if (orb.alive && rectIntersect(lBox, { x: orb.x - orb.r, y: orb.y - orb.r, width: orb.r * 2, height: orb.r * 2 })) {
+                                    orb.alive = false;
+                                    playSound('break');
+                                    playSound('heatIgnite');
+                                    playSound('hitBoss');
+                                    triggerShake(14, 20);
+                                    triggerVibration('sa_hit');
+                                    freezeFrames = 8;
+                                    for (let i = 0; i < 30; i++) {
+                                        voidExplosions.push({
+                                            x: orb.x,
+                                            y: orb.y,
+                                            vx: (Math.random() - 0.5) * 16,
+                                            vy: (Math.random() - 0.5) * 16,
+                                            timer: 35,
+                                            isWhite: false,
+                                            isOrange: true
+                                        });
+                                    }
+                                    if (!boss.lPhase4Orbs.some(o => o.alive)) {
+                                        boss.superQueue = [];
+                                        boss.sa1Arr = [];
+                                        boss.state = "L_PHASE4_FALL";
+                                        boss.vx = 0;
+                                        boss.vy = 12;
+                                        boss.invuln = 0;
+                                        playSound('break');
+                                        triggerShake(18, 25);
+                                    }
+                                }
+                            }
+                        }
+
                         if (rectIntersect(lBox, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
                             p.fireLungeHit = true;
                             p.invuln = Math.max(p.invuln || 0, 22);
@@ -1372,6 +1859,7 @@ function updatePlayers() {
                             if (p.heatBladeTimer > 0) {
                                 boss.bossBurnTimer = 180;
                                 boss.bossBurnTicks = 3;
+                                boss.bossIgniteStacks = 0;
                                 playSound('heatIgnite');
                             }
                             playSound('rockCrit');
@@ -1394,11 +1882,68 @@ function updatePlayers() {
                             }
                         }
                     }
+                } else if (p.type === 'FIRE_HALBERD' && p.halberdVaultTimer > 0) {
+                    p.halberdVaultTimer--;
+                    p.isDashing = true;
+                    if (p.halberdVaultTimer === 12) {
+                        p.halberdVaultSwinging = true;
+                        playSound('bladeSpin');
+                    }
+                    let shouldLand = (p.halberdVaultTimer <= 12 && (onFloor || onPlatform)) || p.halberdVaultTimer === 0;
+                    if (shouldLand) {
+                        p.halberdVaultTimer = 0;
+                        p.halberdVaultSwinging = false;
+                        let slamReach = 110;
+                        let slamBox = {
+                            x: p.facingRight ? p.x : p.x - slamReach,
+                            y: p.y - 10,
+                            width: p.width + slamReach,
+                            height: p.height + 25
+                        };
+                        playSound('slash');
+                        playSound('rockCrit');
+                        triggerShake(10, 16);
+                        triggerVibration('sa_hit');
+                        voidExplosions.push({
+                            x: p.x + (p.facingRight ? 45 : -45),
+                            y: p.y + p.height - 10,
+                            timer: 22,
+                            isWhite: false,
+                            isOrange: true,
+                            r: 85
+                        });
+                        applyPhysicsPushToLeaves(p.x + 15, p.y + p.height - 10, 22);
+                        if (rectIntersect(slamBox, boss) && boss.invuln <= 0) {
+                            tryDamageBoss(3.0, p);
+                            playSound('hitBoss');
+                        }
+                    }
+                } else if (p.isSilkRunning) {
+                    let sprintSpd = (p.type === 'WATER' ? 7.8 : 7.6) * p.speedMod;
+                    let silkSpeed = sprintSpd * 2.5;
+                    if (kLeft) { p.vx = -silkSpeed; p.facingRight = false; }
+                    else if (kRight) { p.vx = silkSpeed; p.facingRight = true; }
+                    else { p.vx = (p.facingRight ? 1 : -1) * silkSpeed; }
+                    p.isDashing = true;
+                    if (Math.random() < 0.6) {
+                        stepPuffs.push({
+                            x: p.x + p.width/2 + (Math.random() - 0.5) * 10,
+                            y: p.y + p.height/2,
+                            vx: -p.vx * 0.15,
+                            vy: 0,
+                            r: 16,
+                            alpha: 0.5,
+                            color: p.type === 'WATER' ? "rgba(0, 229, 255, 0.4)" : "rgba(255, 85, 0, 0.4)"
+                        });
+                    }
                 } else if (p.type === 'FIRE' && p.fireDashTimer > 0) {
                     p.vx = (p.facingRight ? 1 : -1) * 12; p.fireDashTimer--;
                 } else {
                     let moveSpd = p.speed; if (p.invigTimer > 0) moveSpd *= 1.4;
-                    if (isSprinting && !kLeft && !kRight) {
+                    if (p.waterDropActive && p.waterDrop) {
+                        // Стрелки во время управления капелькой относятся именно на капельку, а сам игрок стоит на месте!
+                        p.vx = 0;
+                    } else if (isSprinting && !kLeft && !kRight) {
                         p.vx = (p.facingRight ? 1 : -1) * moveSpd;
                     } else if (kLeft) {
                         p.vx = -moveSpd; p.facingRight = false;
@@ -1411,13 +1956,36 @@ function updatePlayers() {
 
                 if (kJump) {
                     if (!p.prevJumpKey) {
-                        if (onFloor || onPlatform || p.isUnderFloor) { p.vy = p.jumpPowerBase * jumpMod; p.jumps = 1; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); }
-                        else if (onWall) { p.vy = p.jumpPowerBase * jumpMod; p.vx = (wallDir === -1 ? 1 : -1) * (globalWindMode === "DOWN" ? 2 : 5); p.wallJumpCooldown = globalWindMode === "DOWN" ? 2 : 6; applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 4); }
-                        else if (p.jumps < p.maxJumps) { p.vy = p.jumpPowerBase * jumpMod; p.jumps++; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); }
+                        if (onFloor || onPlatform || p.isUnderFloor) { 
+                            p.vy = p.jumpPowerBase * jumpMod; 
+                            p.jumps = 1; 
+                            p.jumpHoldTimer = 0;
+                            applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); 
+                        }
+                        else if (onWall) { 
+                            p.vy = p.jumpPowerBase * jumpMod; 
+                            p.vx = (wallDir === -1 ? 1 : -1) * (globalWindMode === "DOWN" ? 2 : 5); 
+                            p.wallJumpCooldown = globalWindMode === "DOWN" ? 2 : 6; 
+                            p.jumpHoldTimer = 0;
+                            applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 4); 
+                        }
+                        else if (p.jumps < p.maxJumps) { 
+                            p.vy = p.jumpPowerBase * jumpMod; 
+                            p.jumps++; 
+                            p.jumpHoldTimer = 0;
+                            applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); 
+                        }
+                    } else {
+                        // Air Hero: удерживая кнопку прыжка чуть дольше в первые 12-14 кадров, взлетает выше!
+                        if (p.type === 'AIR' && p.jumpHoldTimer < 14 && p.vy < 0) {
+                            p.jumpHoldTimer++;
+                            p.vy -= 0.38;
+                        }
                     }
                     p.prevJumpKey = true;
                 } else {
                     p.prevJumpKey = false;
+                    p.jumpHoldTimer = 99;
                     if (p.vy < 0) p.vy *= 0.5; 
                 }
 
@@ -1546,7 +2114,17 @@ function updatePlayers() {
                                     triggerVibration('sa_hit');
                                     let surgeBox = { x: p.facingRight ? p.x : p.x - 170, y: p.y - 30, width: p.width + 170, height: p.height + 60 };
                                     if (rectIntersect(surgeBox, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
-                                        tryDamageBoss(2.75, p);
+                                        let isFlankAmbush = false;
+                                        if (typeof players !== 'undefined' && players.length > 1 && boss) {
+                                            let ally = players.find(pl => pl.id !== p.id && !pl.isDowned && pl.hp > 0);
+                                            if (ally && Math.hypot(ally.x - boss.x, ally.y - boss.y) < 220) isFlankAmbush = true;
+                                        }
+                                        let surgeDmg = 3.25 + (isFlankAmbush ? 1.0 : 0.0);
+                                        if (isFlankAmbush && typeof battleAnnouncements !== 'undefined') {
+                                            battleAnnouncements.push({ text: "«НЕОЖИДАННАЯ АТАКА +1!»", color: "#00e5ff", timer: 80 });
+                                            triggerShake(14, 20);
+                                        }
+                                        tryDamageBoss(surgeDmg, p);
                                         boss.state = "STUN";
                                         boss.stateTimer = 60;
                                         boss.vx = 0; boss.vy = 0;
@@ -1554,12 +2132,42 @@ function updatePlayers() {
                                         playSound('rockCrit');
                                         voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y + boss.height/2, timer: 25, isWhite: true, isOrange: false, r: 100 });
                                     }
-                                } else if (kDown && !onFloor && !onPlatform) {
-                                    p.attackType = "SUPER_POGO";
-                                    p.attackTimer = 18;
-                                    p.vy = 18;
-                                    playSound('rockCrit');
-                                    triggerShake(8, 14);
+                                } else if (kDown) {
+                                    if (!onFloor && !onPlatform) {
+                                        p.attackType = "SUPER_POGO";
+                                        p.attackTimer = 18;
+                                        p.vy = 18;
+                                        playSound('rockCrit');
+                                        triggerShake(8, 14);
+                                    } else {
+                                        // Ground Down Slam: heavy downward strike on ground!
+                                        p.attackType = "GROUND_SLAM";
+                                        p.attackTimer = 22;
+                                        playSound('slash');
+                                        playSound('rockCrit');
+                                        triggerShake(12, 18);
+                                        triggerVibration('attack');
+                                        let slamRange = 90;
+                                        let slamBox = { x: p.facingRight ? p.x + p.width : p.x - slamRange, y: p.y - 15, width: slamRange, height: p.height + 30 };
+                                        if (rectIntersect(slamBox, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
+                                            let isFlankAmbush = false;
+                                            if (typeof players !== 'undefined' && players.length > 1 && boss) {
+                                                let ally = players.find(pl => pl.id !== p.id && !pl.isDowned && pl.hp > 0);
+                                                if (ally && Math.hypot(ally.x - boss.x, ally.y - boss.y) < 220) isFlankAmbush = true;
+                                            }
+                                            let slamDmg = 3.0 + (isFlankAmbush ? 1.0 : 0.0);
+                                            if (isFlankAmbush && typeof battleAnnouncements !== 'undefined') {
+                                                battleAnnouncements.push({ text: "«НЕОЖИДАННАЯ АТАКА +1!»", color: "#00e5ff", timer: 80 });
+                                                triggerShake(14, 20);
+                                            }
+                                            tryDamageBoss(slamDmg, p);
+                                            boss.state = "STUN";
+                                            boss.stateTimer = 50;
+                                            boss.vx = (p.facingRight ? 1 : -1) * 8;
+                                            freezeFrames = 6;
+                                            voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y + boss.height/2, timer: 20, isWhite: true, isOrange: false, r: 85 });
+                                        }
+                                    }
                                 } else {
                                     // Release X alone: One Crushing Strike (Сокрушительный удар на 2.5 урона)
                                     p.attackType = "CRUSHING_STRIKE";
@@ -1571,7 +2179,17 @@ function updatePlayers() {
                                     let crushRange = 90;
                                     let crushBox = { x: p.facingRight ? p.x + p.width : p.x - crushRange, y: p.y - 15, width: crushRange, height: p.height + 30 };
                                     if (rectIntersect(crushBox, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
-                                        tryDamageBoss(2.5, p);
+                                        let isFlankAmbush = false;
+                                        if (typeof players !== 'undefined' && players.length > 1 && boss) {
+                                            let ally = players.find(pl => pl.id !== p.id && !pl.isDowned && pl.hp > 0);
+                                            if (ally && Math.hypot(ally.x - boss.x, ally.y - boss.y) < 220) isFlankAmbush = true;
+                                        }
+                                        let crushDmg = 2.5 + (isFlankAmbush ? 1.0 : 0.0);
+                                        if (isFlankAmbush && typeof battleAnnouncements !== 'undefined') {
+                                            battleAnnouncements.push({ text: "«НЕОЖИДАННАЯ АТАКА +1!»", color: "#00e5ff", timer: 80 });
+                                            triggerShake(14, 20);
+                                        }
+                                        tryDamageBoss(crushDmg, p);
                                         boss.state = "STUN";
                                         boss.stateTimer = 45;
                                         boss.vx = (p.facingRight ? 1 : -1) * 10;
@@ -1594,7 +2212,17 @@ function updatePlayers() {
                 if (p.attackType === "SUPER_POGO") {
                     let spBox = { x: p.x - 20, y: p.y + p.height - 5, width: p.width + 40, height: 50 };
                     if (rectIntersect(spBox, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION" && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
-                        tryDamageBoss(2.0, p);
+                        let isFlankAmbush = false;
+                        if (typeof players !== 'undefined' && players.length > 1 && boss) {
+                            let ally = players.find(pl => pl.id !== p.id && !pl.isDowned && pl.hp > 0);
+                            if (ally && Math.hypot(ally.x - boss.x, ally.y - boss.y) < 220) isFlankAmbush = true;
+                        }
+                        let pogoDmg = 3.0 + (isFlankAmbush ? 1.0 : 0.0);
+                        if (isFlankAmbush && typeof battleAnnouncements !== 'undefined') {
+                            battleAnnouncements.push({ text: "«НЕОЖИДАННАЯ АТАКА +1!»", color: "#00e5ff", timer: 80 });
+                            triggerShake(16, 22);
+                        }
+                        tryDamageBoss(pogoDmg, p);
                         boss.state = "STUN";
                         boss.stateTimer = 60; // 1s stun
                         boss.vx = 0; boss.vy = 0;
@@ -1615,14 +2243,18 @@ function updatePlayers() {
 
                 let swordHitbox = null;
                 let nearRopeForAttack = (p.type === 'WATER_ROPE' && p.ropeActive && p.ropeA && p.ropeB && distToSegment({ x: p.x + p.width/2, y: p.y + p.height/2 }, p.ropeA, p.ropeB) < 95);
-                let canAttackNow = kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && p.lightCharge === 0 && p.overheatTimer <= 0 && !kSpec && !p.isRopeSliding && !nearRopeForAttack;
+
+                let canAttackNow = kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && p.lightCharge === 0 && p.overheatTimer <= 0 && !p.isRopeSliding && !nearRopeForAttack && !p.holdingBossRope;
                 if (canAttackNow) {
                     if (p.type === 'AIR') {
-                        p.attackCooldown = 60; playSound('throw'); 
+                        p.attackCooldown = 22; 
+                        playSound('throw'); 
                         let dx = (boss.x + boss.width/2) - (p.x + p.width/2); 
                         let dy = (boss.y + boss.height/2) - (p.y + p.height/2); 
-                        let dist = Math.hypot(dx, dy); 
+                        let dist = Math.hypot(dx, dy) || 1; 
                         airTraps.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (dx/dist)*14, vy: (dy/dist)*14, pId: p.id });
+                        swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - 70, y: p.y + 10, width: 70, height: 20 };
+                        p.attackType = "NORMAL";
                     } else {
                         p.attackTimer = 12; 
                         let cdBase = (p.type === 'STAMINA' && p.weaponMode === 'BLUE') ? 12 : p.atkCdBase;
@@ -1649,10 +2281,22 @@ function updatePlayers() {
                         } else if (p.type === 'WATER_ROPE') {
                             if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 15, y: p.y + p.height - 10, width: 52, height: 45 }; applyPhysicsPushToLeaves(p.x + 11, p.y + 38, 5); }
                             else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - 58, y: p.y + 8, width: 58, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + 29, swordHitbox.y + 10, 3); }
+                        } else if (p.type === 'EARTH') {
+                            if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 45 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); }
+                            else if (kDash) {
+                                // Earth Hero: комбо X + C (разгон + удар: 1.25 урона, акробатический кувырок назад под 45°)
+                                p.attackType = "EARTH_SPRINT_STRIKE"; 
+                                p.attackTimer = 16; 
+                                p.attackCooldown = 18; 
+                                swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - (p.atkRange + 20), y: p.y + 5, width: p.atkRange + 20, height: 25 }; 
+                                applyPhysicsPushToLeaves(swordHitbox.x + (p.atkRange + 20)/2, swordHitbox.y + 10, 8); 
+                            }
+                            else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + p.atkRange/2, swordHitbox.y + 10, 4); }
                         } else {
                             if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 45 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); } 
                             else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + p.atkRange/2, swordHitbox.y + 10, 4); }
                         }
+                    }
 
                         // Tutorial targets hit check
                         if (typeof isTutorial !== 'undefined' && isTutorial && typeof tutorialTargets !== 'undefined') {
@@ -1661,9 +2305,10 @@ function updatePlayers() {
                                 let trgBox = { x: trg.x - trg.r, y: trg.y - trg.r, width: trg.r * 2, height: trg.r * 2 };
                                 if (rectIntersect(swordHitbox, trgBox)) {
                                     playSound('hitBoss');
+                                    playSound('leaf');
                                     playSound('parry');
-                                    triggerShake(3, 5);
-                                    voidExplosions.push({ x: trg.x, y: trg.y, timer: 20, isWhite: true, r: 25 });
+                                    triggerShake(4, 7);
+                                    voidExplosions.push({ x: trg.x, y: trg.y, timer: 22, isWhite: false, isOrange: true, r: 35 });
                                     tutorialTargets.splice(ti, 1);
                                 }
                             }
@@ -1720,12 +2365,13 @@ function updatePlayers() {
                                     if (p.halberdBuffTimer > 0) dmgToDeal += 0.5;
                                     if (p.heatBladeTimer > 0) dmgToDeal += 1.25; // +1.25 Fire Wave damage when ignited!
                                 } else if (p.type === 'WATER_ROPE') {
-                                    if (p.attackType === "TIDAL_SURGE") dmgToDeal = 2.75;
+                                    if (p.attackType === "TIDAL_SURGE") dmgToDeal = 3.25;
                                     else if (p.attackType === "CRUSHING_STRIKE") dmgToDeal = 2.5;
-                                    else if (p.attackType === "SUPER_POGO") dmgToDeal = 2.0;
+                                    else if (p.attackType === "SUPER_POGO" || p.attackType === "GROUND_SLAM") dmgToDeal = 3.0;
                                     else if (p.attackType === "DOWN") dmgToDeal = 1.25;
                                     else dmgToDeal = 0.75;
                                 }
+
                                 
                                 if (p.type === 'WATER' && p.stance === 'DEMON') {
                                     if (secretMode) dmgToDeal = 0.75;
@@ -1742,6 +2388,9 @@ function updatePlayers() {
                                     dmgToDeal *= 1.5; // 1.5x Heat Blade buff!
                                 }
                                 if (p.type === 'EARTH') {
+                                    if (p.attackType === "EARTH_SPRINT_STRIKE") {
+                                        dmgToDeal = 1.25;
+                                    }
                                     let critChance = 0;
                                     if (sharedHeals >= 5) critChance = 0.15;
                                     else if (sharedHeals >= 4) critChance = 0.125;
@@ -1764,6 +2413,29 @@ function updatePlayers() {
                                 if (tryDamageBoss(dmgToDeal, p)) {
                                     let recoilForce = 6; if (p.recoilResist) recoilForce /= 2;
                                     p.vx = p.facingRight ? -recoilForce : recoilForce;
+                                    
+                                    // Earth Hero X + C backflip combo (атака с уходом: отбилась и отлетела от босса)
+                                    if (p.type === 'EARTH' && p.attackType === "EARTH_SPRINT_STRIKE") {
+                                        let facing = p.facingRight ? 1 : -1;
+                                        p.vx = -facing * 12;
+                                        p.vy = -9;
+                                        p.jumps = 1;
+                                        p.earthFlipTimer = 18;
+                                        p.earthFlipDir = -facing;
+                                        p.invuln = Math.max(p.invuln || 0, 18);
+                                        playSound('bladeSpin');
+                                        playSound('parry');
+                                        triggerShake(6, 12);
+                                        voidExplosions.push({
+                                            x: p.x + (p.facingRight ? 35 : -10),
+                                            y: p.y + 20,
+                                            timer: 16,
+                                            isWhite: true,
+                                            isOrange: false,
+                                            r: 45
+                                        });
+                                        applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 16);
+                                    }
                                     
                                     // FIRE_HALBERD combo and vampiric heal
                                     if (p.type === 'FIRE_HALBERD') {
@@ -1862,8 +2534,7 @@ function updatePlayers() {
                             if (p.attackType === "DOWN" && rectIntersect(swordHitbox, ph)) { p.vy = -14; p.jumps = 1; p.airDashed = false; triggerVibration('clash'); triggerShake(2, 5, 0, 1); freezeFrames = 5; }
                         }
                     }
-                }
-                if (!kSpec) p.prevAttackKey = kAttack;
+                p.prevAttackKey = rawAttack;
                 if (p.type === 'FIRE') p.prevDashKey = kDash;
                 if (!p.isRopeSliding) {
                     let grav = (p.badges && p.badges.includes('bracelet')) ? (currentGravity * 1.07) : currentGravity;
@@ -2455,6 +3126,25 @@ function drawStickmanBody(p, bodyColor, cloakColor, patternColor) {
     ctx.save();
     let facing = p.facingRight ? 1 : -1;
     let cx = p.x + p.width / 2;
+    let cy = p.y + p.height / 2;
+
+    // Акробатический кувырок назад Земли (X + C комбо)
+    if (p.earthFlipTimer > 0) {
+        let flipProg = 1 - (p.earthFlipTimer / 18);
+        let rot = (p.earthFlipDir || -facing) * flipProg * Math.PI * 2;
+        ctx.translate(cx, cy);
+        ctx.rotate(rot);
+        ctx.translate(-cx, -cy);
+    }
+    // Прыжок на шесте/алебарде Огненной Алебарды
+    else if (p.halberdVaultTimer > 0) {
+        let vaultProg = 1 - (p.halberdVaultTimer / 24);
+        let rot = facing * (vaultProg * Math.PI - Math.PI * 0.25);
+        ctx.translate(cx, cy);
+        ctx.rotate(rot);
+        ctx.translate(-cx, -cy);
+    }
+
     let isGrounded = !!(p.onGround || (p.y + p.height >= FLOOR - 3));
     let isDash = !!p.isDashing;
     let isAir = !isGrounded && !isDash;
@@ -3248,6 +3938,226 @@ function drawPlayer(p) {
             }
         }
         ctx.restore();
+    }
+
+    // --- V74 VISUAL OVERLAYS FOR PLAYER ---
+    // 1. Water Droplet
+    if (p.waterDropActive && p.waterDrop) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(p.waterDrop.x, p.waterDrop.y, 8, 0, Math.PI * 2);
+        ctx.fillStyle = "#00f0ff";
+        ctx.shadowColor = "#38bdf8";
+        ctx.shadowBlur = 12;
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(p.waterDrop.x - p.waterDrop.vx * 2, p.waterDrop.y - p.waterDrop.vy * 2);
+        ctx.lineTo(p.waterDrop.x, p.waterDrop.y);
+        ctx.strokeStyle = "rgba(0, 240, 255, 0.6)";
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 2. Air Hero Wind Cone (S-Ability)
+    if (p.airAttackTimer > 0) {
+        ctx.save();
+        let facing = p.facingRight ? 1 : -1;
+        let reach = 227.5;
+        let originX = p.facingRight ? p.x + p.width : p.x;
+        let originY = p.y + p.height / 2;
+        ctx.beginPath();
+        ctx.moveTo(originX, originY);
+        ctx.lineTo(originX + facing * reach, originY - 40);
+        ctx.lineTo(originX + facing * reach, originY + 40);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(255, 235, 100, 0.22)";
+        ctx.shadowColor = "#ffea00";
+        ctx.shadowBlur = 12;
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        for (let k = 1; k <= 3; k++) {
+            ctx.beginPath();
+            ctx.arc(originX, originY, reach * (k / 3), -0.28, 0.28, !p.facingRight);
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // 3. Fire Halberd Pole Vault & Overhead Slam (совершаешь полукруг и на половине начинаешь замах со спины)
+    if (p.halberdVaultTimer > 0) {
+        ctx.save();
+        let facing = p.facingRight ? 1 : -1;
+        let prog = 1 - (p.halberdVaultTimer / 24);
+        let cx = p.x + p.width / 2;
+        let cy = p.y + p.height / 2;
+        let hLen = 78;
+
+        // В первой половине полукруга: алебарда направлена вперед-вниз как опора/шест
+        // На половине полукруга (prog >= 0.5): замах со спины и удар через голову при приземлении!
+        let angle;
+        if (prog < 0.5) {
+            angle = facing * (-0.4 + prog * 1.8);
+        } else {
+            angle = facing * (Math.PI * 0.75 + (prog - 0.5) * Math.PI * 1.5);
+        }
+
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+
+        // Древко алебарды
+        ctx.beginPath();
+        ctx.moveTo(0, 18);
+        ctx.lineTo(0, -hLen);
+        ctx.strokeStyle = "#4a2a10";
+        ctx.lineWidth = 4.5;
+        ctx.stroke();
+
+        // Золотые кольца/крепления
+        ctx.strokeStyle = "#ffcc00";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(0, -12);
+        ctx.lineTo(0, -18);
+        ctx.stroke();
+
+        // Огненное острие
+        ctx.shadowColor = "#ff3300";
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = "#ff4400";
+        ctx.beginPath();
+        ctx.moveTo(0, -hLen - 22);
+        ctx.lineTo(7, -hLen);
+        ctx.lineTo(-7, -hLen);
+        ctx.closePath();
+        ctx.fill();
+
+        // Полулунное лезвие топора
+        ctx.beginPath();
+        ctx.arc(facing * 9, -hLen + 10, 15, -Math.PI / 2, Math.PI / 2, facing < 0);
+        ctx.strokeStyle = "#ff6600";
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        ctx.restore();
+
+        // Огненный шлейф замаха со спины через голову (на половине полукруга)
+        if (prog >= 0.45) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, hLen + 12, angle - 1.2, angle + 0.2);
+            ctx.strokeStyle = "rgba(255, 68, 0, 0.75)";
+            ctx.lineWidth = 6;
+            ctx.shadowColor = "#ffaa00";
+            ctx.shadowBlur = 20;
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    // 4. Earth Hero Backflip Afterimage Blur Trail
+    if (p.earthFlipTimer > 0) {
+        p.earthFlipTimer--;
+        ctx.save();
+        ctx.fillStyle = "rgba(51, 255, 85, 0.35)";
+        ctx.shadowColor = "#33ff55";
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.arc(p.x + p.width/2, p.y + p.height/2, 22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // 5. Water Rope Harpoon & Tied Boss Tether
+    if (p.type === 'WATER_ROPE') {
+        let pHandX = p.x + (p.facingRight ? p.width - 2 : 2);
+        let pHandY = p.y + 20;
+
+        // Полет кинжала-гарпуна с тросом
+        if (p.ropeHarpoon && p.ropeHarpoon.active) {
+            ctx.save();
+            // Натянутый трос позади кинжала
+            ctx.strokeStyle = "rgba(0, 229, 255, 0.85)";
+            ctx.lineWidth = 3;
+            ctx.shadowColor = "#00e5ff";
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.moveTo(pHandX, pHandY);
+            ctx.lineTo(p.ropeHarpoon.x, p.ropeHarpoon.y);
+            ctx.stroke();
+
+            // Белый внутренний сердечник троса
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(pHandX, pHandY);
+            ctx.lineTo(p.ropeHarpoon.x, p.ropeHarpoon.y);
+            ctx.stroke();
+
+            // Летящий кинжал
+            let hAngle = Math.atan2(p.ropeHarpoon.vy, p.ropeHarpoon.vx);
+            ctx.translate(p.ropeHarpoon.x, p.ropeHarpoon.y);
+            ctx.rotate(hAngle);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = "#00e5ff";
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.moveTo(12, 0);
+            ctx.lineTo(-6, -5);
+            ctx.lineTo(-6, 5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "#00e5ff";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Босс связан тросом, который держит игрок
+        if (p.holdingBossRope && boss.state === "TIED" && boss.tiedFromWaterRope) {
+            ctx.save();
+            let bTargetX = boss.x + boss.width / 2;
+            let bTargetY = boss.y + boss.height / 2;
+
+            // Воткнутый кинжал в боссе
+            ctx.fillStyle = "#ffffff";
+            ctx.strokeStyle = "#00e5ff";
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = "#00e5ff";
+            ctx.shadowBlur = 14;
+            ctx.beginPath();
+            ctx.arc(bTargetX, bTargetY, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Натянутый светящийся трос между руками героя и боссом
+            ctx.strokeStyle = "rgba(0, 240, 255, 0.9)";
+            ctx.lineWidth = 3.5;
+            ctx.shadowColor = "#00e5ff";
+            ctx.shadowBlur = 14;
+            ctx.beginPath();
+            ctx.moveTo(pHandX, pHandY);
+            let midX = (pHandX + bTargetX) / 2;
+            let midY = (pHandY + bTargetY) / 2 + Math.sin(Date.now() / 80) * 3;
+            ctx.quadraticCurveTo(midX, midY, bTargetX, bTargetY);
+            ctx.stroke();
+
+            // Яркий сердечник нити
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(pHandX, pHandY);
+            ctx.quadraticCurveTo(midX, midY, bTargetX, bTargetY);
+            ctx.stroke();
+            ctx.restore();
+        }
     }
 }
 

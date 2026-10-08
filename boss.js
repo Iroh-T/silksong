@@ -146,7 +146,9 @@ function tryDamageBoss(dmg, sourcePlayer) {
 
     let finalDmg = dmg * (sourcePlayer ? sourcePlayer.dmgDealtMod : 1);
     if (sourcePlayer && sourcePlayer.isMobile) finalDmg += 0.5;
-    boss.hp -= finalDmg;
+    // Строгое минимальное деление ХП босса: 0.25 HP
+    finalDmg = Math.round(finalDmg * 4) / 4;
+    boss.hp = Math.max(0, Math.round((boss.hp - finalDmg) * 4) / 4);
     boss.invuln = 10;
     playSound('hitBoss');
     if (sourcePlayer) recordHit(sourcePlayer);
@@ -833,12 +835,18 @@ function updateBoss() {
             boss.stateTimer = 45; 
             playSound('slash'); 
         } else { 
-            let allPressed = players.every(p => p.hasPressedTie || p.isDowned || p.hp <= 0); 
+            let livingHumans = players.filter(p => !p.isAi && !p.isDowned && p.hp > 0);
+            let allPressed = (livingHumans.length > 0)
+                ? livingHumans.every(p => p.hasPressedTie)
+                : players.every(p => p.hasPressedTie || p.isDowned || p.hp <= 0);
             if (allPressed) { 
                 boss.state = "CINEMATIC_TYING"; 
                 boss.color = "white"; 
                 boss.stateTimer = 90; 
                 playSound('wind'); 
+                for (let pl of players) {
+                    if (pl.isAi && !pl.isDowned && pl.hp > 0) pl.hasPressedTie = true;
+                }
             } 
         }
     } else if (boss.state === "CINEMATIC_FAIL") {
@@ -864,7 +872,28 @@ function updateBoss() {
         }
     } else if (boss.state === "TIED" || boss.state === "TIED_BLEED") {
         boss.vx = 0;
-        if (boss.state === "TIED_BLEED" && boss.stateTimer % 30 === 0) { 
+        if (boss.tiedFromWaterRope) {
+            // Вода с тросом: каждую секунду связывания (60 кадров): 1.25 урона и +1 очко шкалы хила
+            if (boss.stateTimer % 60 === 0 && boss.stateTimer > 0) {
+                let pSource = boss.tiedDamageHero;
+                tryDamageBoss(1.25, pSource);
+                playSound('hitBoss');
+                triggerShake(4, 8);
+                let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
+                if (isLimited) {
+                    sharedHealPoints = Math.min(MAX_HEAL_POINTS, sharedHealPoints + 1);
+                    sharedHitCount = sharedHealPoints % 8;
+                    sharedHeals = Math.floor(sharedHealPoints / 8);
+                } else {
+                    sharedHitCount++;
+                    if (sharedHitCount >= 8) {
+                        sharedHitCount -= 8;
+                        sharedHeals = Math.min(maxSharedHeals, sharedHeals + 1);
+                    }
+                }
+                voidExplosions.push({ x: boss.x + boss.width/2, y: boss.y + boss.height/2, timer: 15, isWhite: false, isOrange: false, r: 35 });
+            }
+        } else if (boss.state === "TIED_BLEED" && boss.stateTimer % 30 === 0) { 
             let dmg = 0.5; 
             boss.hp -= dmg; 
             playSound('hitBoss'); 
@@ -873,6 +902,7 @@ function updateBoss() {
         if (boss.stateTimer <= 0) { 
             boss.state = "IDLE"; 
             boss.color = "#e6c800"; 
+            boss.tiedFromWaterRope = false;
         }
     } else if (boss.state === "EXECUTE_QUEUE") {
         if (boss.halfHpSeqActive) {
@@ -1279,10 +1309,22 @@ function updateBoss() {
                 
                 let playerRunningAway = (Math.abs(nearestP.vx) > 3 && Math.sign(nearestP.vx) !== Math.sign(boss.x - nearestP.x));
 
-                if (Math.abs(boss.x - nearestP.x) > 400 && boss.phase >= 2 && Math.random() < 0.5) { 
-                    boss.state = "TELEPORT_OUT"; boss.stateTimer = 10; playSound('wind'); 
-                } else if (playerRunningAway && boss.phase >= 2 && Math.random() < 0.05) { 
-                    boss.state = "TELEPORT_OUT"; boss.stateTimer = 10; playSound('wind'); 
+                if (Math.abs(boss.x - nearestP.x) > 220 && Math.random() < 0.4) { 
+                    if (Math.random() < 0.6) {
+                        boss.state = "SILK_RUN";
+                        boss.stateTimer = 20;
+                        boss.silkRunDir = boss.x < nearestP.x ? 1 : -1;
+                        boss.hitDuringSilkRun = false;
+                        playSound('dash');
+                    } else if (boss.phase >= 2) {
+                        boss.state = "TELEPORT_OUT"; boss.stateTimer = 10; playSound('wind'); 
+                    }
+                } else if (playerRunningAway && Math.random() < 0.3) { 
+                    boss.state = "SILK_RUN";
+                    boss.stateTimer = 20;
+                    boss.silkRunDir = boss.x < nearestP.x ? 1 : -1;
+                    boss.hitDuringSilkRun = false;
+                    playSound('dash');
                 } else if (boss.stateTimer <= 0) {
                     boss.attackCount = (boss.attackCount || 0) + 1;
                     let rand = Math.random(); 
@@ -1317,8 +1359,8 @@ function updateBoss() {
                                 }
                             }
                             else if (rand < 0.62) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 15; playSound('wind'); }
-                            else if (rand < 0.72) { boss.state = "CAST_WIND"; boss.stateTimer = 30 * phaseMultiplier; boss.vx = 0; boss.directAttackActive = true; boss.color = "#00ffff"; }
-                            else if (rand < 0.82) { boss.state = "FEINT_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; boss.directAttackActive = true; boss.color = "#aaaaaa"; }
+                            else if (rand < 0.72) { boss.state = "WIND_LINE_WINDUP"; boss.stateTimer = 60; boss.vx = 0; boss.windLineY = undefined; boss.directAttackActive = true; boss.color = "#00ffff"; }
+                            else if (rand < 0.82) { boss.state = "SILK_RUN"; boss.stateTimer = 20; boss.silkRunDir = boss.x < nearestP.x ? 1 : -1; boss.hitDuringSilkRun = false; playSound('dash'); }
                             else { boss.state = "LUNGE_WINDUP"; boss.stateTimer = 15 * phaseMultiplier; boss.comboCount = 0; boss.attackDir = (Math.random() < 0.3 && boss.y > FLOOR - 50) ? "UP" : (boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"); boss.directAttackActive = true; boss.color = "#ff3333"; }
                         } else if (boss.phase === 2) {
                             if (rand < 0.30) { boss.state = "VOID_PORTALS"; boss.stateTimer = 90; boss.color = "#9900ff"; }
@@ -1326,28 +1368,31 @@ function updateBoss() {
                             else if (globalWindCooldown <= 0 && globalWindMode === "NONE" && rand < 0.60) { boss.state = "CAST_VERTICAL_WIND"; boss.stateTimer = 40; playSound('wind'); boss.directAttackActive = true; boss.color = "#00ffff"; }
                             else if (rand < teleChance + 0.45) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 15; playSound('wind'); }
                             else if (rand < 0.65) { boss.state = "WIND_FLY"; boss.stateTimer = 15; playSound('wind'); applyPhysicsPushToLeaves(boss.x + 15, boss.y + 50, 10); boss.directAttackActive = true; boss.color = "#00ffff"; }
-                            else if (rand < 0.75) { boss.state = "CAST_WIND"; boss.stateTimer = 30 * phaseMultiplier; boss.vx = 0; boss.directAttackActive = true; boss.color = "#00ffff"; }
-                            else if (rand < 0.85) { boss.state = "FEINT_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; boss.directAttackActive = true; boss.color = "#aaaaaa"; }
+                            else if (rand < 0.75) { boss.state = "WIND_LINE_WINDUP"; boss.stateTimer = 60; boss.vx = 0; boss.windLineY = undefined; boss.directAttackActive = true; boss.color = "#00ffff"; }
+                            else if (rand < 0.85) { boss.state = "SILK_RUN"; boss.stateTimer = 20; boss.silkRunDir = boss.x < nearestP.x ? 1 : -1; boss.hitDuringSilkRun = false; playSound('dash'); }
                             else { boss.state = "LUNGE_WINDUP"; boss.stateTimer = 15 * phaseMultiplier; boss.comboCount = 0; boss.attackDir = (Math.random() < 0.3 && boss.y > FLOOR - 50) ? "UP" : (boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"); boss.directAttackActive = true; boss.color = "#ff3333"; }
                         } else {
-                            if (rand < 0.30) { boss.state = "WIND_FLY"; boss.stateTimer = 15; playSound('wind'); applyPhysicsPushToLeaves(boss.x + 15, boss.y + 50, 10); boss.directAttackActive = true; boss.color = "#00ffff"; }
-                            else if (rand < 0.50) { boss.state = "CAST_WIND"; boss.stateTimer = 30 * phaseMultiplier; boss.vx = 0; boss.directAttackActive = true; boss.color = "#00ffff"; }
-                            else if (rand < 0.70) { boss.state = "FEINT_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; boss.directAttackActive = true; boss.color = "#aaaaaa"; }
+                            if (rand < 0.22) { boss.state = "WIND_FLY"; boss.stateTimer = 15; playSound('wind'); applyPhysicsPushToLeaves(boss.x + 15, boss.y + 50, 10); boss.directAttackActive = true; boss.color = "#00ffff"; }
+                            else if (rand < 0.42) { boss.state = "WIND_LINE_WINDUP"; boss.stateTimer = 60; boss.vx = 0; boss.windLineY = undefined; boss.directAttackActive = true; boss.color = "#00ffff"; }
+                            else if (rand < 0.58) { boss.state = "SILK_RUN"; boss.stateTimer = 20; boss.silkRunDir = boss.x < nearestP.x ? 1 : -1; boss.hitDuringSilkRun = false; playSound('dash'); }
+                            else if (rand < 0.78) { boss.state = "GREAT_LUNGE_WINDUP"; boss.stateTimer = 38 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"; boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#ff4400"; }
                             else { boss.state = "LUNGE_WINDUP"; boss.stateTimer = 15 * phaseMultiplier; boss.comboCount = 0; boss.attackDir = (Math.random() < 0.3 && boss.y > FLOOR - 50) ? "UP" : (boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"); boss.directAttackActive = true; boss.color = "#ff3333"; }
                         }
                     } else {
                         if (boss.phase >= 2 && globalWindCooldown <= 0 && globalWindMode === "NONE" && rand < 0.15) { boss.state = "CAST_VERTICAL_WIND"; boss.stateTimer = 40; playSound('wind'); boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#00ffff"; }
                         else if (boss.phase >= 2 && rand < teleChance + 0.15) { boss.state = "TELEPORT_OUT"; boss.stateTimer = 15; playSound('wind'); }
-                        else if (boss.phase >= 2 && rand < 0.30) { boss.state = "VOID_PORTALS"; boss.stateTimer = 90; boss.color = "#9900ff"; }
-                        else if (rand < 0.40) { boss.state = "SCARF_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; scarf.target = nearestP; boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#ff3333"; } 
-                        else if (rand < 0.50) { boss.state = "WIND_FLY"; boss.stateTimer = 15; playSound('wind'); applyPhysicsPushToLeaves(boss.x + 15, boss.y + 50, 10); boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#00ffff"; }
-                        else if (rand < 0.60) { boss.state = "CAST_WIND"; boss.stateTimer = 30 * phaseMultiplier; boss.vx = 0; boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#00ffff"; }
-                        else if (onGround && rand < 0.70) { boss.state = "VULN_STANCE"; boss.stateTimer = 60 * phaseMultiplier; boss.color = "#ff8800"; }
-                        else if (onGround && rand < 0.80) { boss.state = "PARRY_STANCE"; boss.stateTimer = 60; boss.flashTimer = 5; boss.color = "#aaaaaa"; }
-                        else if (rand < 0.90) { boss.state = "FEINT_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#aaaaaa"; }
+                        else if (boss.phase >= 2 && rand < 0.28) { boss.state = "VOID_PORTALS"; boss.stateTimer = 90; boss.color = "#9900ff"; }
+                        else if (rand < 0.38) { boss.state = "SCARF_WINDUP"; boss.stateTimer = 20 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? 1 : -1; scarf.target = nearestP; boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#ff3333"; } 
+                        else if (rand < 0.48) { boss.state = "WIND_FLY"; boss.stateTimer = 15; playSound('wind'); applyPhysicsPushToLeaves(boss.x + 15, boss.y + 50, 10); boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#00ffff"; }
+                        else if (rand < 0.58) { boss.state = "WIND_LINE_WINDUP"; boss.stateTimer = 60; boss.vx = 0; boss.windLineY = undefined; boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#00ffff"; }
+                        else if (rand < 0.68) { boss.state = "SILK_RUN"; boss.stateTimer = 20; boss.silkRunDir = boss.x < nearestP.x ? 1 : -1; boss.hitDuringSilkRun = false; playSound('dash'); }
+                        else if (onGround && rand < 0.76) { boss.state = "VULN_STANCE"; boss.stateTimer = 60 * phaseMultiplier; boss.color = "#ff8800"; }
+                        else if (onGround && rand < 0.84) { boss.state = "PARRY_STANCE"; boss.stateTimer = 60; boss.flashTimer = 5; boss.color = "#aaaaaa"; }
+                        else if (onGround && rand < 0.92) { boss.state = "GREAT_LUNGE_WINDUP"; boss.stateTimer = 42 * phaseMultiplier; boss.attackDir = boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"; boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#ff4400"; }
                         else { boss.state = "LUNGE_WINDUP"; boss.stateTimer = 15 * phaseMultiplier; boss.comboCount = 0; boss.attackDir = (Math.random() < 0.3 && boss.y > FLOOR - 50) ? "UP" : (boss.x < nearestP.x ? "HORIZONTAL_R" : "HORIZONTAL_L"); boss.directAttackActive = true; boss.directAttackHit = false; boss.color = "#ff3333"; }
                     }
                 }
+
                 break;
             case "TELEPORT_OUT": 
                 boss.vx = 0; boss.vy = 0; 
@@ -1429,10 +1474,92 @@ function updateBoss() {
                 if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; boss.vx = 0; } 
                 break;
             case "CAST_WIND": 
-                if (boss.stateTimer === Math.floor(30 * phaseMultiplier)) {
-                    if (boss.voidWindDisabled <= 0) playSound('wind');
+            case "WIND_LINE_WINDUP":
+                boss.vx = 0;
+                boss.directAttackActive = true;
+                if (boss.windLineY === undefined) {
+                    let targetP = getNearestPlayer(boss.x);
+                    boss.windLineY = Math.min(FLOOR - 40, Math.max(120, targetP ? targetP.y + 10 : FLOOR - 50));
+                    boss.windLineDir = boss.x < ARENA_W / 2 ? 1 : -1;
                 }
-                if (boss.stateTimer <= 0) { boss.state = "IDLE"; boss.color = "#e6c800"; boss.stateTimer = 20; } 
+                // За 1 сек (60 кадров) перед самой атакой: закручивание листьев в зоне удара (вихри на фоне без каких-либо зон!)
+                for (let l of arenaLeaves) {
+                    if (Math.abs(l.y - boss.windLineY) < 50) {
+                        l.angle += 0.45;
+                        let t = (60 - boss.stateTimer) * 0.28 + (l.x * 0.05);
+                        l.vx = Math.cos(t) * 6;
+                        l.vy = Math.sin(t) * 4.5;
+                    }
+                }
+                if (boss.stateTimer <= 0) {
+                    boss.state = "WIND_LINE_ACTIVE";
+                    boss.stateTimer = 16;
+                    playSound('wind');
+                    playSound('throw');
+                    triggerShake(4, 8);
+                    for (let l of arenaLeaves) {
+                        if (Math.abs(l.y - boss.windLineY) < 50) {
+                            l.vx = boss.windLineDir * 42;
+                            l.vy = (Math.random() - 0.5) * 2;
+                        }
+                    }
+                }
+                break;
+            case "WIND_LINE_ACTIVE":
+                boss.vx = 0;
+                // Листья быстро несутся в ту сторону, где удар!
+                for (let l of arenaLeaves) {
+                    if (Math.abs(l.y - boss.windLineY) < 50) {
+                        l.vx = boss.windLineDir * 42;
+                    }
+                }
+                let windDmg = secretMode ? 1.5 : 1.0;
+                for (let p of players) {
+                    if (!p.isDowned && p.hp > 0 && p.invuln <= 0) {
+                        if (Math.abs((p.y + p.height/2) - boss.windLineY) < 35) {
+                            takeDamage(p, windDmg);
+                            p.vx = boss.windLineDir * 12;
+                            playSound('wind');
+                        }
+                    }
+                }
+                if (boss.stateTimer <= 0) {
+                    boss.state = "IDLE";
+                    boss.color = "#e6c800";
+                    boss.stateTimer = 20;
+                    boss.windLineY = undefined;
+                }
+                break;
+            case "SILK_RUN":
+                boss.vx = (boss.silkRunDir || 1) * 24;
+                boss.silkTrail = boss.silkTrail || [];
+                boss.silkTrail.push({
+                    x: boss.x,
+                    y: boss.y,
+                    facingRight: (boss.silkRunDir || 1) > 0,
+                    alpha: 0.85
+                });
+                if (boss.silkTrail.length > 8) boss.silkTrail.shift();
+
+                // Шелковый бег босса используется только для перемещения и не наносит урона (v74)
+
+                if (Math.random() < 0.7 && typeof stepPuffs !== 'undefined') {
+                    stepPuffs.push({
+                        x: boss.x + boss.width/2,
+                        y: boss.y + boss.height/2,
+                        vx: -boss.vx * 0.1,
+                        vy: 0,
+                        r: 18,
+                        alpha: 0.5,
+                        color: secretMode ? "rgba(180, 80, 255, 0.5)" : "rgba(255, 235, 120, 0.5)"
+                    });
+                }
+                if (boss.stateTimer <= 0) {
+                    boss.state = "IDLE";
+                    boss.color = "#e6c800";
+                    boss.stateTimer = 15;
+                    boss.vx = 0;
+                }
                 break;
             case "WIND_FLY": 
                 boss.vy = -14; 
@@ -1452,6 +1579,37 @@ function updateBoss() {
                         if (boss.state === "VULN_STANCE") boss.stateTimer = 60 * phaseMultiplier; else boss.stateTimer = 60;
                     }
                 } 
+                break;
+            case "GREAT_LUNGE_WINDUP":
+                boss.vx = 0;
+                if (boss.stateTimer % 6 === 0 && typeof stepPuffs !== 'undefined') {
+                    let pDir = boss.attackDir === "HORIZONTAL_R" ? -1 : 1;
+                    stepPuffs.push({
+                        x: boss.x + boss.width/2 + pDir * 12,
+                        y: boss.y + boss.height - 2,
+                        vx: pDir * (1.2 + Math.random() * 0.8),
+                        vy: -(0.5 + Math.random() * 0.4),
+                        r: 3.5 + Math.random() * 2,
+                        alpha: 0.7
+                    });
+                }
+                if (boss.stateTimer <= 0) {
+                    boss.state = "GREAT_LUNGE_ACTIVE";
+                    boss.stateTimer = 16;
+                    boss.vx = boss.attackDir === "HORIZONTAL_R" ? 32 : -32;
+                    playSound('dash');
+                    playSound('bladeSpin');
+                    triggerShake(5, 12);
+                    applyPhysicsPushToLeaves(boss.x + 15, boss.y + 25, 25);
+                }
+                break;
+            case "GREAT_LUNGE_ACTIVE":
+                if (boss.stateTimer <= 0) {
+                    boss.state = "IDLE";
+                    boss.color = "#ffd700";
+                    boss.stateTimer = 20;
+                    boss.vx = 0;
+                }
                 break;
             case "LUNGE_WINDUP": 
                 boss.vx = 0; 
@@ -1565,7 +1723,7 @@ function updateBoss() {
     }
 
     let applyBossGravity = true;
-    if (boss.state.startsWith("L_CLIMB") || ["WIND_FLY", "VULN_STANCE", "VULN_LATE", "PARRY_STANCE", "PARRY_COUNTER_WINDUP", "TRANSITION", "PARRY_DASH", "HEAL_PUNISH_DASH", "CAST_WIND", "CAST_VERTICAL_WIND", "SCARF_SHOOT", "SCARF_PULL", "SCARF_WINDUP", "TELEPORT_OUT", "TELEPORT_IN", "TIED", "TIED_BLEED", "SHARPEN_WINDUP", "EXECUTE_QUEUE", "SA1_WINDUP", "SA1_ACTIVE", "SA2_WINDUP", "SA3_WINDUP", "SA2_DOUBLE", "SA2_TRIPLE", "SA2_SA3_COMBO", "SA2_TRIPLE_SA3_COMBO", "SA_EXECUTE", "VOID_PORTALS", "SA1_SLAM_WINDUP", "L_HEAL", "L_INTRO_FALL", "L_INTRO_RISE", "L_PHASE3_RISE", "L_SCREAM", "HIDDEN_PAUSE", "VOID_SINK_STUN"].includes(boss.state) || (boss.state === "LUNGE" && boss.attackDir === "UP") || boss.state.startsWith("CINEMATIC")) {
+    if (boss.state.startsWith("L_CLIMB") || ["WIND_FLY", "VULN_STANCE", "VULN_LATE", "PARRY_STANCE", "PARRY_COUNTER_WINDUP", "TRANSITION", "PARRY_DASH", "HEAL_PUNISH_DASH", "CAST_WIND", "WIND_LINE_WINDUP", "WIND_LINE_ACTIVE", "SILK_RUN", "CAST_VERTICAL_WIND", "SCARF_SHOOT", "SCARF_PULL", "SCARF_WINDUP", "TELEPORT_OUT", "TELEPORT_IN", "TIED", "TIED_BLEED", "SHARPEN_WINDUP", "EXECUTE_QUEUE", "SA1_WINDUP", "SA1_ACTIVE", "SA2_WINDUP", "SA3_WINDUP", "SA2_DOUBLE", "SA2_TRIPLE", "SA2_SA3_COMBO", "SA2_TRIPLE_SA3_COMBO", "SA_EXECUTE", "VOID_PORTALS", "SA1_SLAM_WINDUP", "L_HEAL", "L_INTRO_FALL", "L_INTRO_RISE", "L_PHASE3_RISE", "L_SCREAM", "HIDDEN_PAUSE", "VOID_SINK_STUN"].includes(boss.state) || (boss.state === "LUNGE" && boss.attackDir === "UP") || boss.state.startsWith("CINEMATIC")) {
         applyBossGravity = false; 
         boss.vy = 0; 
     }
@@ -1614,9 +1772,27 @@ function updateBoss() {
     for (let p of players) {
         if (!p.isDowned && p.hp > 0 && rectIntersect(p, bossDmgHitbox) && !(p.fireLungeTimer > 0) && boss.state !== "TRANSITION" && p.invuln <= 0 && !boss.halfHpSeqActive && boss.state !== "EXECUTE_QUEUE" && !boss.state.startsWith("SA") && !boss.state.startsWith("TELEPORT") && !boss.state.startsWith("CINEMATIC") && !boss.state.startsWith("L_INTRO") && !boss.state.startsWith("L_PHASE3") && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB") && boss.state !== "VOID_SINK_STUN") {
             let dmg = (secretMode ? 2 : 1) + boss.damageBonus; 
-            if (boss.state === "LUNGE" || boss.state === "LUNGE_WINDUP" || boss.state.startsWith("FEINT_DASH") || boss.state === "HEAL_PUNISH_DASH" || boss.state === "SCARF_SHOOT") { 
+            if (boss.state === "GREAT_LUNGE_ACTIVE") {
+                if (!secretMode) {
+                    if (boss.phase === 1) {
+                        dmg = 1.5;
+                    } else if (boss.phase === 2) {
+                        dmg = 1.5;
+                        applyBleed(p);
+                    } else { // Phase 3 (2nd sharpen)
+                        dmg = 2.0;
+                        applyBleed(p);
+                    }
+                } else { // L-mode
+                    dmg = 2.0;
+                    applyBleed(p);
+                }
+                triggerShake(8, 16);
+            } else if (boss.state === "LUNGE" || boss.state === "LUNGE_WINDUP" || boss.state.startsWith("FEINT_DASH") || boss.state === "HEAL_PUNISH_DASH" || boss.state === "SCARF_SHOOT") { 
                 dmg = (secretMode ? 2 : 1.5) + boss.damageBonus; 
-                applyBleed(p); 
+                if (secretMode || boss.phase >= 2) {
+                    applyBleed(p); 
+                }
             } 
             if (boss.state === "PARRY_DASH") { 
                 dmg = 1; 
@@ -1802,6 +1978,9 @@ function getBossAttackHintColor(boss) {
     if (boss.state === "BOSS_STUNNED" || boss.state === "L_PHASE4_STUNNED" || boss.state === "VOID_SINK_STUN") {
         return "rgba(220, 220, 240, 0.4)";
     }
+    if (boss.state.startsWith("GREAT_LUNGE")) {
+        return "rgba(255, 68, 0, 0.95)"; // Intense amber-crimson spark for Great Lunge
+    }
     if (boss.state.startsWith("LUNGE") || boss.state === "DASH_WINDUP") {
         return "rgba(0, 240, 255, 0.85)"; // Subtle cyan gleam for horizontal lunge
     }
@@ -1837,6 +2016,8 @@ function drawBossStickmanFigure(boss, bCloakColor, bPatternColor) {
     let hintColor = getBossAttackHintColor(boss);
 
     let isStun = (boss.state === "BOSS_STUNNED" || boss.state === "L_PHASE4_STUNNED" || boss.state === "VOID_SINK_STUN");
+    let isGreatLungeWindup = (boss.state === "GREAT_LUNGE_WINDUP");
+    let isGreatLungeActive = (boss.state === "GREAT_LUNGE_ACTIVE");
     let isLungeWindup = (boss.state.startsWith("LUNGE_WINDUP") || boss.state === "DASH_WINDUP" || boss.state === "FEINT_WINDUP" || boss.state === "HEAL_PUNISH_DASH");
     let isLungeActive = (boss.state === "LUNGE" || boss.state === "PARRY_DASH" || boss.state === "FEINT_DASH_FORWARD");
     let isParry = (boss.state === "PARRY_STANCE" || boss.state === "PARRY_COUNTER_WINDUP");
@@ -1857,7 +2038,52 @@ function drawBossStickmanFigure(boss, bCloakColor, bPatternColor) {
     ctx.lineJoin = "round";
     ctx.strokeStyle = huntressColor;
 
-    if (isLungeWindup) {
+    if (isGreatLungeWindup) {
+        // --- 0. GREAT LUNGE WINDUP (Deep two-handed ground stance, long dramatic windup) ---
+        let chargeJitter = Math.sin(Date.now() / 25) * 1.8;
+        neckX = bcx + facing * 8; neckY = boss.y + 25 + chargeJitter;
+        pelvisX = bcx - facing * 10; pelvisY = boss.y + 38;
+        headX = neckX + facing * 4; headY = neckY - 8;
+
+        // Front leg deeply coiled forward, rear leg stretched far back
+        let fKneeX = bcx + facing * 14, fKneeY = boss.y + 44;
+        let fFootX = bcx + facing * 19, fFootY = bFloorY;
+        let bKneeX = bcx - facing * 16, bKneeY = boss.y + 42;
+        let bFootX = bcx - facing * 24, bFootY = bFloorY;
+
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(bKneeX, bKneeY); ctx.lineTo(bFootX, bFootY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(fKneeX, fKneeY); ctx.lineTo(fFootX, fFootY); ctx.stroke();
+
+        // Both hands gripping Great Needle pulled far behind
+        hand1X = bcx - facing * 18; hand1Y = boss.y + 26;
+        hand2X = bcx - facing * 8; hand2Y = boss.y + 24;
+        pommelX = bcx - facing * 32; pommelY = boss.y + 27;
+        tipX = bcx + facing * 38 + chargeJitter * 2; tipY = boss.y + 22;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand2X, hand2Y); ctx.stroke();
+
+    } else if (isGreatLungeActive) {
+        // --- 0.5 GREAT LUNGE ACTIVE (Super-fast aerodynamic supersonic thrust) ---
+        neckX = bcx + facing * 18; neckY = boss.y + 20;
+        pelvisX = bcx - facing * 14; pelvisY = boss.y + 20;
+        headX = neckX + facing * 5; headY = neckY - 5;
+
+        let l1KneeX = bcx - facing * 22, l1KneeY = boss.y + 19;
+        let l1FootX = bcx - facing * 34, l1FootY = boss.y + 18;
+        let l2KneeX = bcx - facing * 20, l2KneeY = boss.y + 22;
+        let l2FootX = bcx - facing * 31, l2FootY = boss.y + 23;
+
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(l1KneeX, l1KneeY); ctx.lineTo(l1FootX, l1FootY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pelvisX, pelvisY); ctx.lineTo(l2KneeX, l2KneeY); ctx.lineTo(l2FootX, l2FootY); ctx.stroke();
+
+        hand1X = neckX + facing * 18; hand1Y = neckY;
+        pommelX = neckX + facing * 10; pommelY = neckY;
+        tipX = neckX + facing * 75; tipY = neckY;
+
+        ctx.beginPath(); ctx.moveTo(neckX, neckY); ctx.lineTo(hand1X, hand1Y); ctx.stroke();
+
+    } else if (isLungeWindup) {
         // --- 1. LUNGE WINDUP (Deep coiled crouch, needle cocked back horizontally) ---
         let coilJitter = Math.sin(Date.now() / 35) * 1.2;
         neckX = bcx + facing * 5; neckY = boss.y + 22 + coilJitter;
@@ -2219,11 +2445,41 @@ function drawBoss() {
         ctx.font = "bold 15px Arial";
         ctx.textAlign = "center";
         ctx.shadowColor = "#00ffff";
-        ctx.shadowBlur = 10;
         let hintKey = (players[0] && players[0].inputType === 'KEYBOARD_SHOOTER') ? "ЛКМ+ПКМ" : "Shift";
         ctx.fillText(`Примените кинжал света (${hintKey})!`, boss.x + boss.width/2, boss.y - 18);
         ctx.restore();
-    } else if (!boss.halfHpSeqActive && boss.x > -1000 && boss.state !== "SA1_ACTIVE" && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB")) {
+    }
+
+    // Шлейф шелкового бега босса (Silk Run afterimages & silk ribbons)
+    if (boss.silkTrail && boss.silkTrail.length > 0) {
+        ctx.save();
+        for (let i = boss.silkTrail.length - 1; i >= 0; i--) {
+            let st = boss.silkTrail[i];
+            st.alpha -= 0.04;
+            if (st.alpha <= 0) {
+                boss.silkTrail.splice(i, 1);
+                continue;
+            }
+            ctx.globalAlpha = st.alpha * 0.55;
+            ctx.fillStyle = secretMode ? "rgba(180, 60, 255, 0.5)" : "rgba(255, 220, 80, 0.55)";
+            ctx.shadowColor = secretMode ? "#cc00ff" : "#ffcc00";
+            ctx.shadowBlur = 14;
+            ctx.fillRect(st.x, st.y, boss.width, boss.height);
+
+            if (i > 0) {
+                let prev = boss.silkTrail[i - 1];
+                ctx.strokeStyle = secretMode ? `rgba(220, 120, 255, ${st.alpha * 0.8})` : `rgba(255, 245, 180, ${st.alpha * 0.8})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(prev.x + boss.width / 2, prev.y + boss.height / 2);
+                ctx.lineTo(st.x + boss.width / 2, st.y + boss.height / 2);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+    }
+
+    if (!boss.halfHpSeqActive && boss.x > -1000 && boss.state !== "SA1_ACTIVE" && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB")) {
         ctx.globalAlpha = (boss.invuln > 0 && Math.floor(Date.now() / 50) % 2 === 0) ? 0.5 : 1.0;
         
         // --- БОСС: ЧЕРНЫЙ ШАРФ И ЖЕЛТЫЙ ПЛАЩ С ОРАНЖЕВЫМИ УЗОРАМИ ---
@@ -2373,7 +2629,7 @@ function drawBoss() {
         ctx.fillText(`Связывайте!`, boss.x + boss.width/2, boss.y - 40); 
         for (let i = 0; i < players.length; i++) { 
             let p = players[i]; 
-            if (!p.hasPressedTie && !p.isDowned && p.hp > 0) { 
+            if (!p.hasPressedTie && !p.isDowned && p.hp > 0 && !p.isAi) { 
                 let key = p.type === 'WATER' ? (numPlayers === 1 ? "F" : "'") : "F"; 
                 ctx.fillStyle = p.color; 
                 ctx.fillText(`Нажми ${key}`, p.x + p.width/2, p.y - 15); 
