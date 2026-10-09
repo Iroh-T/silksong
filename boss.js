@@ -72,7 +72,7 @@ function createRandomSaLine(type) {
 }
 
 function tryDamageBoss(dmg, sourcePlayer) {
-    if (boss.invuln > 0 || boss.state === "DEFEATED" || boss.state.startsWith("CINEMATIC") || boss.state.startsWith("TELEPORT") || boss.state === "L_CLIMB_START" || boss.state === "L_CLIMB_ACTIVE" || boss.state === "VOID_SINK_STUN" || boss.state === "L_PHASE4_ORBS" || boss.state === "L_PHASE4_FALL") return false;
+    if (boss.invuln > 0 || boss.state === "DEFEATED" || boss.state.startsWith("CINEMATIC") || boss.state.startsWith("TELEPORT") || boss.state === "L_CLIMB_START" || boss.state === "L_CLIMB_ACTIVE" || boss.state === "VOID_SINK_STUN" || boss.state === "L_PHASE4_ORBS" || boss.state === "L_PHASE4_FALL" || (boss.phase === 4 && boss.state !== "L_PHASE4_STUNNED")) return false;
 
     // Фаза 4: босс в бесконечном оглушении - один любой удар и он побежден!
     if (boss.state === "L_PHASE4_STUNNED") {
@@ -190,10 +190,11 @@ function checkPhaseTransition() {
             boss.vx = 0;
             boss.vy = 0;
             boss.state = "L_PHASE4_ORBS";
-            boss.lPhase4AttackTimer = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? 135 : 180;
+            boss.lPhase4AttackTimer = 60; // 1 секунда между атаками в 4 фазе!
             boss.lPhase4Orbs = [
-                { x: 260, y: FLOOR - 90, r: 24, alive: true },
-                { x: ARENA_W - 260, y: FLOOR - 90, r: 24, alive: true }
+                { x: 260, y: FLOOR - 90, r: 24, alive: true, isMonolith: false },
+                { x: ARENA_W / 2, y: FLOOR - 110, r: 28, alive: true, isMonolith: true },
+                { x: ARENA_W - 260, y: FLOOR - 90, r: 24, alive: true, isMonolith: false }
             ];
             
             // Восполнить все хилы до максимума
@@ -629,7 +630,7 @@ function updateBoss() {
         }
 
         boss.lPhase4AttackTimer--;
-        let attackInterval = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? 135 : 180;
+        let attackInterval = 60; // 1 секунда между атаками в 4 фазе!
         if (boss.lPhase4AttackTimer <= 0) {
             boss.lPhase4AttackTimer = attackInterval;
             let roll = Math.random();
@@ -766,6 +767,21 @@ function updateBoss() {
         for (let p of players) p.saHit = false;
         playSound('demonRoar');
         triggerShake(18, 28);
+    }
+
+    // Прорыв Бездны и черная жижа при <= 33% HP в 3 фазе (режим L)
+    if (secretMode && boss.phase === 3 && boss.hp <= phase3Hp * 0.33 && !boss.gooSeqTriggered && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED" && boss.state !== "FREE_ROAM" && boss.state !== "VOID_SINK_STUN") {
+        boss.gooSeqTriggered = true;
+        boss.state = "HIDDEN_PAUSE";
+        boss.stateTimer = 240; // 4 секунды отдышаться
+        boss.x = -99999;
+        boss.y = -99999;
+        boss.vx = 0;
+        boss.vy = 0;
+        gooCinematicTimer = 240;
+        playSound('demonRoar');
+        triggerShake(12, 16);
+        battleAnnouncements.push({ text: "«БЕЗДНА ПРОРЫВАЕТСЯ!»", color: "#cc00ff", timer: 140 });
     }
 
     // Оглушение в луже пустоты при <= 25% HP в 3 фазе (режим L)
@@ -1008,9 +1024,18 @@ function updateBoss() {
                         let hitArea = { x: ph.x - 300, y: ph.y - 150, width: ph.w, height: ph.h };
                         for (let p of players) { 
                             if (!p.isDowned && p.hp > 0 && p.invuln <= 0 && rectIntersect(p, hitArea)) { 
-                                triggerCinematic("SA1", p, true); 
-                                boss.sa1Arr = null; // Очищаем фантомов, чтобы не было повторных ударов
-                                break;
+                                if (boss.halfHpSeqActive && secretMode && boss.phase === 3) {
+                                    // В цепочке 3 фазы L-режима фантомы наносят урон, но не прерывают SA1: все 7 фантомов отрабатывают до конца!
+                                    takeDamage(p, 1);
+                                    p.invuln = 45;
+                                    triggerShake(16, 18);
+                                    triggerVibration('sa_hit');
+                                    playSound('slash');
+                                } else {
+                                    triggerCinematic("SA1", p, true); 
+                                    boss.sa1Arr = null; // Очищаем фантомов, чтобы не было повторных ударов
+                                    break;
+                                }
                             } 
                         }
                     }
@@ -1020,8 +1045,24 @@ function updateBoss() {
             }
         }
         if ((allDone || boss.stateTimer <= 0) && !activeCinematic) { 
-            // Больше никакого удара строго вниз по игроку!
-            // Босс плавно появляется на арене в случайном месте вершины:
+            if (boss.halfHpSeqActive && secretMode && boss.phase === 3) {
+                // Разгон в высоту для мега-удара по полу в 3 фазе L-режима!
+                boss.state = "SA1_MEGA_RISE";
+                boss.stateTimer = 40;
+                boss.vx = 0;
+                boss.vy = -26;
+                boss.x = ARENA_W / 2 - boss.width / 2;
+                boss.y = FLOOR - boss.height - 20;
+                boss.invuln = 99999;
+                boss.sa1Arr = null;
+                boss.saLines = null;
+                for (let p of players) p.saHit = false;
+                playSound('wind');
+                playSound('demonRoar');
+                triggerShake(8, 12);
+                return;
+            }
+
             boss.halfHpSeqActive = false; 
             boss.invuln = 0;
             let cX = boss.climbCenterX || (ARENA_W / 2);
@@ -1040,6 +1081,98 @@ function updateBoss() {
             }
             applyPhysicsPushToLeaves(boss.x + 15, boss.y + 25, 15);
             playSound('wind');
+        }
+    } else if (boss.state === "SA1_MEGA_RISE") {
+        boss.vx = 0;
+        boss.y += boss.vy;
+        boss.vy = Math.min(-4, boss.vy + 0.6);
+        if (boss.stateTimer <= 0 || boss.y < -150) {
+            boss.state = "SA1_MEGA_SLAM";
+            boss.x = ARENA_W / 2 - boss.width / 2;
+            boss.y = -200;
+            boss.vy = 42;
+            boss.color = "#ff0055";
+            playSound('demonRoar');
+            playSound('slash');
+        }
+    } else if (boss.state === "SA1_MEGA_SLAM") {
+        boss.vy = 42;
+        boss.y += boss.vy;
+        if (boss.y + boss.height >= FLOOR) {
+            boss.y = FLOOR - boss.height;
+            boss.vy = 0;
+            boss.halfHpSeqActive = false;
+            boss.invuln = 0;
+            boss.state = "IDLE";
+            boss.color = "#e6c800";
+            boss.stateTimer = 45;
+
+            // Максимальное сотрясение экрана и вибрация джойстиков
+            triggerShake(45, 40, 0, 1);
+            triggerVibration('l_mode_final');
+            playSound('rockCrit');
+            playSound('demonRoar');
+            playSound('slash');
+
+            // 1. По полу появляются трещины
+            if (floorCracks.length === 0) {
+                let startXs = [320, 640, 960, 1300, 1650, 2020];
+                startXs.forEach(sx => {
+                    let cx = sx + (Math.random() - 0.5) * 60;
+                    let cy = FLOOR;
+                    let crackPts = [];
+                    for (let step = 0; step < 7; step++) {
+                        cx += (Math.random() - 0.5) * 45;
+                        cy += 8 + Math.random() * 12;
+                        crackPts.push({ x: cx, y: cy });
+                    }
+                    floorCracks.push({
+                        x1: sx,
+                        y1: FLOOR,
+                        x2: cx,
+                        y2: cy,
+                        pts: crackPts,
+                        width: 3
+                    });
+                });
+            }
+
+            // 2. Шариков пустоты становится больше (хуже видимость)
+            ambientVoidOrbsMultiplier = 3.5;
+
+            // 3. С потолка падают черные капельки
+            for (let i = 0; i < 28; i++) {
+                voidCeilingDrips.push({
+                    x: Math.random() * ARENA_W,
+                    y: -100 - Math.random() * 200,
+                    vy: 7 + Math.random() * 5,
+                    length: 8 + Math.random() * 12,
+                    r: 3 + Math.random() * 3
+                });
+            }
+
+            // 4. Фиолетовые лужи на полу, которые медленно расплываются
+            if (voidPuddles.length === 0) {
+                voidPuddles.push(
+                    { x: ARENA_W / 2 - 380, y: FLOOR, r: 25, maxR: 95, spreadSpeed: 0.08, timer: 720 },
+                    { x: ARENA_W / 2 + 380, y: FLOOR, r: 25, maxR: 95, spreadSpeed: 0.08, timer: 720 }
+                );
+            }
+
+            // 5. Камнепад: падают огромные валуны (2.5 урона, не забирают хил)
+            fallingBoulders = [
+                { x: ARENA_W / 2 - 330, y: -250, vy: 0, w: 76, h: 52, delay: 48, imgIdx: 0 },
+                { x: ARENA_W / 2 + 330, y: -250, vy: 0, w: 76, h: 52, delay: 56, imgIdx: 1 },
+                { x: ARENA_W / 2,       y: -250, vy: 0, w: 84, h: 58, delay: 68, imgIdx: 2 }
+            ];
+
+            // Ударная волна по стоящим рядом на полу
+            for (let p of players) {
+                if (!p.isDowned && p.hp > 0 && Math.abs(p.x - boss.x) < 170 && p.y >= FLOOR - 50 && p.invuln <= 0) {
+                    takeDamage(p, 2);
+                }
+                p.invuln = 60;
+            }
         }
     } else if (boss.state === "SA1_SLAM_WINDUP") {
         boss.vx = 0; boss.vy = 0; boss.y = FLOOR - 220;
@@ -1727,8 +1860,8 @@ function updateBoss() {
         applyBossGravity = false; 
         boss.vy = 0; 
     }
-    if (boss.state === "SA1_SLAM") {
-        applyBossGravity = false; // не обнуляем boss.vy, босс летит вниз со скоростью 35!
+    if (boss.state === "SA1_MEGA_RISE" || boss.state === "SA1_SLAM" || boss.state === "SA1_MEGA_SLAM") {
+        applyBossGravity = false; // не обнуляем boss.vy, босс летит вверх при разгоне или вниз при ударе!
     }
     if (globalWindMode === "UP" && !["TRANSITION", "DEFEATED", "WIND_FLY", "LUNGE", "TELEPORT_OUT", "TELEPORT_IN", "TIED", "TIED_BLEED"].includes(boss.state) && !boss.state.startsWith("CINEMATIC") && !boss.state.startsWith("L_CLIMB")) {
         applyBossGravity = false; 
@@ -1741,7 +1874,7 @@ function updateBoss() {
 
     if (applyBossGravity) {
         boss.vy += currentGravity;
-        if (boss.vy >= 0 && !["SA1_SLAM", "L_INTRO_FALL"].includes(boss.state)) {
+        if (boss.vy >= 0 && !["SA1_SLAM", "SA1_MEGA_SLAM", "L_INTRO_FALL"].includes(boss.state)) {
             for (let plat of platforms) {
                 if (boss.y + boss.height <= plat.y + 15 && boss.y + boss.height + boss.vy >= plat.y && boss.x + boss.width > plat.x && boss.x < plat.x + plat.w) {
                     boss.y = plat.y - boss.height;
@@ -1754,7 +1887,7 @@ function updateBoss() {
     let effectiveVx = (boss.lightInfected > 0 && ["LUNGE", "PARRY_DASH", "HEAL_PUNISH_DASH", "FEINT_DASH_FORWARD", "FEINT_DASH_BACK"].includes(boss.state)) ? (boss.vx / 1.5) : boss.vx;
     boss.x += effectiveVx; boss.y += boss.vy;
     let bossFloorLimit = FLOOR;
-    if (boss.y + boss.height > bossFloorLimit && !boss.state.startsWith("L_INTRO") && boss.state !== "L_PHASE3_RISE" && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB")) { 
+    if (boss.y + boss.height > bossFloorLimit && !boss.state.startsWith("L_INTRO") && boss.state !== "L_PHASE3_RISE" && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB") && boss.state !== "SA1_MEGA_SLAM") { 
         boss.y = bossFloorLimit - boss.height; 
         boss.vy = 0; 
     }

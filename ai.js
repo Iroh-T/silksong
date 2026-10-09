@@ -7,6 +7,10 @@ let aiCompanionConfig = {
     slots: ['none', 'none', 'none']
 };
 
+if (aiCompanionConfig.hero === 'WATER_ROPE') {
+    aiCompanionConfig.hero = 'WATER';
+}
+
 let aiInternalState = {
     actionTimer: 0,
     currentAction: 'IDLE',
@@ -19,7 +23,8 @@ let aiInternalState = {
     comboTimer: 0,
     isChargingConcentration: false,
     concentrateChargeFrames: 0,
-    dodgeReactionTimer: 0
+    dodgeReactionTimer: 0,
+    jumpHoldTimer: 0
 };
 
 function setAiPersonality(pers) {
@@ -90,6 +95,17 @@ function runAiCompanion(p) {
     if (typeof boss === 'undefined' || !boss || gameState !== "PLAYING") {
         return inp;
     }
+
+    // Variable jump: hold jump key so jump is not prematurely truncated by p.vy *= 0.5
+    if (aiInternalState.jumpHoldTimer > 0) {
+        aiInternalState.jumpHoldTimer--;
+        inp.jump = true;
+    }
+
+    let requestJump = (frames = 14) => {
+        inp.jump = true;
+        aiInternalState.jumpHoldTimer = frames;
+    };
 
     // Final tie cinematic:
     if (boss.state === "CINEMATIC_TIE_WAIT") {
@@ -164,8 +180,18 @@ function runAiCompanion(p) {
         }
     }
 
-    // --- 2. SELF PRESERVATION HEAL (Low HP) ---
-    if (p.hp <= 1.5 && hasHeal && downedTeammates.length === 0) {
+    // --- 2. SMART HEALING (Timur rule: heal when missing HP >= hero heal volume, or critical HP) ---
+    let healAmount = 2.5;
+    if (p.type === 'EARTH') healAmount = 2.0;
+    else if (p.type === 'FIRE_HALBERD') healAmount = 1.5;
+    else if (p.type === 'WATER') healAmount = (p.stance === 'DEMON') ? 1.0 : 3.0;
+    else if (p.type === 'FIRE') healAmount = 2.5;
+    else if (p.type === 'AIR' || p.type === 'STAMINA') healAmount = 2.5;
+
+    let missingHp = p.maxHp - p.hp;
+    let shouldHeal = (missingHp >= healAmount || p.hp <= 1.5) && hasHeal && downedTeammates.length === 0;
+
+    if (shouldHeal) {
         aiInternalState.isChargingConcentration = false;
         if (distX < 160 && boss.state !== "CINEMATIC_TIE_WAIT" && boss.state !== "DEFEATED") {
             if (dirToBoss > 0) inp.left = true;
@@ -272,7 +298,7 @@ function runAiCompanion(p) {
         }
         // Прыжок над снарядом
         if (aiInternalState.jumpCooldown <= 0 && (p.onGround || p.y >= FLOOR - 55)) {
-            inp.jump = true;
+            requestJump(14);
             aiInternalState.jumpCooldown = 35;
             return inp;
         }
@@ -299,13 +325,76 @@ function runAiCompanion(p) {
             aiInternalState.dashCooldown = 48;
             return inp;
         } else if (aiInternalState.jumpCooldown <= 0 && (p.onGround || p.y >= FLOOR - 55)) {
-            inp.jump = true;
+            requestJump(14);
             aiInternalState.jumpCooldown = 40;
             return inp;
         }
     }
 
-    // --- 6. PLATFORM PARKOUR INTELLIGENCE (Паркур по платформам) ---
+    // --- 6. HAZARD AVOIDANCE & PLATFORM PARKOUR ---
+    // 6.1. Abyss Goo Floor (Затопление арены черной жижей Бездны в Фазе 3)
+    let isGooDangerous = typeof abyssGooFloorActive !== 'undefined' && abyssGooFloorActive && !abyssGooSolidified && !(p.type === 'WATER' && p.stance === 'DEMON');
+    if (isGooDangerous) {
+        if (!onPlatform) {
+            let targetPlat = null;
+            if (typeof platforms !== 'undefined' && platforms.length > 0) {
+                targetPlat = platforms.reduce((closest, cur) => {
+                    if (!closest) return cur;
+                    let dCur = Math.hypot(pCenterX - (cur.x + cur.w / 2), p.y - cur.y);
+                    let dClosest = Math.hypot(pCenterX - (closest.x + closest.w / 2), p.y - closest.y);
+                    return dCur < dClosest ? cur : closest;
+                }, null);
+            }
+            if (targetPlat) {
+                let platMid = targetPlat.x + targetPlat.w / 2;
+                if (pCenterX < platMid - 20) inp.right = true;
+                else if (pCenterX > platMid + 20) inp.left = true;
+                if ((p.y >= targetPlat.y - 15 || p.y >= FLOOR - 75) && aiInternalState.jumpCooldown <= 0) {
+                    requestJump(15);
+                    aiInternalState.jumpCooldown = 35;
+                }
+            } else {
+                if (p.x > 90) inp.left = true;
+                if (p.y >= FLOOR - 70 && aiInternalState.jumpCooldown <= 0) {
+                    requestJump(15);
+                    aiInternalState.jumpCooldown = 35;
+                }
+            }
+            return inp;
+        }
+    }
+
+    // 6.2. Void Puddles (Фиолетовые лужи Бездны)
+    if (typeof voidPuddles !== 'undefined' && voidPuddles.length > 0 && p.y >= FLOOR - 60 && !onPlatform) {
+        for (let pud of voidPuddles) {
+            let pDist = Math.abs(pCenterX - pud.x);
+            if (pDist < pud.r + 30) {
+                if (pCenterX < pud.x) inp.left = true;
+                else inp.right = true;
+                if (aiInternalState.jumpCooldown <= 0 && (p.onGround || p.y >= FLOOR - 55)) {
+                    requestJump(14);
+                    aiInternalState.jumpCooldown = 40;
+                }
+                break;
+            }
+        }
+    }
+
+    // 6.3. Falling Boulders (Падающие валуны)
+    if (typeof fallingBoulders !== 'undefined' && fallingBoulders.length > 0) {
+        for (let b of fallingBoulders) {
+            if (b.y < FLOOR - 20 && Math.abs(pCenterX - b.x) < 55) {
+                if (pCenterX < b.x) inp.left = true;
+                else inp.right = true;
+                if (aiInternalState.dashCooldown <= 0) {
+                    inp.dash = true;
+                    aiInternalState.dashCooldown = 50;
+                }
+                break;
+            }
+        }
+    }
+
     let mainPlat = (typeof platforms !== 'undefined' && platforms.length > 0) ? platforms[0] : null;
 
     // А) Спасение на платформу при сокрушительных наземных ударах босса (SA1 Slam / shockwave)
@@ -315,7 +404,7 @@ function runAiCompanion(p) {
         if (p.x < platCenterX - 20) inp.right = true;
         else if (p.x > platCenterX + 20) inp.left = true;
         if (aiInternalState.jumpCooldown <= 0 && p.y >= FLOOR - 55) {
-            inp.jump = true;
+            requestJump(14);
             aiInternalState.jumpCooldown = 45;
         }
         return inp;
@@ -338,7 +427,7 @@ function runAiCompanion(p) {
                 if (p.x < nCenterX - 15) inp.right = true;
                 else if (p.x > nCenterX + 15) inp.left = true;
                 if (aiInternalState.jumpCooldown <= 0 && p.vy >= -1) {
-                    inp.jump = true;
+                    requestJump(14);
                     aiInternalState.jumpCooldown = 35;
                 }
                 return inp;
@@ -441,7 +530,7 @@ function runAiCompanion(p) {
 
     // Прыжок при нахождении босса в воздухе
     if (boss.y < p.y - 45 && distX < 130 && aiInternalState.jumpCooldown <= 0 && (p.onGround || p.y >= FLOOR - 55)) {
-        inp.jump = true;
+        requestJump(14);
         aiInternalState.jumpCooldown = 45;
     }
 
@@ -481,7 +570,7 @@ function runAiCompanion(p) {
                 aiInternalState.specCooldown = 60;
             }
             if (distX < 60 && Math.random() < 0.25) {
-                inp.jump = true;
+                requestJump(14);
                 inp.special = true; // flip combo
             }
         } else if (p.type === 'AIR') {

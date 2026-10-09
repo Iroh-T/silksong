@@ -53,6 +53,35 @@ let waterRopes = [];
 let fallingBananaPeels = [];
 let slowMoTimer = 0;
 
+// Phase 3 L-mode Arena Destruction & Abyss Goo
+let teamHallucinationHits = 0;
+let floorCracks = [];
+let voidPuddles = [];
+let voidCeilingDrips = [];
+let fallingBoulders = [];
+let arenaBarricadeBoulders = [];
+let abyssGooFloorActive = false;
+let abyssGooSolidifying = false;
+let abyssGooSolidifyTimer = 0;
+let abyssGooSolidified = false;
+let abyssRightWallBroken = false;
+let gooCinematicTimer = 0;
+let ambientVoidOrbsMultiplier = 1.0;
+
+function getHallucinationThreshold() {
+    let livingCount = (typeof players !== 'undefined' && players.length > 0) ? players.length : 1;
+    let base = 3;
+    if (livingCount === 2) base = 4;
+    else if (livingCount >= 3) base = 6;
+    let lightAmulets = (typeof players !== 'undefined') ? players.filter(p => p.hasLightAmulet && !p.lightAmuletBroken).length : 0;
+    return base + lightAmulets;
+}
+
+function hasTeamHallucinations() {
+    if (!secretMode) return false;
+    return teamHallucinationHits >= getHallucinationThreshold();
+}
+
 function distToSegment(p, v, w) {
     let l2 = (w.x - v.x) * (w.x - v.x) + (w.y - v.y) * (w.y - v.y);
     if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);

@@ -2225,6 +2225,16 @@ function toggleAiHero(type) {
         return;
     }
 
+    if (type === 'WATER_ROPE') {
+        let p1Status = document.getElementById('p1-status');
+        if (p1Status) {
+            p1Status.innerText = `ИИ-напарник пока не умеет управляться с Тросом! Выберите другого героя.`;
+            p1Status.style.color = "orange";
+        }
+        playSound('parry');
+        return;
+    }
+
     if (typeof aiCompanionConfig === 'undefined') {
         aiCompanionConfig = { hero: type, personality: 'TACTICIAN', slots: ['none','none','none'] };
     } else {

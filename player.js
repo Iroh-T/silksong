@@ -70,7 +70,7 @@ function createPlayer(id, type, keysObj, inputType, startX) {
     return p;
 }
 
-function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassInvuln = false) {
+function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassInvuln = false, isVoidPuddle = false, isBoulder = false, isFallGoo = false) {
     if (godModeActive || window.godModeActive) return;
     if (p.isSilkRunning) return; // Герой во время шелкового бега находится в безопасности!
     if (p.crackedImmuneTimer > 0) return; // 100% immune during Cracked Life multi-tick survival window
@@ -183,13 +183,14 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         
         if (p.orangeHp > 0 && !isBleed && !isStaminaBleed) { let absorb = Math.min(p.orangeHp, amount); p.orangeHp -= absorb; amount -= absorb; }
         if (p.purpleHp > 0 && !isBleed) { let absorb = Math.min(p.purpleHp, amount); p.purpleHp -= absorb; amount -= absorb; }
-        if (p.lightCharge > 0 && !isBleed) { amount = Math.max(0, amount - 1); p.lightCharge = 0; }
-        if (secretMode && !isBleed && !boss.state.startsWith("L_FAKE")) sharedHitCount = Math.max(0, sharedHitCount - 1);
+        let skipSharedHitLoss = Boolean(isBoulder || isFallGoo);
+        if (secretMode && !isBleed && !boss.state.startsWith("L_FAKE") && !skipSharedHitLoss) sharedHitCount = Math.max(0, sharedHitCount - 1);
         
-        // In L-mode: hits increase hallucination counter (unless Water in Demon form)
+        // In L-mode: hits increase team hallucination counter (unless Water in Demon form)
         if (secretMode && !isBleed && !isStaminaBleed) {
             if (!(p.type === 'WATER' && p.stance === 'DEMON')) {
-                p.hallucinationHits++;
+                p.hallucinationHits = (p.hallucinationHits || 0) + 1;
+                teamHallucinationHits = (typeof teamHallucinationHits !== 'undefined' ? teamHallucinationHits : 0) + 1;
             }
             // Boss Qi absorption when player has purpleHp > 2
             if (p.purpleHp > 2) {
@@ -584,10 +585,64 @@ function updatePlayers() {
                 }
             }
         }
+        if (!onPlatform && typeof arenaBarricadeBoulders !== 'undefined' && arenaBarricadeBoulders.length > 0 && p.vy >= 0) {
+            for (let b of arenaBarricadeBoulders) {
+                if (p.y + p.height <= b.y + 15 && p.y + p.height + p.vy >= b.y && p.x + p.width > b.x && p.x < b.x + b.w) {
+                    p.y = b.y - p.height; p.vy = 0; onPlatform = true;
+                    p.lastSafeX = b.x + b.w / 2 - p.width / 2;
+                    p.lastSafeY = b.y - p.height;
+                    break;
+                }
+            }
+        }
         let onFloor = false;
         if (!onPlatform && p.y + p.height >= FLOOR && !p.isUnderFloor) {
-            p.y = FLOOR - p.height; p.vy = 0; onFloor = true;
-            p.lastSafeX = p.x; p.lastSafeY = p.y;
+            if (abyssGooFloorActive && !abyssGooSolidified) {
+                // Пол залит черной густой жижей Бездны!
+                if (p.type === 'WATER' && p.stance === 'DEMON') {
+                    // Вода в демоническом режиме может плавать в жиже!
+                    p.y = FLOOR - p.height + 6;
+                    p.vy = Math.min(1.5, p.vy * 0.75);
+                    p.gooSwimTimer = (p.gooSwimTimer || 0) + 1;
+                    if (p.gooSwimTimer >= 45) { // 0.75 сек
+                        p.gooSwimTimer = 0;
+                        let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
+                        let hasPts = isLimited ? (sharedHealPoints > 0) : (sharedHeals > 0);
+                        if (hasPts) {
+                            if (isLimited) {
+                                sharedHealPoints = Math.max(0, sharedHealPoints - 8);
+                                sharedHeals = Math.floor(sharedHealPoints / 8);
+                                sharedHitCount = sharedHealPoints % 8;
+                            } else {
+                                sharedHeals = Math.max(0, sharedHeals - 1);
+                            }
+                            playSound('waterDrop');
+                            voidExplosions.push({ x: p.x + p.width/2, y: FLOOR - 6, timer: 15, isWhite: false, r: 18 });
+                        } else {
+                            // Хилы закончились: получает урон в жиже!
+                            takeDamage(p, 0.5, false, false, false, true);
+                        }
+                    }
+                    onFloor = true;
+                } else {
+                    // Обычный герой падает в жижу: 2 урона падения и респавн на последнем безопасном месте!
+                    p.invuln = 0; // Защита от урона не спасает от падения
+                    takeDamage(p, 2, false, false, false, true); // 2 урона падения
+                    p.x = p.lastSafeX || 380;
+                    p.y = p.lastSafeY || (FLOOR - 120);
+                    p.vx = 0;
+                    p.vy = 0;
+                    p.invuln = 60; // После падения дается время неуязвимости (1 сек)
+                    playSound('fall');
+                    triggerShake(12, 16);
+                    voidExplosions.push({ x: p.x + p.width/2, y: p.y + p.height/2, timer: 20, isWhite: true, r: 40 });
+                }
+            } else {
+                p.y = FLOOR - p.height; p.vy = 0; onFloor = true;
+                if (!abyssGooFloorActive || abyssGooSolidified) {
+                    p.lastSafeX = p.x; p.lastSafeY = p.y;
+                }
+            }
         }
         p.onGround = (onFloor || onPlatform);
 
@@ -1101,6 +1156,10 @@ function updatePlayers() {
                     for (let orb of boss.lPhase4Orbs) {
                         if (orb.alive && rectIntersect(sHit, { x: orb.x - orb.r, y: orb.y - orb.r, width: orb.r * 2, height: orb.r * 2 })) {
                             orb.alive = false;
+                            if (orb.isMonolith) {
+                                abyssGooSolidifying = true;
+                                abyssGooSolidifyTimer = 60;
+                            }
                             playSound('break');
                             playSound('lightChime');
                             playSound('hitBoss');
@@ -1163,7 +1222,7 @@ function updatePlayers() {
                             }
                         }
                     }
-                } else if (boss.state === "VULN_STANCE" || boss.color === "#ff8800" || (boss.invuln > 0 && boss.state !== "TRANSITION" && boss.state !== "DEFEATED")) {
+                } else if ((boss.state === "VULN_STANCE" || boss.color === "#ff8800" || (boss.invuln > 0 && boss.state !== "TRANSITION" && boss.state !== "DEFEATED")) && boss.phase !== 4) {
                     if (rectIntersect(sHit, boss)) {
                         triggerVibration('sa_hit'); 
                         triggerShake(16, 22); 
@@ -1181,7 +1240,7 @@ function updatePlayers() {
                         recordHit(p);
                         checkPhaseTransition();
                     }
-                } else if (rectIntersect(sHit, boss) && boss.invuln <= 0 && boss.state !== "TRANSITION") {
+                } else if (rectIntersect(sHit, boss) && (boss.phase !== 4 || boss.state === "L_PHASE4_STUNNED") && (boss.invuln <= 0 || boss.state === "L_PHASE4_STUNNED") && boss.state !== "TRANSITION") {
                     if (tryDamageBoss(3, p)) { freezeFrames = 6; }
                 }
             } else if (!kLight) { 
@@ -1703,6 +1762,8 @@ function updatePlayers() {
                         p.isHealing = false; 
                         p.healTimer = 0; 
                         p.hallucinationHits = 0; 
+                        teamHallucinationHits = 0;
+                        for (let pl of players) pl.hallucinationHits = 0;
                     }
                 } else {
                     let targetTime = (p.type === 'WATER' && p.stance === 'DEMON') ? 60 : (p.isAoEHealing ? 240 : p.healFramesTotal);
@@ -1788,6 +1849,9 @@ function updatePlayers() {
                         }
 
                         p.isHealing = false; p.isAoEHealing = false; p.isFieryHealing = false; p.healTimer = 0;
+                        p.hallucinationHits = 0;
+                        teamHallucinationHits = 0;
+                        for (let pl of players) pl.hallucinationHits = 0;
                         if (p.badges && p.badges.includes('shield')) p.hasAegisShield = true;
                     }
                 }

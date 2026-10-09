@@ -25,7 +25,7 @@ function triggerVibration(type) {
     else if (type === 'heal_interrupt') { ms = 10; weak = 0.8; strong = 0.5; }
     else if (type === 'sa_hit') { ms = 15; weak = 0.8; strong = 0.5; }
     else if (type === 'sa1_land') { ms = 25; weak = 1.0; strong = 1.0; }
-    else if (type === 'l_mode_final') { ms = 10; weak = 0.8; strong = 0.8; }
+    else if (type === 'l_mode_final') { ms = 35; weak = 1.0; strong = 1.0; }
     else if (type === 'clash') { ms = 8; weak = 0.5; strong = 0.3; }
 
     if (navigator.vibrate) navigator.vibrate(ms);

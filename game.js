@@ -5,6 +5,7 @@ const externalGameAssets = {
     plants2: [],
     plants3: [],
     slimes: [],
+    boulders: [],
     loaded: false
 };
 
@@ -38,6 +39,12 @@ function loadExternalGameAssets() {
             let sl = new Image();
             sl.src = `assets/slime/opt/SlimeBasic_${s}.png`;
             sl.onload = () => { externalGameAssets.slimes.push(sl); };
+        });
+
+        ['boulder1.png', 'boulder2.png', 'boulder3.png'].forEach(b => {
+            let bImg = new Image();
+            bImg.src = `assets/cave/${b}`;
+            bImg.onload = () => { externalGameAssets.boulders.push(bImg); };
         });
 
         externalGameAssets.loaded = true;
@@ -157,6 +164,7 @@ function buildAndStartGame() {
         // Add AI companion if enabled (v74)
         if (typeof hasAiCompanion !== 'undefined' && hasAiCompanion) {
             let aiHero = (aiCompanionConfig && aiCompanionConfig.hero) ? aiCompanionConfig.hero : (p1HeroSelection === 'WATER' ? 'EARTH' : 'WATER');
+            if (aiHero === 'WATER_ROPE') aiHero = 'WATER';
             let aiId = players.length + 1;
             let startXAi = secretMode ? ARENA_W/2 + 80 : (players.length === 2 ? 260 : 200);
             let pAi = createPlayer(aiId, aiHero, {}, 'AI', startXAi);
@@ -408,6 +416,20 @@ function resetGameParams() {
     waterRopes = []; fallingBananaPeels = []; slowMoTimer = 0;
     if (typeof initArenaLeaves === 'function') initArenaLeaves();
     
+    floorCracks = [];
+    voidPuddles = [];
+    voidCeilingDrips = [];
+    fallingBoulders = [];
+    arenaBarricadeBoulders = [];
+    abyssGooFloorActive = false;
+    abyssGooSolidifying = false;
+    abyssGooSolidifyTimer = 0;
+    abyssGooSolidified = false;
+    abyssRightWallBroken = false;
+    gooCinematicTimer = 0;
+    ambientVoidOrbsMultiplier = 1;
+    teamHallucinationHits = 0;
+
     if (boss) {
         boss.hp = boss.maxHp || 25; boss.phase = 1; boss.damageBonus = 0; boss.x = ARENA_W/2; boss.y = FLOOR - 50; 
         boss.state = "IDLE"; boss.stateTimer = 60; boss.flashTimer = 0; boss.vx = 0; 
@@ -420,7 +442,7 @@ function resetGameParams() {
         boss.climbSaStep = 0; boss.halfHpSeqDone = false;
         boss.attackCount = 0; boss.firstAttackAwarded = false; boss.healSpammerAwarded = false;
         boss.stunP1_1 = false; boss.stunP1_2 = false; boss.stunP2 = false;
-        boss.lPhase4Orbs = []; boss.lPhase4AttackTimer = 0;
+        boss.lPhase4Orbs = []; boss.lPhase4AttackTimer = 0; boss.gooSeqTriggered = false;
     }
     battleStartTime = Date.now();
     
@@ -545,6 +567,33 @@ function updateProjectiles() {
         let d = blackDaggers[i]; d.x += d.vx; d.y += d.vy;
         if (d.x < 0 || d.x > ARENA_W || d.y > FLOOR + 400 || d.y < -2000) { blackDaggers.splice(i, 1); continue; }
         
+        // Boulders block boss daggers and shurikens!
+        if (typeof arenaBarricadeBoulders !== 'undefined' && arenaBarricadeBoulders.length > 0) {
+            let hitBarricade = false;
+            for (let bar of arenaBarricadeBoulders) {
+                let barBox = { x: bar.x - bar.w / 2, y: bar.y - bar.h / 2, width: bar.w, height: bar.h };
+                if (rectIntersect({ x: d.x - 6, y: d.y - 6, width: 12, height: 12 }, barBox)) {
+                    hitBarricade = true;
+                    playSound('rockHit');
+                    for (let k = 0; k < 5; k++) {
+                        voidExplosions.push({
+                            x: d.x, y: d.y,
+                            vx: (Math.random() - 0.5) * 4,
+                            vy: (Math.random() - 0.5) * 4,
+                            timer: 10,
+                            isWhite: false,
+                            isStone: true
+                        });
+                    }
+                    break;
+                }
+            }
+            if (hitBarricade) {
+                blackDaggers.splice(i, 1);
+                continue;
+            }
+        }
+
         if (d.deflected === 1 && rectIntersect({x: d.x-5, y: d.y-5, width: 10, height: 10}, boss)) {
             if (Math.random() < 0.2) { 
                 d.vx = -d.vx * 1.5; d.vy = -d.vy * 1.5; d.deflected = 2; 
@@ -667,19 +716,22 @@ function updateProjectiles() {
         if (sr.r > sr.maxR) screamRings.splice(i, 1); 
     }
 
-    // Chaos balls (Шарики пустоты в 3 фазе L-режима: больше шариков, преимущественно по углам и по арене, обычный размер)
+    // Chaos balls (Шарики пустоты в 3 фазе L-режима: больше шариков, умножение при мега-ударе босса)
     if (secretMode && boss.phase >= 3 && !boss.state.startsWith("L_INTRO")) {
-        if (Math.random() < 0.40) { 
-            let spawnCorner = Math.random() < 0.70;
-            let spawnX = spawnCorner ? (Math.random() < 0.5 ? Math.random() * 280 : ARENA_W - Math.random() * 280) : (280 + Math.random() * (ARENA_W - 560));
-            let fromTop = Math.random() < 0.25;
-            chaosBalls.push({ 
-                x: spawnX, 
-                y: fromTop ? (camY - 30) : (camY + GAME_HEIGHT + 40), 
-                vx: (Math.random() - 0.5) * 2.2, 
-                vy: fromTop ? (1 + Math.random() * 2.2) : (-1 - Math.random() * 3), 
-                r: 7 + Math.random() * 11 
-            }); 
+        let count = (typeof ambientVoidOrbsMultiplier !== 'undefined' && ambientVoidOrbsMultiplier > 1) ? 3 : 1;
+        for (let c = 0; c < count; c++) {
+            if (Math.random() < 0.40) { 
+                let spawnCorner = Math.random() < 0.70;
+                let spawnX = spawnCorner ? (Math.random() < 0.5 ? Math.random() * 280 : ARENA_W - Math.random() * 280) : (280 + Math.random() * (ARENA_W - 560));
+                let fromTop = Math.random() < 0.25;
+                chaosBalls.push({ 
+                    x: spawnX, 
+                    y: fromTop ? (camY - 30) : (camY + GAME_HEIGHT + 40), 
+                    vx: (Math.random() - 0.5) * 2.2, 
+                    vy: fromTop ? (1 + Math.random() * 2.2) : (-1 - Math.random() * 3), 
+                    r: 7 + Math.random() * 11 
+                }); 
+            }
         }
     }
     for (let i = chaosBalls.length - 1; i >= 0; i--) {
@@ -799,6 +851,183 @@ function updateProjectiles() {
         w.r += (w.maxR - w.r) * 0.22;
         w.timer--;
         if (w.timer <= 0) lightAmuletWaves.splice(i, 1);
+    }
+
+    // Falling Boulders (Камнепад Бездны в 3 фазе L-режима)
+    for (let i = fallingBoulders.length - 1; i >= 0; i--) {
+        let b = fallingBoulders[i];
+        if (b.delay > 0) {
+            b.delay--;
+            continue;
+        }
+        b.y += b.vy;
+        b.vy = Math.min(26, b.vy + 0.9);
+        
+        let bw = isFinite(b.w) && b.w > 0 ? b.w : 76;
+        let bh = isFinite(b.h) && b.h > 0 ? b.h : 52;
+        let bHit = { x: b.x - bw / 2, y: b.y - bh / 2, width: bw, height: bh };
+        for (let p of players) {
+            if (p.hp > 0 && !p.isDowned && p.invuln <= 0 && rectIntersect(p, bHit)) {
+                takeDamage(p, 2.5, false, false, false, false, true, false); // isBoulder = true, does NOT deduct heal charges!
+                triggerShake(18, 22);
+                triggerVibration('sa_hit');
+                playSound('hitBoss');
+                playSound('rockHit');
+            }
+        }
+
+        if (b.y >= FLOOR - bh / 2) {
+            b.y = FLOOR - bh / 2;
+            triggerShake(14, 18);
+            playSound('stoneThud');
+            playSound('break');
+            for (let k = 0; k < 12; k++) {
+                voidExplosions.push({
+                    x: b.x + (Math.random() - 0.5) * bw,
+                    y: FLOOR - 10,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: -Math.random() * 6,
+                    timer: 18,
+                    isWhite: false,
+                    isStone: true
+                });
+            }
+            arenaBarricadeBoulders.push({
+                x: b.x,
+                y: b.y,
+                w: bw,
+                h: bh,
+                imgIdx: isFinite(b.imgIdx) ? b.imgIdx : 0,
+                timer: 480, // 8 секунд баррикады
+                maxTimer: 480
+            });
+            fallingBoulders.splice(i, 1);
+        }
+    }
+
+    // Arena Barricade Boulders
+    for (let i = arenaBarricadeBoulders.length - 1; i >= 0; i--) {
+        let bar = arenaBarricadeBoulders[i];
+        bar.timer--;
+        if (bar.timer <= 0) {
+            let bw = isFinite(bar.w) && bar.w > 0 ? bar.w : 76;
+            let bh = isFinite(bar.h) && bar.h > 0 ? bar.h : 52;
+            for (let k = 0; k < 8; k++) {
+                voidExplosions.push({
+                    x: bar.x + (Math.random() - 0.5) * bw,
+                    y: bar.y + (Math.random() - 0.5) * bh,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: -Math.random() * 4,
+                    timer: 15,
+                    isWhite: false,
+                    isStone: true
+                });
+            }
+            arenaBarricadeBoulders.splice(i, 1);
+        }
+    }
+
+    // Void Puddles (Фиолетовые лужи Бездны)
+    for (let i = voidPuddles.length - 1; i >= 0; i--) {
+        let pud = voidPuddles[i];
+        pud.timer = (pud.timer || 720) - 1;
+        let pr = isFinite(pud.r) && pud.r > 0 ? pud.r : 25;
+        let maxR = isFinite(pud.maxR) && pud.maxR > 0 ? pud.maxR : 95;
+        if (pr < maxR) {
+            pud.r = pr + (pud.spreadSpeed || 0.08);
+        }
+        for (let p of players) {
+            if (p.hp > 0 && !p.isDowned && p.invuln <= 0 && p.y >= FLOOR - 55) {
+                let pMidX = p.x + p.width / 2;
+                if (Math.abs(pMidX - pud.x) < pr) {
+                    let dmg = (p.type === 'WATER' && p.stance === 'DEMON') ? 0.5 : 1.5;
+                    teamHallucinationHits = getHallucinationThreshold();
+                    for (let pl of players) pl.hallucinationHits = teamHallucinationHits;
+                    takeDamage(p, dmg, false, false, false, true);
+                    triggerShake(12, 16);
+                    triggerVibration('damage');
+                    playSound('voidWhisper');
+                }
+            }
+        }
+        if (pud.timer <= 0) {
+            voidPuddles.splice(i, 1);
+        }
+    }
+
+    // Void Ceiling Drips
+    if (secretMode && boss.phase >= 3 && !boss.state.startsWith("L_INTRO")) {
+        let dripChance = (boss.phase === 3 && boss.hp <= phase3Hp * 0.5) ? 0.25 : 0.08;
+        if (Math.random() < dripChance) {
+            voidCeilingDrips.push({
+                x: 40 + Math.random() * (ARENA_W - 80),
+                y: -10,
+                vy: 2 + Math.random() * 3,
+                length: 8 + Math.random() * 12,
+                r: 2 + Math.random() * 2
+            });
+        }
+    }
+    for (let i = voidCeilingDrips.length - 1; i >= 0; i--) {
+        let dr = voidCeilingDrips[i];
+        dr.y += dr.vy;
+        dr.vy += 0.15;
+        if (dr.y >= FLOOR - 5) {
+            for (let k = 0; k < 3; k++) {
+                voidExplosions.push({
+                    x: dr.x,
+                    y: FLOOR - 2,
+                    vx: (Math.random() - 0.5) * 3,
+                    vy: -Math.random() * 2,
+                    timer: 8,
+                    isWhite: false,
+                    isDrip: true
+                });
+            }
+            voidCeilingDrips.splice(i, 1);
+        }
+    }
+
+    // Abyss Goo cinematic timer & right wall break
+    if (gooCinematicTimer > 0) {
+        gooCinematicTimer--;
+        if (gooCinematicTimer === 120) {
+            abyssRightWallBroken = true;
+            abyssGooFloorActive = true;
+            triggerShake(45, 45);
+            triggerVibration('l_mode_final');
+            playSound('break');
+            playSound('waterSplash');
+            platforms = [
+                { x: 180, y: FLOOR - 90, w: 140, h: 12, isObsidian: true },
+                { x: 420, y: FLOOR - 140, w: 160, h: 12, isObsidian: true },
+                { x: 700, y: FLOOR - 95, w: 140, h: 12, isObsidian: true }
+            ];
+            for (let k = 0; k < 35; k++) {
+                voidExplosions.push({
+                    x: ARENA_W - 40,
+                    y: FLOOR - 50 + (Math.random() - 0.5) * 120,
+                    vx: -4 - Math.random() * 12,
+                    vy: (Math.random() - 0.5) * 8,
+                    timer: 35,
+                    isWhite: false,
+                    isGoo: true
+                });
+            }
+        }
+    }
+
+    // Abyss Goo solidifying in Phase 4
+    if (abyssGooSolidifying) {
+        abyssGooSolidifyTimer--;
+        if (abyssGooSolidifyTimer <= 0) {
+            abyssGooSolidifying = false;
+            abyssGooSolidified = true;
+            abyssGooFloorActive = false;
+            triggerShake(20, 25);
+            playSound('stoneThud');
+            playSound('lightChime');
+        }
     }
 
     // Falling Banana Peels
@@ -1281,6 +1510,12 @@ function update() {
     let shouldFollowCam = (secretMode || boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5) && (!secretMode ? boss.state !== "SA1_ACTIVE" : true);
     if (activeCinematic) {
         // Во время катсцены камера сохраняет свои текущие координаты, не сбрасываясь в 0!
+    } else if (gooCinematicTimer > 0) {
+        // Камера сама перемещается к правой стене, где лопается стена и хлещет жижа!
+        let targetCamX = Math.max(0, ARENA_W - GAME_WIDTH);
+        let targetCamY = Math.min(Math.max(FLOOR - GAME_HEIGHT / 2 - 80, -2000), FLOOR - GAME_HEIGHT + 100);
+        camX += (targetCamX - camX) * 0.08;
+        camY += (targetCamY - camY) * 0.08;
     } else if (shouldFollowCam) {
         let ax = 0, ay = 0, c = 0;
         for (let p of players) { 
@@ -1417,6 +1652,24 @@ function update() {
                     p.saHit = false;
                     p.invuln = 90; // 1.5 сек неуязвимости после выхода из катсцены
                 }
+            } else if (boss.halfHpSeqActive && secretMode && boss.phase === 3) {
+                // Если катсцена сработала в цепочке 3 фазы L-режима, переходим к разгону и мега-удару по полу!
+                boss.state = "SA1_MEGA_RISE";
+                boss.stateTimer = 40;
+                boss.vx = 0;
+                boss.vy = -26;
+                boss.x = ARENA_W / 2 - boss.width / 2;
+                boss.y = FLOOR - boss.height - 20;
+                boss.invuln = 99999;
+                boss.sa1Arr = null;
+                boss.saLines = null;
+                for (let p of players) {
+                    p.saHit = false;
+                    p.invuln = 60;
+                }
+                playSound('wind');
+                playSound('demonRoar');
+                triggerShake(8, 12);
             } else { 
                 boss.halfHpSeqActive = false; 
                 boss.invuln = 0;
@@ -1596,6 +1849,318 @@ function drawAbyssFloorMirror() {
     ctx.restore();
 }
 
+function drawFloorCracks() {
+    if (!secretMode || !floorCracks || floorCracks.length === 0) return;
+    ctx.save();
+    for (let crack of floorCracks) {
+        ctx.beginPath();
+        let sx = isFinite(crack.x1) ? crack.x1 : (crack[0] ? crack[0].x : 0);
+        let sy = isFinite(crack.y1) ? crack.y1 : (crack[0] ? crack[0].y : FLOOR);
+        ctx.moveTo(sx, sy);
+        let pts = crack.pts || (Array.isArray(crack) ? crack : null);
+        if (pts && pts.length > 0) {
+            for (let pt of pts) {
+                if (pt && isFinite(pt.x) && isFinite(pt.y)) {
+                    ctx.lineTo(pt.x, pt.y);
+                }
+            }
+        }
+        if (isFinite(crack.x2) && isFinite(crack.y2)) {
+            ctx.lineTo(crack.x2, crack.y2);
+        }
+        ctx.strokeStyle = "rgba(160, 40, 255, 0.75)";
+        ctx.lineWidth = isFinite(crack.width) ? crack.width : 2.5;
+        ctx.shadowColor = "#cc00ff";
+        ctx.shadowBlur = 8;
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(230, 180, 255, 0.5)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function drawVoidPuddles() {
+    if (!secretMode || !voidPuddles || voidPuddles.length === 0) return;
+    ctx.save();
+    let t = Date.now();
+    for (let pud of voidPuddles) {
+        let baseR = isFinite(pud.r) && pud.r > 0 ? pud.r : 25;
+        let px = isFinite(pud.x) ? pud.x : ARENA_W / 2;
+        let py = isFinite(pud.y) ? pud.y : FLOOR;
+        let pulse = 1 + 0.08 * Math.sin(t / 180 + px);
+        let curR = baseR * pulse;
+        if (!isFinite(curR) || curR <= 0) curR = 25;
+        
+        let grad = ctx.createRadialGradient(px, py + 4, 2, px, py + 4, curR + 10);
+        grad.addColorStop(0, "rgba(200, 50, 255, 0.9)");
+        grad.addColorStop(0.5, "rgba(120, 10, 200, 0.7)");
+        grad.addColorStop(0.85, "rgba(50, 0, 100, 0.4)");
+        grad.addColorStop(1, "rgba(20, 0, 40, 0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(px, py + 2, curR + 10, Math.max(1, (curR + 10) * 0.35), 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#1a002e";
+        ctx.beginPath();
+        ctx.ellipse(px, py + 2, curR, Math.max(1, curR * 0.3), 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "#da44ff";
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "#cc00ff";
+        ctx.shadowBlur = 12;
+        ctx.stroke();
+
+        for (let b = 0; b < 3; b++) {
+            let bx = px + Math.sin(t / 200 + b * 2) * (curR * 0.6);
+            let by = py - 2 - ((t / 30 + b * 25) % 20);
+            let bAlpha = 1 - (((t / 30 + b * 25) % 20) / 20);
+            ctx.fillStyle = `rgba(220, 120, 255, ${bAlpha})`;
+            ctx.beginPath();
+            ctx.arc(bx, by, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    ctx.restore();
+}
+
+function drawVoidCeilingDrips() {
+    if (!secretMode || !voidCeilingDrips || voidCeilingDrips.length === 0) return;
+    ctx.save();
+    ctx.fillStyle = "#1a0026";
+    ctx.strokeStyle = "#bb00ff";
+    ctx.lineWidth = 1;
+    ctx.shadowColor = "#cc00ff";
+    ctx.shadowBlur = 6;
+    for (let dr of voidCeilingDrips) {
+        let rx = isFinite(dr.r) && dr.r > 0 ? dr.r : 3;
+        let ry = isFinite(dr.length) && dr.length > 0 ? dr.length / 2 : 5;
+        let dx = isFinite(dr.x) ? dr.x : 0;
+        let dy = isFinite(dr.y) ? dr.y : 0;
+        ctx.beginPath();
+        ctx.ellipse(dx, dy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function drawBoulders() {
+    if (!secretMode) return;
+    ctx.save();
+    let t = Date.now();
+
+    // 1. Falling boulders & warning markers
+    if (fallingBoulders && fallingBoulders.length > 0) {
+        for (let b of fallingBoulders) {
+            let warnPulse = 0.5 + 0.3 * Math.sin(t / 60);
+            let bw = isFinite(b.w) && b.w > 0 ? b.w : 76;
+            let bh = isFinite(b.h) && b.h > 0 ? b.h : 52;
+            let bx = isFinite(b.x) ? b.x : ARENA_W / 2;
+            let by = isFinite(b.y) ? b.y : 0;
+            let warnR = Math.max(10, bw * 0.7);
+
+            ctx.save();
+            let wGrad = ctx.createRadialGradient(bx, FLOOR, 4, bx, FLOOR, warnR);
+            wGrad.addColorStop(0, `rgba(230, 50, 255, ${warnPulse * 0.85})`);
+            wGrad.addColorStop(0.7, `rgba(160, 20, 220, ${warnPulse * 0.45})`);
+            wGrad.addColorStop(1, "rgba(50, 0, 100, 0)");
+            ctx.fillStyle = wGrad;
+            ctx.beginPath();
+            ctx.ellipse(bx, FLOOR, warnR, Math.max(2, warnR * 0.35), 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = `rgba(255, 100, 255, ${warnPulse})`;
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([6, 4]);
+            ctx.stroke();
+            ctx.restore();
+
+            if (b.delay <= 0) {
+                let imgIdx = isFinite(b.imgIdx) ? b.imgIdx : 0;
+                let bImg = (externalGameAssets.boulders && externalGameAssets.boulders.length > imgIdx) ? externalGameAssets.boulders[imgIdx] : null;
+                if (bImg && bImg.complete) {
+                    ctx.save();
+                    ctx.shadowColor = "#8800cc";
+                    ctx.shadowBlur = 16;
+                    ctx.drawImage(bImg, bx - bw / 2, by - bh / 2, bw, bh);
+                    ctx.restore();
+                } else {
+                    ctx.save();
+                    ctx.fillStyle = "#1e1526";
+                    ctx.strokeStyle = "#8800cc";
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.ellipse(bx, by, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        }
+    }
+
+    // 2. Barricade boulders on floor
+    if (arenaBarricadeBoulders && arenaBarricadeBoulders.length > 0) {
+        for (let bar of arenaBarricadeBoulders) {
+            let fadeAlpha = bar.timer < 60 ? (bar.timer / 60) : 1;
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, Math.min(1, fadeAlpha));
+            let bw = isFinite(bar.w) && bar.w > 0 ? bar.w : 76;
+            let bh = isFinite(bar.h) && bar.h > 0 ? bar.h : 52;
+            let bx = isFinite(bar.x) ? bar.x : ARENA_W / 2;
+            let by = isFinite(bar.y) ? bar.y : FLOOR - bh / 2;
+            let imgIdx = isFinite(bar.imgIdx) ? bar.imgIdx : 0;
+            let bImg = (externalGameAssets.boulders && externalGameAssets.boulders.length > imgIdx) ? externalGameAssets.boulders[imgIdx] : null;
+            if (bImg && bImg.complete) {
+                ctx.shadowColor = "#552277";
+                ctx.shadowBlur = 10;
+                ctx.drawImage(bImg, bx - bw / 2, by - bh / 2, bw, bh);
+            } else {
+                ctx.fillStyle = "#22182e";
+                ctx.strokeStyle = "#aa44ff";
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.ellipse(bx, by, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+            ctx.strokeStyle = "rgba(200, 100, 255, 0.4)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(bx, by - bh / 4, bw / 3, Math.PI * 1.1, Math.PI * 1.9);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+    ctx.restore();
+}
+
+function drawBrokenRightWall() {
+    if (!secretMode || !abyssRightWallBroken) return;
+    ctx.save();
+    let t = Date.now();
+    let wallX = ARENA_W - 35;
+    
+    // Брешь в стене
+    ctx.fillStyle = "#05000a";
+    ctx.beginPath();
+    ctx.moveTo(wallX, FLOOR - 220);
+    ctx.lineTo(ARENA_W + 30, FLOOR - 250);
+    ctx.lineTo(ARENA_W + 30, FLOOR + 60);
+    ctx.lineTo(wallX - 15, FLOOR + 20);
+    ctx.lineTo(wallX + 10, FLOOR - 80);
+    ctx.lineTo(wallX - 20, FLOOR - 140);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "#a855f7";
+    ctx.lineWidth = 3;
+    ctx.shadowColor = "#cc00ff";
+    ctx.shadowBlur = 20;
+    ctx.stroke();
+
+    // Поток черной жижи Бездны
+    let flowGrad = ctx.createLinearGradient(wallX + 20, FLOOR - 140, wallX - 80, FLOOR + 10);
+    flowGrad.addColorStop(0, "rgba(5, 0, 10, 0.98)");
+    flowGrad.addColorStop(0.5, "rgba(25, 0, 45, 0.92)");
+    flowGrad.addColorStop(1, "rgba(60, 0, 95, 0.85)");
+    ctx.fillStyle = flowGrad;
+    ctx.beginPath();
+    let wave1 = Math.sin(t / 90) * 12;
+    let wave2 = Math.cos(t / 110) * 16;
+    ctx.moveTo(wallX + 10, FLOOR - 130);
+    ctx.bezierCurveTo(wallX - 40 + wave1, FLOOR - 70, wallX - 90 + wave2, FLOOR - 10, wallX - 120, FLOOR + 20);
+    ctx.lineTo(ARENA_W, FLOOR + 50);
+    ctx.lineTo(wallX + 20, FLOOR - 40);
+    ctx.closePath();
+    ctx.fill();
+
+    for (let k = 0; k < 6; k++) {
+        let spX = wallX - 30 - ((t / 20 + k * 45) % 90);
+        let spY = FLOOR - 90 + (k * 22) + Math.sin(t / 80 + k) * 10;
+        ctx.fillStyle = "rgba(180, 50, 255, 0.8)";
+        ctx.beginPath();
+        ctx.arc(spX, spY, 2.5 + (k % 2), 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+function drawAbyssGooFloor() {
+    if (!secretMode) return;
+    let t = Date.now();
+
+    if (abyssGooFloorActive) {
+        ctx.save();
+        let gooTop = FLOOR - 14;
+
+        ctx.beginPath();
+        ctx.moveTo(0, FLOOR + 120);
+        ctx.lineTo(0, gooTop);
+        for (let x = 0; x <= ARENA_W; x += 35) {
+            let wave = Math.sin(x * 0.02 + t * 0.003) * 5 + Math.sin(x * 0.04 - t * 0.005) * 3;
+            ctx.lineTo(x, gooTop + wave);
+        }
+        ctx.lineTo(ARENA_W, FLOOR + 120);
+        ctx.closePath();
+
+        let gooGrad = ctx.createLinearGradient(0, gooTop, 0, FLOOR + 80);
+        gooGrad.addColorStop(0, "rgba(35, 5, 55, 0.94)");
+        gooGrad.addColorStop(0.3, "rgba(12, 1, 22, 0.98)");
+        gooGrad.addColorStop(1, "rgba(4, 0, 8, 1.0)");
+        ctx.fillStyle = gooGrad;
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(168, 85, 247, 0.85)";
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "#cc00ff";
+        ctx.shadowBlur = 15;
+        ctx.stroke();
+
+        for (let b = 0; b < 10; b++) {
+            let bx = (b * 123 + t * 0.04) % ARENA_W;
+            let bWave = Math.sin(bx * 0.02 + t * 0.003) * 5;
+            let by = gooTop + bWave + Math.sin(t * 0.006 + b) * 3;
+            let br = 4 + (b % 4);
+            ctx.fillStyle = "rgba(130, 20, 200, 0.75)";
+            ctx.beginPath();
+            ctx.arc(bx, by, br, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(220, 150, 255, 0.9)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+        ctx.restore();
+    } else if (abyssGooSolidified) {
+        ctx.save();
+        ctx.fillStyle = "#0c0514";
+        ctx.fillRect(0, FLOOR, ARENA_W, 120);
+
+        ctx.strokeStyle = "rgba(130, 80, 200, 0.4)";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 18; i++) {
+            let cx = (i * 87) % ARENA_W;
+            ctx.beginPath();
+            ctx.moveTo(cx, FLOOR);
+            ctx.lineTo(cx + (i % 2 === 0 ? 25 : -20), FLOOR + 45);
+            ctx.lineTo(cx + (i % 3 === 0 ? 10 : 35), FLOOR + 90);
+            ctx.stroke();
+        }
+
+        ctx.strokeStyle = "rgba(160, 240, 255, 0.65)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, FLOOR);
+        ctx.lineTo(ARENA_W, FLOOR);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
 function drawBackground() {
     let bgTop = (boss.phase >= 2.5 || boss.state.startsWith("L_CLIMB") || secretMode) ? -6000 : 0;
     ctx.fillStyle = secretMode ? "#111" : (globalWindMode === "DOWN" ? "#1a100c" : "#2e1a12"); 
@@ -1768,6 +2333,19 @@ function drawBackground() {
                 ctx.font = "bold 11px Arial";
                 ctx.textAlign = "center";
                 ctx.fillText(`[ ${p.num} ]`, p.x + p.w / 2, p.y + 11);
+                ctx.restore();
+            } else if (p.isObsidian) {
+                ctx.save();
+                ctx.fillStyle = "#120a1a";
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.strokeStyle = "#a855f7";
+                ctx.lineWidth = 2.5;
+                ctx.shadowColor = "#cc00ff";
+                ctx.shadowBlur = 12;
+                ctx.strokeRect(p.x, p.y, p.w, p.h);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(p.x + 1, p.y + 1, p.w - 2, 2);
                 ctx.restore();
             } else {
                 ctx.fillStyle = "#2a2a38";
@@ -3098,41 +3676,84 @@ function draw() {
         }
 
         if (gameState === "PLAYING") {
-            // Фаза 4: Отрисовка 2 фиолетовых сфер в арене
+            // Фаза 4: Отрисовка сфер и центрального Монолита в арене
             if (boss.phase === 4 && boss.lPhase4Orbs) {
                 let t = Date.now();
                 for (let orb of boss.lPhase4Orbs) {
                     if (orb.alive) {
                         let floatY = orb.y + Math.sin(t / 220 + orb.x) * 6;
                         ctx.save();
-                        let oPulse = 0.4 + 0.25 * Math.sin(t / 150 + orb.x);
-                        let grad = ctx.createRadialGradient(orb.x, floatY, 4, orb.x, floatY, orb.r + 14);
-                        grad.addColorStop(0, "rgba(220, 0, 255, 0.95)");
-                        grad.addColorStop(0.5, `rgba(120, 0, 200, ${oPulse})`);
-                        grad.addColorStop(1, "rgba(20, 0, 40, 0)");
-                        ctx.fillStyle = grad;
-                        ctx.beginPath();
-                        ctx.arc(orb.x, floatY, orb.r + 14, 0, Math.PI * 2);
-                        ctx.fill();
+                        if (orb.isMonolith) {
+                            // Центральный Монолит Бездны
+                            let monoW = 36;
+                            let monoH = 72;
+                            let monoX = orb.x - monoW / 2;
+                            let monoY = floatY - monoH / 2;
+                            let mPulse = 0.5 + 0.3 * Math.sin(t / 140);
 
-                        ctx.beginPath();
-                        ctx.arc(orb.x, floatY, orb.r, 0, Math.PI * 2);
-                        ctx.fillStyle = "#120024";
-                        ctx.fill();
-                        ctx.strokeStyle = "#dd00ff";
-                        ctx.lineWidth = 2.5;
-                        ctx.shadowColor = "#cc00ff";
-                        ctx.shadowBlur = 15;
-                        ctx.stroke();
-
-                        for (let s = 0; s < 3; s++) {
-                            let ang = (t / 180) + s * (Math.PI * 2 / 3);
-                            let sx = orb.x + Math.cos(ang) * (orb.r * 0.5);
-                            let sy = floatY + Math.sin(ang) * (orb.r * 0.5);
-                            ctx.fillStyle = "#ffffff";
+                            let grad = ctx.createRadialGradient(orb.x, floatY, 8, orb.x, floatY, 60);
+                            grad.addColorStop(0, `rgba(220, 50, 255, ${mPulse * 0.95})`);
+                            grad.addColorStop(0.5, `rgba(130, 0, 220, ${mPulse * 0.45})`);
+                            grad.addColorStop(1, "rgba(20, 0, 40, 0)");
+                            ctx.fillStyle = grad;
                             ctx.beginPath();
-                            ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+                            ctx.arc(orb.x, floatY, 60, 0, Math.PI * 2);
                             ctx.fill();
+
+                            ctx.fillStyle = "#0c0414";
+                            ctx.beginPath();
+                            ctx.moveTo(orb.x, monoY - 12);
+                            ctx.lineTo(monoX + monoW, monoY + 16);
+                            ctx.lineTo(monoX + monoW - 4, monoY + monoH);
+                            ctx.lineTo(monoX + 4, monoY + monoH);
+                            ctx.lineTo(monoX, monoY + 16);
+                            ctx.closePath();
+                            ctx.fill();
+
+                            ctx.strokeStyle = "#e040fb";
+                            ctx.lineWidth = 3;
+                            ctx.shadowColor = "#d500f9";
+                            ctx.shadowBlur = 18;
+                            ctx.stroke();
+
+                            ctx.strokeStyle = `rgba(255, 200, 255, ${mPulse})`;
+                            ctx.lineWidth = 1.5;
+                            ctx.beginPath();
+                            ctx.moveTo(orb.x, monoY + 6);
+                            ctx.lineTo(orb.x - 7, monoY + 26);
+                            ctx.lineTo(orb.x + 7, monoY + 46);
+                            ctx.lineTo(orb.x, monoY + monoH - 8);
+                            ctx.stroke();
+                        } else {
+                            let oPulse = 0.4 + 0.25 * Math.sin(t / 150 + orb.x);
+                            let grad = ctx.createRadialGradient(orb.x, floatY, 4, orb.x, floatY, orb.r + 14);
+                            grad.addColorStop(0, "rgba(220, 0, 255, 0.95)");
+                            grad.addColorStop(0.5, `rgba(120, 0, 200, ${oPulse})`);
+                            grad.addColorStop(1, "rgba(20, 0, 40, 0)");
+                            ctx.fillStyle = grad;
+                            ctx.beginPath();
+                            ctx.arc(orb.x, floatY, orb.r + 14, 0, Math.PI * 2);
+                            ctx.fill();
+
+                            ctx.beginPath();
+                            ctx.arc(orb.x, floatY, orb.r, 0, Math.PI * 2);
+                            ctx.fillStyle = "#120024";
+                            ctx.fill();
+                            ctx.strokeStyle = "#dd00ff";
+                            ctx.lineWidth = 2.5;
+                            ctx.shadowColor = "#cc00ff";
+                            ctx.shadowBlur = 15;
+                            ctx.stroke();
+
+                            for (let s = 0; s < 3; s++) {
+                                let ang = (t / 180) + s * (Math.PI * 2 / 3);
+                                let sx = orb.x + Math.cos(ang) * (orb.r * 0.5);
+                                let sy = floatY + Math.sin(ang) * (orb.r * 0.5);
+                                ctx.fillStyle = "#ffffff";
+                                ctx.beginPath();
+                                ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
                         }
                         ctx.restore();
                     }
@@ -3161,7 +3782,17 @@ function draw() {
                 drawAbyssFloorMirror();
             }
 
-            if (secretMode && players.some(p => (p.hallucinationHits || 0) >= ((p.hasLightAmulet && !p.lightAmuletBroken) ? 4 : 3) && !(p.type === 'WATER' && p.stance === 'DEMON'))) {
+            // Разрушения арены и эффекты Фазы 3:
+            if (secretMode) {
+                drawFloorCracks();
+                drawVoidPuddles();
+                drawVoidCeilingDrips();
+                drawBoulders();
+                drawBrokenRightWall();
+                drawAbyssGooFloor();
+            }
+
+            if (secretMode && hasTeamHallucinations()) {
                 let time = Date.now();
                 let pMain = players[0];
                 let phantomPositions = [
@@ -3412,30 +4043,55 @@ function draw() {
             ctx.fillText(`Фаза: ${boss.phase}  |  ${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp} HP${easyBadge}`, GAME_WIDTH/2, 385);
             ctx.restore();
 
-            // Phase 4: 2 фиолетовых кружка рядом с полоской босса
+            // Phase 4: 3 фиолетовых значка (Сфера, Монолит, Сфера) рядом с полоской босса
             if (boss.phase === 4 && boss.lPhase4Orbs && boss.lPhase4Orbs.length >= 2) {
                 let orbStartX = GAME_WIDTH/2 + 215;
                 let orbY = 380;
-                for (let k = 0; k < 2; k++) {
+                for (let k = 0; k < boss.lPhase4Orbs.length; k++) {
+                    let target = boss.lPhase4Orbs[k];
                     let ox = orbStartX + k * 18;
-                    let isAlive = boss.lPhase4Orbs[k] && boss.lPhase4Orbs[k].alive;
+                    let isAlive = target && target.alive;
                     ctx.save();
-                    ctx.beginPath();
-                    ctx.arc(ox, orbY, 6, 0, Math.PI * 2);
-                    if (isAlive) {
-                        ctx.fillStyle = "#cc00ff";
-                        ctx.shadowColor = "#cc00ff";
-                        ctx.shadowBlur = 10;
-                        ctx.fill();
-                        ctx.strokeStyle = "#ffffff";
-                        ctx.lineWidth = 1.5;
-                        ctx.stroke();
+                    if (target.isMonolith) {
+                        ctx.beginPath();
+                        ctx.moveTo(ox, orbY - 8);
+                        ctx.lineTo(ox + 5, orbY);
+                        ctx.lineTo(ox, orbY + 8);
+                        ctx.lineTo(ox - 5, orbY);
+                        ctx.closePath();
+                        if (isAlive) {
+                            ctx.fillStyle = "#e040fb";
+                            ctx.shadowColor = "#ff00ff";
+                            ctx.shadowBlur = 12;
+                            ctx.fill();
+                            ctx.strokeStyle = "#ffffff";
+                            ctx.lineWidth = 1.5;
+                            ctx.stroke();
+                        } else {
+                            ctx.fillStyle = "rgba(40, 0, 60, 0.6)";
+                            ctx.fill();
+                            ctx.strokeStyle = "rgba(170, 0, 255, 0.4)";
+                            ctx.lineWidth = 1;
+                            ctx.stroke();
+                        }
                     } else {
-                        ctx.fillStyle = "rgba(40, 0, 60, 0.6)";
-                        ctx.fill();
-                        ctx.strokeStyle = "rgba(170, 0, 255, 0.4)";
-                        ctx.lineWidth = 1;
-                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(ox, orbY, 6, 0, Math.PI * 2);
+                        if (isAlive) {
+                            ctx.fillStyle = "#cc00ff";
+                            ctx.shadowColor = "#cc00ff";
+                            ctx.shadowBlur = 10;
+                            ctx.fill();
+                            ctx.strokeStyle = "#ffffff";
+                            ctx.lineWidth = 1.5;
+                            ctx.stroke();
+                        } else {
+                            ctx.fillStyle = "rgba(40, 0, 60, 0.6)";
+                            ctx.fill();
+                            ctx.strokeStyle = "rgba(170, 0, 255, 0.4)";
+                            ctx.lineWidth = 1;
+                            ctx.stroke();
+                        }
                     }
                     ctx.restore();
                 }
