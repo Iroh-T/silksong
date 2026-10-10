@@ -250,28 +250,44 @@ const joyBase = document.getElementById('joy-base');
 const joyStick = document.getElementById('joy-stick');
 let joyActive = false; 
 let joyCenter = { x: 0, y: 0 };
+let joyTouchId = null;
 
 if (joyBase && joyStick) {
     joyBase.addEventListener('touchstart', e => { 
         e.preventDefault(); 
-        joyActive = true; 
-        let r = joyBase.getBoundingClientRect(); 
-        joyCenter = { x: r.left + r.width / 2, y: r.top + r.height / 2 }; 
-        updateJoy(e.touches[0]); 
-    });
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            let t = e.changedTouches[i];
+            joyTouchId = t.identifier;
+            joyActive = true; 
+            let r = joyBase.getBoundingClientRect(); 
+            joyCenter = { x: r.left + r.width / 2, y: r.top + r.height / 2 }; 
+            updateJoy(t); 
+            break;
+        }
+    }, { passive: false });
     joyBase.addEventListener('touchmove', e => { 
         e.preventDefault(); 
-        if (joyActive) updateJoy(e.touches[0]); 
-    });
-    joyBase.addEventListener('touchend', e => { 
-        e.preventDefault(); 
-        joyActive = false; 
-        joyStick.style.transform = `translate(0px, 0px)`; 
+        if (joyActive) {
+            for (let i = 0; i < e.touches.length; i++) {
+                if (e.touches[i].identifier === joyTouchId) {
+                    updateJoy(e.touches[i]);
+                    break;
+                }
+            }
+        }
+    }, { passive: false });
+    const resetJoy = (e) => {
+        if (e) e.preventDefault();
+        joyActive = false;
+        joyTouchId = null;
+        if (joyStick) joyStick.style.transform = `translate(0px, 0px)`; 
         touchInputs.left = false; 
         touchInputs.right = false; 
         touchInputs.up = false; 
         touchInputs.down = false; 
-    });
+    };
+    joyBase.addEventListener('touchend', resetJoy, { passive: false });
+    joyBase.addEventListener('touchcancel', resetJoy, { passive: false });
 }
 
 function updateJoy(touch) {
@@ -302,13 +318,15 @@ tBtns.forEach(id => {
             el.style.transform = 'scale(0.9)'; 
             el.style.background = 'rgba(0,255,255,0.6)'; 
             tryEscapeTie(); 
-        });
-        el.addEventListener('touchend', e => { 
-            e.preventDefault(); 
+        }, { passive: false });
+        const releaseBtn = (e) => {
+            if (e) e.preventDefault(); 
             touchInputs[tMap[id]] = false; 
             el.style.transform = 'scale(1)'; 
             el.style.background = 'rgba(0,255,255,0.15)'; 
-        });
+        };
+        el.addEventListener('touchend', releaseBtn, { passive: false });
+        el.addEventListener('touchcancel', releaseBtn, { passive: false });
     }
 });
 
@@ -2436,6 +2454,15 @@ function openBadgeList(slotId) {
     let isSpecialBlueSlot = (slotId === 'p1_0' && p1HeroSelection === 'WATER_ROPE') || (slotId === 'p2_0' && p2HeroSelection === 'WATER_ROPE');
     let isL = (typeof secretMode !== 'undefined' && !!secretMode) || (typeof window !== 'undefined' && !!window.secretMode);
     
+    let isP1 = slotId.startsWith('p1_');
+    let isP2 = slotId.startsWith('p2_');
+    let currentHero = isP1 ? p1HeroSelection : (isP2 ? p2HeroSelection : ((typeof aiCompanionConfig !== 'undefined' && aiCompanionConfig && aiCompanionConfig.hero) ? aiCompanionConfig.hero : 'WATER'));
+    if (typeof isOnlineGame !== 'undefined' && isOnlineGame && window.onlineNet) {
+        let mySlot = window.onlineNet.mySlot;
+        if (slotId.startsWith(mySlot)) currentHero = window.onlineNet.myHero;
+    }
+    let isWaterHero = (currentHero === 'WATER' || currentHero === 'WATER_ROPE');
+
     let titleText = isTopSlot ? "💎 КОМАНДНЫЙ ЗНАК (Голубой)" : (isAiSlot ? "🤖 ЗНАК ДЛЯ ИИ-НАПАРНИКА" : (isSpecialBlueSlot ? "🌀 СИНИЙ ЗНАК" : "🛡️ ЗНАЧОК ДЛЯ СЛОТА"));
 
     let html = `
@@ -2450,6 +2477,7 @@ function openBadgeList(slotId) {
     for (let key in badgesDict) {
         let b = badgesDict[key];
         if (b.lModeOnly && !isL) continue; // Амулет света доступен ТОЛЬКО в L-режиме
+        if (b.waterOnly && !isWaterHero) continue; // Доступно ТОЛЬКО для героев воды
         if (isTopSlot && b.teamAllowed !== true && b.teamAllowed !== 'both') continue; 
         if (!isTopSlot && !isSpecialBlueSlot && b.teamAllowed === true) continue;  
         

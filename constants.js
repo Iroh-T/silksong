@@ -122,7 +122,7 @@ let megaDamageActive = false;
 window.megaDamageActive = false;
 
 let phase2Hp = 18;
-let phase3Hp = 12.5;
+let phase3Hp = 22;
 let boss = { 
     x: 750, y: 300, width: 30, height: 50, vx: 0, vy: 0, speed: 6.5, 
     hp: 30, maxHp: 30, phase: 1, damageBonus: 0, state: "IDLE", stateTimer: 60, flashTimer: 0,
@@ -1965,10 +1965,20 @@ const badgesDict = {
     'battery': { id: 'battery', name: 'Энергоячейка (+1 макс. заряд хила)', teamAllowed: true },
     'fish_scale': { id: 'fish_scale', name: 'Чешуя РЫБы (+1 макс. HP, корона)', teamAllowed: true },
     'cracked_life': { id: 'cracked_life', name: 'Треснувшая жизнь (Щит на 1 HP)', teamAllowed: false },
-    'lucky_charm': { id: 'lucky_charm', name: 'Талисман удачи (5% уклонение, +2% к шансам)', teamAllowed: false },
-    'light_amulet': { id: 'light_amulet', name: 'Амулет света (Блок -1 урон за заряды хила)', teamAllowed: false, lModeOnly: true },
+    'light_amulet': { id: 'light_amulet', name: 'Амулет света (Блок -1 урон, плавание в жиже)', teamAllowed: false, lModeOnly: true },
+    'water_heal_team': { id: 'water_heal_team', name: 'Живительный прилив (Хил дает +1 HP всей команде)', teamAllowed: false, waterOnly: true },
+    'heal_reserve': { id: 'heal_reserve', name: 'Резерв хила (Синяя ячейка только для A-хила)', teamAllowed: false },
+    'saver': { id: 'saver', name: 'Сбережитель (1 хил за 7 ударов вместо 8)', teamAllowed: false },
     'none':  { id: 'none', name: '[Пусто]', teamAllowed: 'both' }
 };
+
+function getHitsPerHeal() {
+    if (typeof players !== 'undefined' && players && players.some(pl => pl.badges && pl.badges.includes('saver'))) {
+        return 7;
+    }
+    return 8;
+}
+window.getHitsPerHeal = getHitsPerHeal;
 
 const abilityDict = {
     'banana_snack': 'Вкусный банан 🍌',

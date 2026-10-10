@@ -24,7 +24,8 @@ let aiInternalState = {
     isChargingConcentration: false,
     concentrateChargeFrames: 0,
     dodgeReactionTimer: 0,
-    jumpHoldTimer: 0
+    jumpHoldTimer: 0,
+    doubleJumpDelay: 0
 };
 
 function setAiPersonality(pers) {
@@ -96,6 +97,8 @@ function runAiCompanion(p) {
         return inp;
     }
 
+    if (aiInternalState.doubleJumpDelay > 0) aiInternalState.doubleJumpDelay--;
+
     // Variable jump: hold jump key so jump is not prematurely truncated by p.vy *= 0.5
     if (aiInternalState.jumpHoldTimer > 0) {
         aiInternalState.jumpHoldTimer--;
@@ -105,6 +108,13 @@ function runAiCompanion(p) {
     let requestJump = (frames = 14) => {
         inp.jump = true;
         aiInternalState.jumpHoldTimer = frames;
+        aiInternalState.doubleJumpDelay = 16; // Ждем завершения взлета первого прыжка, чтобы кнопка отжалась для двойного
+    };
+
+    let requestDoubleJump = (frames = 14) => {
+        inp.jump = true;
+        aiInternalState.jumpHoldTimer = frames;
+        aiInternalState.doubleJumpDelay = 999; // Двойной прыжок совершен
     };
 
     // Final tie cinematic:
@@ -135,7 +145,11 @@ function runAiCompanion(p) {
 
     // Check heals available
     let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
-    let hasHeal = isLimited ? (sharedHealPoints >= 8) : (sharedHeals >= 1);
+    let reqHits = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
+    let hasHeal = isLimited ? (sharedHealPoints >= reqHits) : (sharedHeals >= 1);
+    if (!hasHeal && p.hasHealReserve && !p.healReserveUsed) {
+        hasHeal = true;
+    }
 
     // Living human teammates & downed teammates
     let humans = players.filter(pl => pl.id !== p.id && !pl.isAi && pl.hp > 0 && !pl.isDowned);
@@ -347,11 +361,27 @@ function runAiCompanion(p) {
             }
             if (targetPlat) {
                 let platMid = targetPlat.x + targetPlat.w / 2;
-                if (pCenterX < platMid - 20) inp.right = true;
-                else if (pCenterX > platMid + 20) inp.left = true;
+                let hDist = platMid - pCenterX;
+                if (hDist > 15) inp.right = true;
+                else if (hDist < -15) inp.left = true;
+
+                // Первый прыжок к платформе
                 if ((p.y >= targetPlat.y - 15 || p.y >= FLOOR - 75) && aiInternalState.jumpCooldown <= 0) {
                     requestJump(15);
-                    aiInternalState.jumpCooldown = 35;
+                    aiInternalState.jumpCooldown = 32;
+                }
+
+                // Двойной прыжок с крыльями света для спасения на платформу
+                if (!onPlatform && !p.onGround && p.jumps < p.maxJumps && aiInternalState.doubleJumpDelay === 0 && p.vy >= -2.5) {
+                    requestDoubleJump(14);
+                }
+
+                // Рывок в воздухе (Air Dash) для гарантированного приземления на платформу
+                if (!onPlatform && !p.onGround && !p.airDashed && Math.abs(hDist) > 50 && p.vy > -1 && aiInternalState.dashCooldown <= 0) {
+                    if (hDist > 0) inp.right = true;
+                    else inp.left = true;
+                    inp.dash = true;
+                    aiInternalState.dashCooldown = 40;
                 }
             } else {
                 if (p.x > 90) inp.left = true;
@@ -421,15 +451,43 @@ function runAiCompanion(p) {
     // В) Режим подъема в L-режиме (L_CLIMB): паркур вверх по платформам 1..10
     if (boss.state.startsWith("L_CLIMB") || boss.phase === 2.5) {
         if (typeof platforms !== 'undefined' && platforms.length > 0) {
-            let nextPlat = platforms.find(pl => pl.y < p.y - 25 && pl.y > p.y - 180);
+            let curNum = currentPlat && currentPlat.num ? currentPlat.num : 0;
+            // Ищем следующую платформу по номеру (curNum + 1), или ближайшую выше по Y
+            let nextPlat = platforms.find(pl => pl.num === curNum + 1);
+            if (!nextPlat) {
+                let platsAbove = platforms.filter(pl => pl.y < p.y - 20);
+                if (platsAbove.length > 0) {
+                    platsAbove.sort((a, b) => b.y - a.y);
+                    nextPlat = platsAbove[0];
+                }
+            }
             if (nextPlat) {
                 let nCenterX = nextPlat.x + nextPlat.w / 2;
-                if (p.x < nCenterX - 15) inp.right = true;
-                else if (p.x > nCenterX + 15) inp.left = true;
-                if (aiInternalState.jumpCooldown <= 0 && p.vy >= -1) {
-                    requestJump(14);
-                    aiInternalState.jumpCooldown = 35;
+                let hDist = nCenterX - pCenterX;
+
+                // Движемся горизонтально к следующей платформе
+                if (hDist > 12) inp.right = true;
+                else if (hDist < -12) inp.left = true;
+
+                // Первый прыжок с платформы или земли
+                if ((onPlatform || p.onGround || p.y >= FLOOR - 55) && aiInternalState.jumpCooldown <= 0) {
+                    requestJump(15);
+                    aiInternalState.jumpCooldown = 30;
                 }
+
+                // Двойной прыжок со Световыми Крыльями (Light Wings / wings badge) на пике высоты
+                if (!onPlatform && !p.onGround && p.jumps < p.maxJumps && aiInternalState.doubleJumpDelay === 0 && p.vy >= -2.5) {
+                    requestDoubleJump(14);
+                }
+
+                // Рывок в воздухе (Air Dash) для преодоления большого расстояния между платформами 2, 3 и т.д.
+                if (!onPlatform && !p.onGround && !p.airDashed && Math.abs(hDist) > 50 && p.vy > -1 && aiInternalState.dashCooldown <= 0) {
+                    if (hDist > 0) inp.right = true;
+                    else inp.left = true;
+                    inp.dash = true;
+                    aiInternalState.dashCooldown = 40;
+                }
+
                 return inp;
             }
         }
@@ -532,6 +590,8 @@ function runAiCompanion(p) {
     if (boss.y < p.y - 45 && distX < 130 && aiInternalState.jumpCooldown <= 0 && (p.onGround || p.y >= FLOOR - 55)) {
         requestJump(14);
         aiInternalState.jumpCooldown = 45;
+    } else if (boss.y < p.y - 40 && distX < 140 && !p.onGround && !onPlatform && p.jumps < p.maxJumps && aiInternalState.doubleJumpDelay === 0 && p.vy >= -2) {
+        requestDoubleJump(14);
     }
 
     // --- 9. ATTACK & SPECIAL ABILITIES BY HERO TYPE ---

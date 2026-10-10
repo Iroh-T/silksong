@@ -30,8 +30,10 @@ function applyBadgesToPlayer(p, isP1, targetKey = null) {
     if (p.badges.includes('shield')) p.hasAegisShield = true;
     if (p.badges.includes('fish_scale')) { p.maxHp += 1; p.hp = p.maxHp; p.hasFishScale = true; }
     if (p.badges.includes('cracked_life')) { p.hasCrackedLife = true; p.crackedShieldBroken = false; }
-    if (p.badges.includes('lucky_charm')) p.hasLuckyCharm = true;
     if (p.badges.includes('light_amulet') && secretMode) { p.hasLightAmulet = true; p.lightAmuletBroken = false; p.lightAmuletStreak = 0; }
+    if (p.badges.includes('water_heal_team')) p.hasWaterHealTeam = true;
+    if (p.badges.includes('heal_reserve')) { p.hasHealReserve = true; p.healReserveUsed = false; p.healingWithReserve = false; }
+    if (p.badges.includes('saver')) p.hasSaverBadge = true;
     if (p.inputType === 'TOUCH') { p.dmgDealtMod += 0.5; p.isMobile = true; } else { p.isMobile = false; }
 }
 
@@ -50,6 +52,8 @@ function createPlayer(id, type, keysObj, inputType, startX) {
         hallucinationHits: 0, shadowStepCooldown: 0, delayedBleedArr: [],
         hasCrackedLife: false, crackedShieldBroken: false, crackedImmuneTimer: 0, hasLuckyCharm: false,
         hasLightAmulet: false, lightAmuletBroken: false, lightAmuletStreak: 0,
+        hasWaterHealTeam: false, hasHealReserve: false, healReserveUsed: false, healingWithReserve: false, hasSaverBadge: false,
+        gooLightAmuletTimer: 0,
         dodgeFlashTimer: 0, crackedBreakFlash: 0,
         dashBurstTimer: 0, dashDir: 0, airDashed: false, fireLungeTimer: 0, fireLungeHit: false,
         // v74 fields
@@ -269,6 +273,7 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         p.isHealing = false; 
         p.isAoEHealing = false; 
         p.isFieryHealing = false; 
+        p.healingWithReserve = false;
         p.healTimer = 0; 
         if (p.type === 'STAMINA') p.isCharging = false; 
         playSound('hitPlayer'); 
@@ -298,18 +303,20 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
 
 function recordHit(p) { 
     if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal) {
+        let hitsPerCharge = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
         sharedHealPoints = Math.min(MAX_HEAL_POINTS, sharedHealPoints + 1);
-        sharedHitCount = sharedHealPoints % 8;
-        sharedHeals = Math.floor(sharedHealPoints / 8);
-        if (sharedHealPoints % 8 === 0) {
+        sharedHitCount = sharedHealPoints % hitsPerCharge;
+        sharedHeals = Math.floor(sharedHealPoints / hitsPerCharge);
+        if (sharedHealPoints % hitsPerCharge === 0) {
             for (let pl of players) { 
                 if (pl.type === 'STAMINA' && !pl.isDowned) pl.stamina = Math.min(pl.maxStamina, pl.stamina + 1); 
             }
             playSound('leaf');
         }
     } else {
+        let reqHits = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
         sharedHitCount++; 
-        if (sharedHitCount >= 8) { 
+        if (sharedHitCount >= reqHits) { 
             sharedHitCount = 0; 
             sharedHeals = Math.min(maxSharedHeals, sharedHeals + 1); 
             for (let pl of players) { 
@@ -599,50 +606,105 @@ function updatePlayers() {
         if (!onPlatform && p.y + p.height >= FLOOR && !p.isUnderFloor) {
             if (abyssGooFloorActive && !abyssGooSolidified) {
                 // Пол залит черной густой жижей Бездны!
+                let hitsPerCharge = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
+
+                let triggerFallGoo = (targetP) => {
+                    targetP.invuln = 0; // Защита от урона не спасает от падения
+                    targetP.gooLightAmuletTimer = 0;
+                    takeDamage(targetP, 2, false, false, false, true); // 2 урона падения
+                    let respawnX = targetP.lastSafeX;
+                    let respawnY = targetP.lastSafeY;
+                    if (abyssGooFloorActive && !abyssGooSolidified && (respawnY >= FLOOR - 40 || !respawnY)) {
+                        if (typeof platforms !== 'undefined' && platforms.length > 0) {
+                            let bestPlat = platforms.reduce((closest, pl) => {
+                                return Math.abs((pl.x + pl.w / 2) - targetP.x) < Math.abs((closest.x + closest.w / 2) - targetP.x) ? pl : closest;
+                            }, platforms[0]);
+                            if (bestPlat) {
+                                respawnX = bestPlat.x + bestPlat.w / 2 - targetP.width / 2;
+                                respawnY = bestPlat.y - targetP.height;
+                            }
+                        }
+                    }
+                    targetP.x = respawnX || 380;
+                    targetP.y = respawnY || (FLOOR - 120);
+                    targetP.lastSafeX = targetP.x;
+                    targetP.lastSafeY = targetP.y;
+                    targetP.vx = 0;
+                    targetP.vy = 0;
+                    targetP.invuln = 70; // После падения дается время неуязвимости
+                    playSound('fall');
+                    triggerShake(12, 16);
+                    voidExplosions.push({ x: targetP.x + targetP.width/2, y: targetP.y + targetP.height/2, timer: 20, isWhite: true, r: 40 });
+                };
+
                 if (p.type === 'WATER' && p.stance === 'DEMON') {
-                    // Вода в демоническом режиме может плавать в жиже!
+                    // Вода в демоническом режиме плавает в жиже: тратит 1 очко из 8 каждые 0.4 сек (24 кадра)
                     p.y = FLOOR - p.height + 6;
                     p.vy = Math.min(1.5, p.vy * 0.75);
                     p.gooSwimTimer = (p.gooSwimTimer || 0) + 1;
-                    if (p.gooSwimTimer >= 45) { // 0.75 сек
+                    if (p.gooSwimTimer >= 24) { // 0.4 сек
                         p.gooSwimTimer = 0;
                         let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
-                        let hasPts = isLimited ? (sharedHealPoints > 0) : (sharedHeals > 0);
-                        if (hasPts) {
-                            if (isLimited) {
-                                sharedHealPoints = Math.max(0, sharedHealPoints - 8);
-                                sharedHeals = Math.floor(sharedHealPoints / 8);
-                                sharedHitCount = sharedHealPoints % 8;
+                        if (isLimited) {
+                            if (sharedHealPoints > 0) {
+                                sharedHealPoints = Math.max(0, sharedHealPoints - 1);
+                                sharedHeals = Math.floor(sharedHealPoints / hitsPerCharge);
+                                sharedHitCount = sharedHealPoints % hitsPerCharge;
+                                playSound('waterDrop');
+                                voidExplosions.push({ x: p.x + p.width/2, y: FLOOR - 6, timer: 15, isWhite: false, r: 18 });
                             } else {
-                                sharedHeals = Math.max(0, sharedHeals - 1);
+                                takeDamage(p, 0.5, false, false, false, true);
                             }
-                            playSound('waterDrop');
-                            voidExplosions.push({ x: p.x + p.width/2, y: FLOOR - 6, timer: 15, isWhite: false, r: 18 });
                         } else {
-                            // Хилы закончились: получает урон в жиже!
-                            takeDamage(p, 0.5, false, false, false, true);
+                            let totalHits = Math.floor(sharedHeals * hitsPerCharge + sharedHitCount);
+                            if (totalHits > 0) {
+                                totalHits--;
+                                sharedHeals = Math.floor(totalHits / hitsPerCharge);
+                                sharedHitCount = totalHits % hitsPerCharge;
+                                playSound('waterDrop');
+                                voidExplosions.push({ x: p.x + p.width/2, y: FLOOR - 6, timer: 15, isWhite: false, r: 18 });
+                            } else {
+                                // Хилы закончились: получает урон в жиже!
+                                takeDamage(p, 0.5, false, false, false, true);
+                            }
                         }
                     }
                     onFloor = true;
+                } else if (p.badges && p.badges.includes('light_amulet')) {
+                    // Амулет света: позволяет плавать в жиже 1.5 сек (90 кадров) без урона!
+                    p.y = FLOOR - p.height + 6;
+                    p.vy = Math.min(1.5, p.vy * 0.75);
+                    p.gooLightAmuletTimer = (p.gooLightAmuletTimer || 0) + 1;
+
+                    // Светящиеся искры света вокруг героя
+                    if (p.gooLightAmuletTimer % 5 === 0) {
+                        voidExplosions.push({
+                            x: p.x + p.width/2 + (Math.random() - 0.5) * 20,
+                            y: FLOOR - 4,
+                            timer: 14,
+                            isWhite: true,
+                            r: 10
+                        });
+                    }
+
+                    if (p.gooLightAmuletTimer >= 90) { // 1.5 секунды истекли: происходит падение!
+                        triggerFallGoo(p);
+                    } else {
+                        onFloor = true;
+                    }
                 } else {
-                    // Обычный герой падает в жижу: 2 урона падения и респавн на последнем безопасном месте!
-                    p.invuln = 0; // Защита от урона не спасает от падения
-                    takeDamage(p, 2, false, false, false, true); // 2 урона падения
-                    p.x = p.lastSafeX || 380;
-                    p.y = p.lastSafeY || (FLOOR - 120);
-                    p.vx = 0;
-                    p.vy = 0;
-                    p.invuln = 60; // После падения дается время неуязвимости (1 сек)
-                    playSound('fall');
-                    triggerShake(12, 16);
-                    voidExplosions.push({ x: p.x + p.width/2, y: p.y + p.height/2, timer: 20, isWhite: true, r: 40 });
+                    // Обычный герой падает в жижу: 2 урона падения и респавн на безопасной платформе!
+                    triggerFallGoo(p);
                 }
             } else {
+                p.gooLightAmuletTimer = 0;
                 p.y = FLOOR - p.height; p.vy = 0; onFloor = true;
                 if (!abyssGooFloorActive || abyssGooSolidified) {
                     p.lastSafeX = p.x; p.lastSafeY = p.y;
                 }
             }
+        } else {
+            p.gooLightAmuletTimer = 0;
         }
         p.onGround = (onFloor || onPlatform);
 
@@ -1092,9 +1154,18 @@ function updatePlayers() {
             if (p.type === 'STAMINA'){ p.isCharging = false; p.chargeTimer = 0; }
         } else {
             let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
+            let hitsPerCharge = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
             let healCost = (p.type === 'FIRE' && kUp) ? 1.5 : (p.isAoEHealing ? 1 : 1);
-            let pointCost = (p.type === 'FIRE' && kUp) ? 12 : 8;
+            let pointCost = (p.type === 'FIRE' && kUp) ? Math.round(hitsPerCharge * 1.5) : hitsPerCharge;
             let canAffordHeal = isLimited ? (sharedHealPoints >= pointCost) : (sharedHeals >= healCost);
+
+            // Резерв хила: синее деление используется ИСКЛЮЧИТЕЛЬНО для хила (A),
+            // только если нет заряда обычного зеленого хила, и только тем, кто экипировал знак!
+            let usingReserve = false;
+            if (!canAffordHeal && p.hasHealReserve && !p.healReserveUsed) {
+                canAffordHeal = true;
+                usingReserve = true;
+            }
 
             if (kHeal && !p.prevHealKey && !p.isHealing && !p.isParrying && canAffordHeal && p.overheatTimer<=0) {
                 let isAoE = (p.type === 'WATER' && p.stance !== 'DEMON' && numPlayers === 2 && kUp); 
@@ -1103,15 +1174,25 @@ function updatePlayers() {
                 let hasDownedAlly = players.some(pl => pl.isDowned);
                 if (isAoE) needsHeal = players.some(pl => pl.hp < pl.maxHp) || hasDownedAlly;
                 if (needsHeal || (p.type === 'STAMINA' && p.stamina < p.maxStamina) || hasDownedAlly) {
-                    p.isHealing = true; p.healTimer = 0; p.bleedTimer = 0; p.isAoEHealing = isAoE; p.isFieryHealing = isFiery; p.healCost = healCost; playSound('heal');
+                    p.isHealing = true; 
+                    p.healingWithReserve = usingReserve;
+                    p.healTimer = 0; 
+                    p.bleedTimer = 0; 
+                    p.isAoEHealing = isAoE; 
+                    p.isFieryHealing = isFiery; 
+                    p.healCost = healCost; 
+                    playSound('heal');
+                    if (usingReserve) {
+                        playSound('lightChime');
+                    }
                     if (p.hasLightAmulet && !p.lightAmuletBroken) {
                         p.hallucinationHits = 0; // Амулет света сбрасывает счетчик галлюцинаций сразу в момент начала хила!
                     }
-                    if (p.type === 'FIRE') {
+                    if (!usingReserve && p.type === 'FIRE') {
                         if (isLimited) {
                             sharedHealPoints -= pointCost;
-                            sharedHitCount = sharedHealPoints % 8;
-                            sharedHeals = Math.floor(sharedHealPoints / 8);
+                            sharedHitCount = sharedHealPoints % hitsPerCharge;
+                            sharedHeals = Math.floor(sharedHealPoints / hitsPerCharge);
                         } else {
                             sharedHeals -= healCost; 
                         }
@@ -1726,10 +1807,17 @@ function updatePlayers() {
                 p.vx = 0; p.vy = 0; p.healTimer++; 
                 let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
                 let consumeCompletedHeal = () => {
+                    if (p.healingWithReserve) {
+                        p.healReserveUsed = true;
+                        p.healingWithReserve = false;
+                        playSound('lightChime');
+                        return;
+                    }
+                    let hitsPerCharge = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
                     if (isLimited) {
-                        sharedHealPoints = Math.max(0, sharedHealPoints - 8);
-                        sharedHitCount = sharedHealPoints % 8;
-                        sharedHeals = Math.floor(sharedHealPoints / 8);
+                        sharedHealPoints = Math.max(0, sharedHealPoints - hitsPerCharge);
+                        sharedHitCount = sharedHealPoints % hitsPerCharge;
+                        sharedHeals = Math.floor(sharedHealPoints / hitsPerCharge);
                     } else {
                         sharedHeals--;
                     }
@@ -1759,7 +1847,19 @@ function updatePlayers() {
                         }
                         if (didRevive) playSound('lightChime');
 
+                        // Живительный прилив: успешный хил водного героя восстанавливает всей команде по +1 HP!
+                        if (p.hasWaterHealTeam && (p.type === 'WATER' || p.type === 'WATER_ROPE')) {
+                            for (let pl of players) {
+                                if (pl !== p && !pl.isDowned && pl.hp > 0) {
+                                    pl.hp = Math.min(pl.maxHp, pl.hp + 1);
+                                    voidExplosions.push({ x: pl.x + pl.width / 2, y: pl.y + pl.height / 2, timer: 20, isWhite: true, r: 35 });
+                                }
+                            }
+                            playSound('lightChime');
+                        }
+
                         p.isHealing = false; 
+                        p.healingWithReserve = false;
                         p.healTimer = 0; 
                         p.hallucinationHits = 0; 
                         teamHallucinationHits = 0;
@@ -1821,14 +1921,15 @@ function updatePlayers() {
                         else if (p.type === 'WATER_ROPE') {
                             p.hp = Math.min(p.maxHp, p.hp + 2.5);
                             consumeCompletedHeal();
+                            let reqHits = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
                             if (isLimited) {
                                 sharedHealPoints = Math.min(MAX_HEAL_POINTS, sharedHealPoints + 1);
-                                sharedHitCount = sharedHealPoints % 8;
-                                sharedHeals = Math.floor(sharedHealPoints / 8);
+                                sharedHitCount = sharedHealPoints % reqHits;
+                                sharedHeals = Math.floor(sharedHealPoints / reqHits);
                             } else {
                                 sharedHitCount++;
-                                if (sharedHitCount >= 8) {
-                                    sharedHitCount -= 8;
+                                if (sharedHitCount >= reqHits) {
+                                    sharedHitCount -= reqHits;
                                     sharedHeals = Math.min(maxSharedHeals, sharedHeals + 1);
                                 }
                             }
@@ -1848,7 +1949,18 @@ function updatePlayers() {
                             }
                         }
 
-                        p.isHealing = false; p.isAoEHealing = false; p.isFieryHealing = false; p.healTimer = 0;
+                        // Живительный прилив: успешный хил водного героя восстанавливает всей команде по +1 HP!
+                        if (p.hasWaterHealTeam && (p.type === 'WATER' || p.type === 'WATER_ROPE')) {
+                            for (let pl of players) {
+                                if (pl !== p && !pl.isDowned && pl.hp > 0) {
+                                    pl.hp = Math.min(pl.maxHp, pl.hp + 1);
+                                    voidExplosions.push({ x: pl.x + pl.width / 2, y: pl.y + pl.height / 2, timer: 20, isWhite: true, r: 35 });
+                                }
+                            }
+                            playSound('lightChime');
+                        }
+
+                        p.isHealing = false; p.isAoEHealing = false; p.isFieryHealing = false; p.healingWithReserve = false; p.healTimer = 0;
                         p.hallucinationHits = 0;
                         teamHallucinationHits = 0;
                         for (let pl of players) pl.hallucinationHits = 0;

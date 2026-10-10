@@ -193,19 +193,19 @@ function buildAndStartGame() {
         if (players.length === 1) {
             boss.maxHp = secretMode ? 60 : 25; 
             phase2Hp = secretMode ? 39 : 18; 
-            phase3Hp = secretMode ? 20 : 10; 
+            phase3Hp = secretMode ? 35 : 18; // Увеличено в 1.75 раз (было 20 / 10)
             maxSharedHeals = 3;
         } else if (players.length === 2) {
             // 2 fighters (2 humans OR 1 human + 1 AI)
             boss.maxHp = secretMode ? 100 : 50; 
             phase2Hp = secretMode ? 66 : 36; 
-            phase3Hp = secretMode ? 33 : 20; 
+            phase3Hp = secretMode ? 58 : 35; // Увеличено в 1.75 раз (было 33 / 20)
             maxSharedHeals = 4;
         } else {
             // 3 fighters (2 humans + 1 AI): Boss has 20% more HP than duo, 5 heal charges
             boss.maxHp = Math.round((secretMode ? 100 : 50) * 1.2); 
             phase2Hp = Math.round(boss.maxHp * 0.66); 
-            phase3Hp = Math.round(boss.maxHp * 0.33); 
+            phase3Hp = Math.round(boss.maxHp * 0.33 * 1.75); // Увеличено в 1.75 раз
             maxSharedHeals = 5;
         }
 
@@ -998,11 +998,34 @@ function updateProjectiles() {
             triggerVibration('l_mode_final');
             playSound('break');
             playSound('waterSplash');
+            // Обсидиановые боевые платформы по всей арене (2500 px):
             platforms = [
-                { x: 180, y: FLOOR - 90, w: 140, h: 12, isObsidian: true },
-                { x: 420, y: FLOOR - 140, w: 160, h: 12, isObsidian: true },
-                { x: 700, y: FLOOR - 95, w: 140, h: 12, isObsidian: true }
+                { x: 140,  y: FLOOR - 95,  w: 190, h: 14, isObsidian: true },
+                { x: 430,  y: FLOOR - 150, w: 190, h: 14, isObsidian: true },
+                { x: 720,  y: FLOOR - 100, w: 190, h: 14, isObsidian: true },
+                { x: 1010, y: FLOOR - 155, w: 210, h: 14, isObsidian: true },
+                { x: 1310, y: FLOOR - 100, w: 200, h: 14, isObsidian: true },
+                { x: 1600, y: FLOOR - 150, w: 210, h: 14, isObsidian: true },
+                { x: 1900, y: FLOOR - 95,  w: 200, h: 14, isObsidian: true },
+                { x: 2190, y: FLOOR - 145, w: 200, h: 14, isObsidian: true }
             ];
+            // Мгновенное спасение игроков на платформы, чтобы никто не оказался в жиже!
+            for (let p of players) {
+                if (p.hp > 0 && !p.isDowned) {
+                    let bestPlat = platforms.reduce((closest, pl) => {
+                        return Math.abs((pl.x + pl.w / 2) - p.x) < Math.abs((closest.x + closest.w / 2) - p.x) ? pl : closest;
+                    }, platforms[0]);
+                    if (bestPlat) {
+                        p.x = bestPlat.x + bestPlat.w / 2 - p.width / 2;
+                        p.y = bestPlat.y - p.height;
+                        p.vx = 0;
+                        p.vy = 0;
+                        p.lastSafeX = p.x;
+                        p.lastSafeY = p.y;
+                        p.invuln = 180; // 3 секунды честной неуязвимости
+                    }
+                }
+            }
             for (let k = 0; k < 35; k++) {
                 voidExplosions.push({
                     x: ARENA_W - 40,
@@ -1013,6 +1036,25 @@ function updateProjectiles() {
                     isWhite: false,
                     isGoo: true
                 });
+            }
+        }
+        if (gooCinematicTimer === 0) {
+            // Завершение показа прорыва Бездны: еще раз проверяем, что все игроки на платформах
+            for (let p of players) {
+                if (p.hp > 0 && !p.isDowned && p.y >= FLOOR - 40) {
+                    let bestPlat = platforms.reduce((closest, pl) => {
+                        return Math.abs((pl.x + pl.w / 2) - p.x) < Math.abs((closest.x + closest.w / 2) - p.x) ? pl : closest;
+                    }, platforms[0]);
+                    if (bestPlat) {
+                        p.x = bestPlat.x + bestPlat.w / 2 - p.width / 2;
+                        p.y = bestPlat.y - p.height;
+                        p.vx = 0;
+                        p.vy = 0;
+                        p.lastSafeX = p.x;
+                        p.lastSafeY = p.y;
+                        p.invuln = 90;
+                    }
+                }
             }
         }
     }
@@ -2970,9 +3012,36 @@ function drawMasks() {
         let healY = 25 + (players.length * 35) + 15;
         ctx.fillStyle = "lime"; ctx.font = "14px Arial"; ctx.fillText("Заряды исцеления:", 20, healY);
         let hasGen = typeof players !== 'undefined' && players.some(p => p.badges && p.badges.includes('generator'));
+        
+        // Резерв хила (Синие деления в самом начале)
+        let reservePlayers = (typeof players !== 'undefined' && players) ? players.filter(p => p.badges && p.badges.includes('heal_reserve')) : [];
+        let startX = 155;
+        for (let r = 0; r < reservePlayers.length; r++) {
+            let rp = reservePlayers[r];
+            let rx = startX + r * 16;
+            let ry = healY - 5;
+            ctx.save();
+            ctx.beginPath(); ctx.moveTo(rx, ry - 6); ctx.lineTo(rx + 6, ry); ctx.lineTo(rx, ry + 6); ctx.lineTo(rx - 6, ry); ctx.closePath();
+            if (!rp.healReserveUsed) {
+                ctx.fillStyle = "#00e5ff";
+                ctx.shadowColor = "#00e5ff";
+                ctx.shadowBlur = rp.healingWithReserve ? 14 : 7;
+                ctx.fill();
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 1.2;
+                ctx.stroke();
+            } else {
+                ctx.strokeStyle = "rgba(0, 229, 255, 0.35)";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        let greenStartX = startX + reservePlayers.length * 16;
         let genTargetIdx = Math.floor(sharedHeals);
         for (let j = 0; j < maxSharedHeals; j++) {
-            let hx = 150 + j * 15; let hy = healY - 5;
+            let hx = greenStartX + j * 15; let hy = healY - 5;
             if (j < Math.floor(sharedHeals)) { 
                 ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
                 ctx.fillStyle = "lime"; ctx.fill(); 
@@ -3013,7 +3082,8 @@ function drawMasks() {
             }
         }
         
-        ctx.fillStyle = "cyan"; ctx.font = "14px Arial"; ctx.fillText(`Удары для хила: ${sharedHitCount}/8`, 20, healY + 25);
+        let reqHits = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
+        ctx.fillStyle = "cyan"; ctx.font = "14px Arial"; ctx.fillText(`Удары для хила: ${sharedHitCount}/${reqHits}`, 20, healY + 25);
     }
 }
 

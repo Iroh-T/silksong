@@ -896,14 +896,15 @@ function updateBoss() {
                 playSound('hitBoss');
                 triggerShake(4, 8);
                 let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
+                let reqHits = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
                 if (isLimited) {
                     sharedHealPoints = Math.min(MAX_HEAL_POINTS, sharedHealPoints + 1);
-                    sharedHitCount = sharedHealPoints % 8;
-                    sharedHeals = Math.floor(sharedHealPoints / 8);
+                    sharedHitCount = sharedHealPoints % reqHits;
+                    sharedHeals = Math.floor(sharedHealPoints / reqHits);
                 } else {
                     sharedHitCount++;
-                    if (sharedHitCount >= 8) {
-                        sharedHitCount -= 8;
+                    if (sharedHitCount >= reqHits) {
+                        sharedHitCount -= reqHits;
                         sharedHeals = Math.min(maxSharedHeals, sharedHeals + 1);
                     }
                 }
@@ -1827,12 +1828,22 @@ function updateBoss() {
                 break;
             case "HIDDEN_PAUSE":
                 boss.vx = 0; boss.vy = 0; boss.y = -1000;
-                if (boss.stateTimer <= 0) {
+                boss.invuln = 99999;
+                if (boss.stateTimer <= 0 && (typeof gooCinematicTimer === 'undefined' || gooCinematicTimer <= 0)) {
                     let targetP = getNearestPlayer(boss.x);
                     let spawnNearX = targetP ? targetP.x + (Math.random() < 0.5 ? -140 : 140) : (boss.climbCenterX || ARENA_W/2);
-                    boss.x = Math.max(60, Math.min(ARENA_W - 80, spawnNearX));
-                    boss.y = FLOOR - boss.height;
-                    boss.state = "IDLE"; boss.stateTimer = 20; boss.color = "#e6c800";
+                    boss.x = Math.max(80, Math.min(ARENA_W - 120, spawnNearX));
+                    if (typeof abyssGooFloorActive !== 'undefined' && abyssGooFloorActive && !abyssGooSolidified && typeof platforms !== 'undefined' && platforms.length > 0) {
+                        let spawnPlat = platforms.find(pl => Math.abs((pl.x + pl.w/2) - boss.x) < 240) || platforms[0];
+                        boss.x = spawnPlat.x + spawnPlat.w/2 - boss.width/2;
+                        boss.y = spawnPlat.y - boss.height;
+                    } else {
+                        boss.y = FLOOR - boss.height;
+                    }
+                    boss.state = "IDLE"; 
+                    boss.stateTimer = 50; // Спокойное окно перед следующей атакой
+                    boss.color = "#e6c800";
+                    boss.invuln = 60;
                     applyPhysicsPushToLeaves(boss.x + 15, boss.y + 25, 15);
                 }
                 break;
