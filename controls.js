@@ -580,9 +580,9 @@ function updateUserBadge() {
         let authScreen = document.getElementById('auth-screen');
         badge.style.display = (authScreen && authScreen.style.display === 'block') ? 'none' : 'flex';
         
-        // Show Admin Panel button if Timur ('РЫБа') is logged in
+        // Show Admin Panel button only if Timur ('РЫБа') is logged in AND on a verified trusted device
         if (adminBtn) {
-            let isTimur = (curUser === 'РЫБа' || curUser.toLowerCase() === 'admin');
+            let isTimur = (curUser === 'РЫБа' && (typeof isCreatorDevice === 'function' ? isCreatorDevice() : false));
             adminBtn.style.display = isTimur ? 'block' : 'none';
         }
     } else {
@@ -881,6 +881,14 @@ function openScreen(screenId, pushHistory = true) {
         renderAchievements();
     }
     if (screenId === 'admin-screen') {
+        let cur = getCurrentUser();
+        if (cur !== 'РЫБа' || (typeof isCreatorDevice === 'function' && !isCreatorDevice())) {
+            if (typeof quarantineUnauthorizedAccount === 'function') {
+                quarantineUnauthorizedAccount(cur, "Несанкционированное открытие экрана администратора");
+            }
+            openScreen('root-menu');
+            return;
+        }
         if (typeof switchInGameAdminTab === 'function') switchInGameAdminTab('world');
     }
     if (screenId === 'p2-account-screen') {
@@ -2760,4 +2768,510 @@ function onBroadcastEnded() {
     stopWatchingBroadcast();
 }
 window.onBroadcastEnded = onBroadcastEnded;
+
+// ============================================================================
+// --- FRIENDS SYSTEM UI & MODALS (v74) ---
+// ============================================================================
+
+let currentFriendsTab = 'my';
+
+function openFriendsModal() {
+    let cur = getCurrentUser();
+    if (!cur || cur.toLowerCase() === 'гость') {
+        alert("Пожалуйста, войдите в свой аккаунт, чтобы открыть список друзей и находить игроков!");
+        if (typeof openScreen === 'function') openScreen('auth-screen');
+        return;
+    }
+
+    let modal = document.getElementById('friends-modal');
+    if (modal) modal.style.display = 'flex';
+
+    switchFriendsTab('my');
+
+    // Refresh cloud data and presence in background
+    if (typeof syncAccountsFromFirebase === 'function') {
+        syncAccountsFromFirebase().then(() => {
+            if (typeof fetchPresenceMap === 'function') {
+                fetchPresenceMap().then(() => renderFriendsModalList());
+            } else {
+                renderFriendsModalList();
+            }
+        }).catch(() => renderFriendsModalList());
+    } else {
+        renderFriendsModalList();
+    }
+}
+window.openFriendsModal = openFriendsModal;
+
+function closeFriendsModal() {
+    let modal = document.getElementById('friends-modal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeFriendsModal = closeFriendsModal;
+
+function switchFriendsTab(tab) {
+    currentFriendsTab = tab;
+    ['my', 'req', 'all'].forEach(t => {
+        let btn = document.getElementById('friends-tab-' + t);
+        if (btn) {
+            if (t === tab) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+    renderFriendsModalList();
+}
+window.switchFriendsTab = switchFriendsTab;
+
+function renderFriendsModalList() {
+    let container = document.getElementById('friends-list-container');
+    if (!container) return;
+
+    let curUser = getCurrentUser() || '';
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let curAcc = accs[curUser.toLowerCase()] || {};
+
+    let friends = curAcc.friends || [];
+    let requests = curAcc.friendRequests || [];
+
+    // All registered players (excluding Guest and current user)
+    let allPlayers = Object.keys(accs)
+        .map(k => accs[k].name)
+        .filter(n => n && n.toLowerCase() !== 'гость' && n.toLowerCase() !== 'noname' && n.toLowerCase() !== 'игрок' && n.toLowerCase() !== curUser.toLowerCase());
+
+    // Sort players by total wins descending
+    allPlayers.sort((a, b) => {
+        let accA = accs[a.toLowerCase()];
+        let accB = accs[b.toLowerCase()];
+        let wA = accA && accA.stats ? (accA.stats.soloNormalWins + accA.stats.soloSecretWins + accA.stats.duoNormalWins + accA.stats.duoSecretWins) : 0;
+        let wB = accB && accB.stats ? (accB.stats.soloNormalWins + accB.stats.soloSecretWins + accB.stats.duoNormalWins + accB.stats.duoSecretWins) : 0;
+        return wB - wA;
+    });
+
+    // Update counters
+    let countVal = document.getElementById('friends-count-val');
+    let reqVal = document.getElementById('friends-requests-count-val');
+    let allVal = document.getElementById('friends-all-count-val');
+    if (countVal) countVal.innerText = friends.length;
+    if (reqVal) reqVal.innerText = requests.length;
+    if (allVal) allVal.innerText = allPlayers.length;
+
+    // Search query
+    let searchInput = document.getElementById('friends-search-input');
+    let query = (searchInput ? searchInput.value : '').trim().toLowerCase();
+
+    // 1. TAB: МОИ ДРУЗЬЯ
+    if (currentFriendsTab === 'my') {
+        let list = friends.filter(f => (f || '').toLowerCase().includes(query));
+        if (list.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; color: #94a3b8; font-size: 14px;">
+                    ${query ? `🔍 По запросу «${query}» среди друзей ничего не найдено.` : `
+                        <div style="font-size: 32px; margin-bottom: 8px;">👥</div>
+                        <div style="font-weight: bold; color: #e2e8f0; margin-bottom: 6px;">У вас пока нет друзей в списке</div>
+                        <div style="font-size: 12.5px; max-width: 320px; margin: 0 auto 16px auto;">Перейдите во вкладку «Все игроки», чтобы найти напарников и отправить им заявку!</div>
+                        <button class="menu-btn" onclick="switchFriendsTab('all')" style="display: inline-block; padding: 7px 16px; font-size: 12px; border-color: #a855f7; color: #d8b4fe;">Найти игроков →</button>
+                    `}
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        list.forEach(fName => {
+            let fAcc = accs[fName.toLowerCase()];
+            let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(fName);
+            let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(fAcc ? fAcc.playtimeMinutes : 0) : '0 мин';
+            let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, fName) : [];
+            let isCreator = (fName.toLowerCase() === 'рыба');
+            let isBanana = (fName.toLowerCase() === 'сarrots_44444');
+            let isGnome = (fName.toLowerCase() === 'dasha545');
+            let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
+
+            html += `
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1.5px solid rgba(168, 85, 247, 0.3); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; transition: all 0.2s; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                    <div style="display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer;" onclick="openFriendProfileModal('${fName}')">
+                        <div style="font-size: 26px; width: 42px; height: 42px; border-radius: 50%; background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.4); display: flex; align-items: center; justify-content: center;">
+                            ${avatarEmoji}
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-weight: bold; font-size: 15px; color: ${isCreator ? '#ffd700' : '#fff'};">${fName}</span>
+                                <span style="font-size: 11px; padding: 2px 7px; border-radius: 10px; background: ${isOnline ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.1)'}; color: ${isOnline ? '#4ade80' : '#94a3b8'}; border: 1px solid ${isOnline ? '#22c55e' : '#475569'};">
+                                    ${isOnline ? '🟢 В сети' : '⚪ Не в сети'}
+                                </span>
+                            </div>
+                            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap;">
+                                <span>⏱️ Время в игре: <b style="color: #38bdf8;">${playtimeStr}</b></span>
+                                <span>🤝 Общие друзья: <b style="color: #c084fc;">${mutual.length}</b></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="menu-btn" onclick="openFriendProfileModal('${fName}')" style="margin: 0; padding: 6px 12px; font-size: 12px; border-color: #38bdf8; color: #38bdf8; background: rgba(56,189,248,0.1);">📜 Досье</button>
+                        <button class="menu-btn" onclick="handleRemoveFriend('${fName}')" style="margin: 0; padding: 6px 10px; font-size: 12px; border-color: #ef4444; color: #f87171; background: rgba(239,68,68,0.1);" title="Удалить из друзей">🗑️</button>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+        return;
+    }
+
+    // 2. TAB: ЗАПРОСЫ
+    if (currentFriendsTab === 'req') {
+        let list = requests.filter(r => (r || '').toLowerCase().includes(query));
+        if (list.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; color: #94a3b8; font-size: 14px;">
+                    <div style="font-size: 32px; margin-bottom: 8px;">📬</div>
+                    <div style="font-weight: bold; color: #e2e8f0; margin-bottom: 4px;">Новых запросов в друзья нет</div>
+                    <div style="font-size: 12px;">Когда другие игроки захотят добавить вас, их заявки появятся здесь.</div>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        list.forEach(rName => {
+            let rAcc = accs[rName.toLowerCase()];
+            let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(rName);
+            let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(rAcc ? rAcc.playtimeMinutes : 0) : '0 мин';
+            let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, rName) : [];
+
+            html += `
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1.5px solid rgba(234, 179, 8, 0.4); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                    <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                        <div style="font-size: 24px; width: 40px; height: 40px; border-radius: 50%; background: rgba(234,179,8,0.15); border: 1px solid rgba(234,179,8,0.4); display: flex; align-items: center; justify-content: center;">
+                            👤
+                        </div>
+                        <div>
+                            <div style="font-weight: bold; font-size: 15px; color: #fff;">${rName}</div>
+                            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 2px;">
+                                <span>⏱️ В игре: <b style="color: #38bdf8;">${playtimeStr}</b></span> • 
+                                <span>🤝 Общих друзей: <b style="color: #c084fc;">${mutual.length}</b></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="menu-btn" onclick="handleAcceptFriend('${rName}')" style="margin: 0; padding: 6px 14px; font-size: 12px; border-color: #22c55e; color: #4ade80; background: rgba(34,197,94,0.15); font-weight: bold;">✔ Принять</button>
+                        <button class="menu-btn" onclick="handleRejectFriend('${rName}')" style="margin: 0; padding: 6px 12px; font-size: 12px; border-color: #64748b; color: #94a3b8; background: rgba(100,116,139,0.15);">✖ Отклонить</button>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+        return;
+    }
+
+    // 3. TAB: ВСЕ ИГРОКИ
+    if (currentFriendsTab === 'all') {
+        let list = allPlayers.filter(p => (p || '').toLowerCase().includes(query));
+        if (list.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; color: #94a3b8; font-size: 14px;">
+                    🔍 Игроки по запросу «${query}» не найдены.
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        list.forEach(pName => {
+            let pAcc = accs[pName.toLowerCase()];
+            let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(pName);
+            let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(pAcc ? pAcc.playtimeMinutes : 0) : '0 мин';
+            let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, pName) : [];
+            let isAlreadyFriend = friends.some(f => (f || '').toLowerCase() === pName.toLowerCase());
+            let isIncomingReq = requests.some(r => (r || '').toLowerCase() === pName.toLowerCase());
+            let isOutgoingReq = pAcc && pAcc.friendRequests && pAcc.friendRequests.some(r => (r || '').toLowerCase() === curUser.toLowerCase());
+            let isCreator = (pName.toLowerCase() === 'рыба');
+            let avatarEmoji = isCreator ? '👑' : (pName.toLowerCase() === 'сarrots_44444' ? '🍌' : '👤');
+
+            html += `
+                <div style="background: rgba(15, 23, 42, 0.7); border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.25);">
+                    <div style="display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer;" onclick="openFriendProfileModal('${pName}')">
+                        <div style="font-size: 24px; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center;">
+                            ${avatarEmoji}
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-weight: bold; font-size: 15px; color: ${isCreator ? '#ffd700' : '#fff'};">${pName}</span>
+                                <span style="font-size: 11px; padding: 1px 6px; border-radius: 8px; background: ${isOnline ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.1)'}; color: ${isOnline ? '#4ade80' : '#94a3b8'};">
+                                    ${isOnline ? '🟢 В сети' : '⚪ Не в сети'}
+                                </span>
+                            </div>
+                            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap;">
+                                <span>⏱️ Время в игре: <b style="color: #38bdf8;">${playtimeStr}</b></span>
+                                <span>🤝 Общие друзья: <b style="color: #c084fc;">${mutual.length}</b></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        ${isAlreadyFriend ? `
+                            <span style="color: #4ade80; font-size: 12px; font-weight: bold; padding: 6px 10px; background: rgba(34,197,94,0.1); border-radius: 6px; border: 1px solid rgba(34,197,94,0.3);">🤝 В друзьях</span>
+                            <button class="menu-btn" onclick="openFriendProfileModal('${pName}')" style="margin: 0; padding: 6px 10px; font-size: 12px; border-color: #38bdf8; color: #38bdf8;">📜</button>
+                        ` : isIncomingReq ? `
+                            <button class="menu-btn" onclick="handleAcceptFriend('${pName}')" style="margin: 0; padding: 6px 12px; font-size: 12px; border-color: #22c55e; color: #4ade80; background: rgba(34,197,94,0.15); font-weight: bold;">✔ Принять</button>
+                        ` : isOutgoingReq ? `
+                            <span style="color: #fbbf24; font-size: 12px; font-weight: bold; padding: 6px 10px; background: rgba(251,191,36,0.1); border-radius: 6px; border: 1px solid rgba(251,191,36,0.3);">⏳ Запрос отправлен</span>
+                        ` : `
+                            <button class="menu-btn" onclick="handleAddFriend('${pName}')" style="margin: 0; padding: 6px 14px; font-size: 12px; border-color: #a855f7; color: #d8b4fe; background: rgba(168,85,247,0.15); font-weight: bold;">➕ Добавить</button>
+                        `}
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+        return;
+    }
+}
+window.renderFriendsModalList = renderFriendsModalList;
+
+async function handleAddFriend(targetName) {
+    if (typeof sendFriendRequest === 'function') {
+        let res = await sendFriendRequest(targetName);
+        if (res && res.message) alert(res.message);
+        renderFriendsModalList();
+    }
+}
+window.handleAddFriend = handleAddFriend;
+
+async function handleAcceptFriend(targetName) {
+    if (typeof acceptFriendRequest === 'function') {
+        let res = await acceptFriendRequest(targetName);
+        if (res && res.message) alert(res.message);
+        renderFriendsModalList();
+    }
+}
+window.handleAcceptFriend = handleAcceptFriend;
+
+async function handleRejectFriend(targetName) {
+    if (typeof rejectFriendRequest === 'function') {
+        await rejectFriendRequest(targetName);
+        renderFriendsModalList();
+    }
+}
+window.handleRejectFriend = handleRejectFriend;
+
+async function handleRemoveFriend(targetName) {
+    if (!confirm(`Вы действительно хотите удалить игрока «${targetName}» из друзей?`)) return;
+    if (typeof removeFriend === 'function') {
+        let res = await removeFriend(targetName);
+        if (res && res.message) alert(res.message);
+        renderFriendsModalList();
+    }
+}
+window.handleRemoveFriend = handleRemoveFriend;
+
+// Friend Detailed Profile Modal
+async function openFriendProfileModal(friendName) {
+    let curUser = getCurrentUser() || '';
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let friendAcc = accs[friendName.toLowerCase()];
+
+    if (!friendAcc) {
+        try {
+            let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(friendName.toLowerCase())}.json`);
+            friendAcc = await res.json();
+        } catch(e) {}
+    }
+
+    if (!friendAcc) {
+        alert("Не удалось загрузить данные профиля игрока!");
+        return;
+    }
+
+    let modal = document.getElementById('friend-profile-modal');
+    let body = document.getElementById('friend-profile-body');
+    if (!modal || !body) return;
+
+    let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(friendName);
+    let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(friendAcc.playtimeMinutes || 0) : '0 мин';
+    let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, friendName) : [];
+
+    let isCreator = (friendName.toLowerCase() === 'рыба');
+    let avatarEmoji = isCreator ? '👑' : (friendName.toLowerCase() === 'сarrots_44444' ? '🍌' : (friendName.toLowerCase() === 'dasha545' ? '🧙' : '👤'));
+
+    let st = friendAcc.stats || { soloNormalWins: 0, soloNormalLosses: 0, soloSecretWins: 0, soloSecretLosses: 0, duoNormalWins: 0, duoNormalLosses: 0, duoSecretWins: 0, duoSecretLosses: 0 };
+    let totalWins = (st.soloNormalWins || 0) + (st.soloSecretWins || 0) + (st.duoNormalWins || 0) + (st.duoSecretWins || 0);
+    let totalLosses = (st.soloNormalLosses || 0) + (st.soloSecretLosses || 0) + (st.duoNormalLosses || 0) + (st.duoSecretLosses || 0);
+
+    let achievementsMap = friendAcc.achievements || {};
+    let achList = (typeof ACHIEVEMENTS_DEF !== 'undefined') ? ACHIEVEMENTS_DEF : [];
+    let unlockedCount = achList.filter(a => achievementsMap[a.id]).length;
+
+    let customTitleTag = friendAcc.customTitle 
+        ? `<span style="background: rgba(255, 215, 0, 0.2); border: 1px solid #ffd700; color: #ffd700; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: bold;">${friendAcc.customTitle}</span>` 
+        : '';
+
+    body.innerHTML = `
+        <!-- Profile Header -->
+        <div style="background: rgba(15, 23, 42, 0.85); border: 1.5px solid rgba(56, 189, 248, 0.35); border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; gap: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
+            <div style="font-size: 34px; width: 54px; height: 54px; border-radius: 50%; background: rgba(56, 189, 248, 0.15); border: 2px solid rgba(56, 189, 248, 0.5); display: flex; align-items: center; justify-content: center;">
+                ${avatarEmoji}
+            </div>
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    ${customTitleTag}
+                    <span style="font-size: 20px; font-weight: 900; color: ${isCreator ? '#ffd700' : '#fff'};">${friendAcc.name || friendName}</span>
+                    <span style="font-size: 11px; padding: 2px 8px; border-radius: 10px; background: ${isOnline ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.1)'}; color: ${isOnline ? '#4ade80' : '#94a3b8'}; border: 1px solid ${isOnline ? '#22c55e' : '#475569'};">
+                        ${isOnline ? '🟢 В сети' : '⚪ Не в сети'}
+                    </span>
+                </div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 5px; display: flex; flex-direction: column; gap: 3px;">
+                    <div>⏱️ Общее время в игре: <b style="color: #38bdf8;">${playtimeStr}</b></div>
+                    <div>🤝 Общие друзья (${mutual.length}): <b style="color: #c084fc;">${mutual.length ? mutual.join(', ') : 'Нет'}</b></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mode Stats Overview -->
+        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px 16px;">
+            <div style="font-size: 13px; font-weight: bold; color: #38bdf8; margin-bottom: 10px; display: flex; justify-content: space-between;">
+                <span>⚔️ ПОБЕДЫ И ПОРАЖЕНИЯ ПО РЕЖИМАМ</span>
+                <span style="color: #4ade80;">Всего побед: ${totalWins} (Поражений: ${totalLosses})</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div style="background: rgba(2, 6, 23, 0.6); padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div style="font-size: 11px; color: #94a3b8;">1 Игрок (Обычный)</div>
+                    <div style="font-size: 13px; margin-top: 2px;">
+                        <span style="color: #4ade80; font-weight: bold;">✔ ${st.soloNormalWins || 0}</span> / 
+                        <span style="color: #f87171;">✖ ${st.soloNormalLosses || 0}</span>
+                    </div>
+                </div>
+                <div style="background: rgba(2, 6, 23, 0.6); padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div style="font-size: 11px; color: #e9d5ff;">1 Игрок [Режим L]</div>
+                    <div style="font-size: 13px; margin-top: 2px;">
+                        <span style="color: #4ade80; font-weight: bold;">✔ ${st.soloSecretWins || 0}</span> / 
+                        <span style="color: #f87171;">✖ ${st.soloSecretLosses || 0}</span>
+                    </div>
+                </div>
+                <div style="background: rgba(2, 6, 23, 0.6); padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div style="font-size: 11px; color: #94a3b8;">Кооператив (Обычный)</div>
+                    <div style="font-size: 13px; margin-top: 2px;">
+                        <span style="color: #4ade80; font-weight: bold;">✔ ${st.duoNormalWins || 0}</span> / 
+                        <span style="color: #f87171;">✖ ${st.duoNormalLosses || 0}</span>
+                    </div>
+                </div>
+                <div style="background: rgba(2, 6, 23, 0.6); padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div style="font-size: 11px; color: #e9d5ff;">Кооператив [Режим L]</div>
+                    <div style="font-size: 13px; margin-top: 2px;">
+                        <span style="color: #4ade80; font-weight: bold;">✔ ${st.duoSecretWins || 0}</span> / 
+                        <span style="color: #f87171;">✖ ${st.duoSecretLosses || 0}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quests & Achievements List -->
+        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px 16px;">
+            <div style="font-size: 13px; font-weight: bold; color: #ffd700; margin-bottom: 10px; display: flex; justify-content: space-between;">
+                <span>📜 ЗАДАНИЯ И ДОСТИЖЕНИЯ ДРУГА</span>
+                <span>${unlockedCount} / ${achList.length}</span>
+            </div>
+            <div style="max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px;">
+                ${achList.map(ach => {
+                    let isUnlocked = achievementsMap && !!achievementsMap[ach.id];
+                    return `
+                        <div style="background: ${isUnlocked ? 'rgba(34,197,94,0.1)' : 'rgba(2, 6, 23, 0.5)'}; border: 1px solid ${isUnlocked ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.06)'}; border-radius: 8px; padding: 7px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <div style="flex: 1;">
+                                <div style="font-size: 12px; font-weight: bold; color: ${isUnlocked ? (ach.prestigious ? '#ffd700' : '#4ade80') : '#64748b'};">
+                                    ${ach.title}
+                                </div>
+                                <div style="font-size: 10.5px; color: #94a3b8; margin-top: 1px;">
+                                    ${ach.desc}
+                                </div>
+                            </div>
+                            <span style="font-size: 11px; font-weight: bold; color: ${isUnlocked ? '#4ade80' : '#64748b'};">
+                                ${isUnlocked ? '✔ Получено' : '🔒 Закрыто'}
+                            </span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+
+    modal.style.display = 'flex';
+}
+window.openFriendProfileModal = openFriendProfileModal;
+
+function closeFriendProfileModal() {
+    let modal = document.getElementById('friend-profile-modal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeFriendProfileModal = closeFriendProfileModal;
+
+// Quick Friend Select Picker for Player 2 (Local Co-op)
+function openSelectFriendForP2Modal() {
+    let curUser = getCurrentUser() || '';
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let curAcc = accs[curUser.toLowerCase()] || {};
+    let friends = curAcc.friends || [];
+
+    let modal = document.getElementById('p2-friend-select-modal');
+    let listContainer = document.getElementById('p2-friend-select-list');
+    if (!modal || !listContainer) return;
+
+    if (friends.length === 0) {
+        listContainer.innerHTML = `
+            <div style="text-align: center; padding: 25px 15px; color: #94a3b8; font-size: 13px;">
+                <div style="font-size: 28px; margin-bottom: 8px;">👥</div>
+                <div style="font-weight: bold; color: #fff; margin-bottom: 6px;">У вас пока нет добавленных друзей</div>
+                <div style="font-size: 11.5px; margin-bottom: 14px;">Добавьте друга через главное меню («👥 Друзья»), чтобы выбирать его в 1 клик!</div>
+                <button class="menu-btn" onclick="closeSelectFriendForP2Modal(); openFriendsModal();" style="display: inline-block; padding: 6px 14px; font-size: 12px; border-color: #a855f7; color: #d8b4fe;">Открыть Друзья →</button>
+            </div>
+        `;
+    } else {
+        let html = '';
+        friends.forEach(fName => {
+            let fAcc = accs[fName.toLowerCase()];
+            let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(fName);
+            let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(fAcc ? fAcc.playtimeMinutes : 0) : '0 мин';
+            let isCreator = (fName.toLowerCase() === 'рыба');
+            let avatarEmoji = isCreator ? '👑' : (fName.toLowerCase() === 'сarrots_44444' ? '🍌' : '👤');
+
+            html += `
+                <div onclick="selectFriendForP2('${fName}')" style="background: rgba(15, 23, 42, 0.85); border: 1.5px solid rgba(192, 132, 252, 0.4); border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#d8b4fe'; this.style.background='rgba(30, 41, 59, 0.9)';" onmouseout="this.style.borderColor='rgba(192, 132, 252, 0.4)'; this.style.background='rgba(15, 23, 42, 0.85)';">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 22px;">${avatarEmoji}</span>
+                        <div>
+                            <div style="font-weight: bold; font-size: 14px; color: ${isCreator ? '#ffd700' : '#fff'};">${fName}</div>
+                            <div style="font-size: 11px; color: #94a3b8;">⏱️ В игре: ${playtimeStr}</div>
+                        </div>
+                    </div>
+                    <span style="font-size: 11px; color: ${isOnline ? '#4ade80' : '#94a3b8'};">
+                        ${isOnline ? '🟢 В сети' : '⚪ Не в сети'}
+                    </span>
+                </div>
+            `;
+        });
+        listContainer.innerHTML = html;
+    }
+
+    modal.style.display = 'flex';
+}
+window.openSelectFriendForP2Modal = openSelectFriendForP2Modal;
+
+function closeSelectFriendForP2Modal() {
+    let modal = document.getElementById('p2-friend-select-modal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeSelectFriendForP2Modal = closeSelectFriendForP2Modal;
+
+function selectFriendForP2(friendName) {
+    let nameInput = document.getElementById('p2-auth-username');
+    let passInput = document.getElementById('p2-auth-password');
+    if (nameInput) {
+        nameInput.value = friendName;
+    }
+    if (typeof switchP2AuthTab === 'function') {
+        switchP2AuthTab('login');
+    }
+    closeSelectFriendForP2Modal();
+    if (passInput) {
+        passInput.focus();
+    }
+}
+window.selectFriendForP2 = selectFriendForP2;
 

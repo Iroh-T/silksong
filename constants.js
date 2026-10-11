@@ -811,6 +811,9 @@ async function registerUser(name, password) {
                 lastNetId: currentNetworkId || ''
             }
         },
+        friends: [],
+        friendRequests: [],
+        playtimeMinutes: 0,
         stats: {
             soloNormalWins: 0, soloNormalLosses: 0,
             soloSecretWins: 0, soloSecretLosses: 0,
@@ -1658,6 +1661,9 @@ async function registerUserP2(name, password) {
                 lastNetId: currentNetworkId || ''
             }
         },
+        friends: [],
+        friendRequests: [],
+        playtimeMinutes: 0,
         stats: {
             soloNormalWins: 0, soloNormalLosses: 0,
             soloSecretWins: 0, soloSecretLosses: 0,
@@ -1741,10 +1747,18 @@ function recordBattleResult(isVictory) {
     let p2 = getP2User();
     let accs = loadAccounts();
 
+    // Calculate match duration in minutes
+    let elapsedBattleMinutes = 1;
+    if (typeof battleStartTime === 'number' && battleStartTime > 0) {
+        let elapsedMs = Date.now() - battleStartTime;
+        elapsedBattleMinutes = Math.max(1, Math.round(elapsedMs / 60000));
+    }
+
     // 1. Запись в профиль Игрока 1 (Хозяин устройства)
     if (curUser) {
         let userAcc = accs[curUser.toLowerCase()];
         if (userAcc) {
+            userAcc.playtimeMinutes = (userAcc.playtimeMinutes || 0) + elapsedBattleMinutes;
             if (!userAcc.stats) {
                 userAcc.stats = {
                     soloNormalWins: 0, soloNormalLosses: 0,
@@ -1791,7 +1805,7 @@ function recordBattleResult(isVictory) {
                 fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(curUser.toLowerCase())}.json`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stats: userAcc.stats, coopPartners: userAcc.coopPartners, lastBuild: userAcc.lastBuild })
+                    body: JSON.stringify({ stats: userAcc.stats, coopPartners: userAcc.coopPartners, lastBuild: userAcc.lastBuild, playtimeMinutes: userAcc.playtimeMinutes })
                 }).catch(e => console.warn("Firebase p1 sync error:", e));
             } catch(e) {}
         }
@@ -1801,6 +1815,7 @@ function recordBattleResult(isVictory) {
     if (numPlayers === 2 && p2 && p2.toLowerCase() !== 'гость' && p2.toLowerCase() !== 'noname') {
         let p2Acc = accs[p2.toLowerCase()];
         if (p2Acc) {
+            p2Acc.playtimeMinutes = (p2Acc.playtimeMinutes || 0) + elapsedBattleMinutes;
             if (!p2Acc.stats) {
                 p2Acc.stats = {
                     soloNormalWins: 0, soloNormalLosses: 0,
@@ -1840,7 +1855,7 @@ function recordBattleResult(isVictory) {
                 fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(p2.toLowerCase())}.json`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stats: p2Acc.stats, coopPartners: p2Acc.coopPartners, lastBuild: p2Acc.lastBuild })
+                    body: JSON.stringify({ stats: p2Acc.stats, coopPartners: p2Acc.coopPartners, lastBuild: p2Acc.lastBuild, playtimeMinutes: p2Acc.playtimeMinutes })
                 }).catch(e => console.warn("Firebase p2 sync error:", e));
             } catch(e) {}
         }
@@ -2872,3 +2887,563 @@ const BOSS_CODEX_DATA = {
 
 window.HERO_CODEX_DATA = HERO_CODEX_DATA;
 window.BOSS_CODEX_DATA = BOSS_CODEX_DATA;
+
+// ============================================================================
+// --- SECURITY WATCHDOG, CREATOR DEVICE WHITELIST & ACCOUNT QUARANTINE (v74) ---
+// ============================================================================
+
+// Whitelist of trusted device IDs known for Creator ('РЫБа')
+// Additional devices can be registered automatically when РЫБа logs in with password.
+const CREATOR_TRUSTED_DEVICE_IDS = [
+    'dev_8rz4u69_mu70u51u', // Windows PC (Chrome)
+    'dev_acbkwod_mu73lef5', // Windows PC (Chrome)
+    'dev_agbbsv6_mu6u7bj6', // Windows PC (Chrome)
+    'dev_vn5kd7d_mu8ff6wz'  // Android Phone (Chrome)
+];
+window.CREATOR_TRUSTED_DEVICE_IDS = CREATOR_TRUSTED_DEVICE_IDS;
+
+// Check if current session is running from a trusted Creator device
+function isCreatorDevice() {
+    let curUser = getCurrentUser();
+    if (!curUser || curUser !== 'РЫБа') return false;
+
+    let dev = (typeof getDeviceInfo === 'function') ? getDeviceInfo() : null;
+    let devId = dev ? dev.deviceId : '';
+    try {
+        if (!devId) devId = localStorage.getItem('shelter_device_id') || '';
+    } catch(e) {}
+
+    // 1. Direct deviceId match in trusted whitelist
+    if (devId && CREATOR_TRUSTED_DEVICE_IDS.includes(devId)) return true;
+
+    // 2. Check if device is in РЫБа's recorded devices
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let fishAcc = accs['рыба'];
+    if (fishAcc && fishAcc.devices && devId && fishAcc.devices[devId]) {
+        return true;
+    }
+
+    // 3. Creator local flag set upon verified password login
+    try {
+        if (localStorage.getItem('shelter_is_creator_device') === 'true') {
+            return true;
+        }
+    } catch(e) {}
+
+    return false;
+}
+window.isCreatorDevice = isCreatorDevice;
+
+// Quarantine unauthorized account: Preserves account data under /quarantine_accounts/
+// while purging it from active /accounts/ and forcing immediate logout.
+let quarantineInProgress = false;
+async function quarantineUnauthorizedAccount(username, reason = "Несанкционированный доступ к панели администратора") {
+    if (quarantineInProgress) return;
+    if (!username || username === 'РЫБа' || username.toLowerCase() === 'гость') return;
+
+    quarantineInProgress = true;
+    let lowerKey = username.toLowerCase().trim();
+    console.warn(`[SECURITY WATCHDOG] Quarantining account: ${username}. Reason: ${reason}`);
+
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let accountData = accs[lowerKey] || null;
+
+    try {
+        let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`);
+        let cloudData = await res.json();
+        if (cloudData) accountData = { ...(accountData || {}), ...cloudData };
+    } catch(e) {}
+
+    let dev = (typeof getDeviceInfo === 'function') ? getDeviceInfo() : { shortName: 'Устройство', deviceId: 'unknown' };
+
+    if (accountData) {
+        accountData.quarantineReason = reason;
+        accountData.quarantinedAt = Date.now();
+        accountData.quarantinedBy = "AdminWatchdog_v74";
+        accountData.quarantineDevice = dev;
+
+        // 1. Move to /quarantine_accounts/ in Firebase (so it's preserved for restoration)
+        try {
+            await fetch(`${FIREBASE_URL}/quarantine_accounts/${encodeURIComponent(lowerKey)}.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(accountData)
+            });
+            // 2. Delete from active /accounts/ in Firebase
+            await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+                method: 'DELETE'
+            });
+        } catch(e) {
+            console.error("Quarantine remote sync error:", e);
+        }
+    }
+
+    // 3. Delete from local cache
+    delete accs[lowerKey];
+    if (typeof saveAccounts === 'function') saveAccounts(accs);
+
+    // 4. Force logout
+    if (typeof setCurrentUser === 'function') setCurrentUser(null);
+    try { localStorage.removeItem('shelter_current_user'); } catch(e){}
+
+    // 5. Notify Creator via Telegram
+    try {
+        if (typeof sendTelegramNotification === 'function') {
+            sendTelegramNotification(
+                `🚨 <b>СИСТЕМА БЕЗОПАСНОСТИ v74: АККАУНТ ЗАБЛОКИРОВАН!</b>\n` +
+                `👤 Аккаунт: <b>${username}</b>\n` +
+                `⚠️ Причина: <i>${reason}</i>\n` +
+                `📱 Устройство: <code>${dev.shortName} (${dev.deviceId})</code>\n` +
+                `💾 Данные перемещены в <code>/quarantine_accounts/</code> и сохранены для Создателя.`
+            );
+        }
+    } catch(e) {}
+
+    alert(`⚠️ ВНИМАНИЕ: Обнаружена попытка несанкционированного доступа к панели администратора!\nАккаунт "${username}" заблокирован и отправлен в карантин на проверку Создателю (РЫБе).`);
+    location.reload();
+}
+window.quarantineUnauthorizedAccount = quarantineUnauthorizedAccount;
+
+// Constant Admin Watchdog: monitors admin buttons and screens in real-time
+let adminWatchdogTimer = null;
+function startAdminWatchdog() {
+    if (adminWatchdogTimer) clearInterval(adminWatchdogTimer);
+
+    function checkAdminSecurity() {
+        let curUser = getCurrentUser();
+
+        // 1. Inspect all admin buttons in DOM
+        let adminBtns = document.querySelectorAll('#admin-panel-btn, .admin-panel-btn');
+        let visibleAdminBtns = [];
+        adminBtns.forEach(btn => {
+            let style = window.getComputedStyle(btn);
+            if (style && style.display !== 'none' && style.visibility !== 'hidden' && btn.offsetParent !== null) {
+                visibleAdminBtns.push(btn);
+            }
+        });
+
+        // Also check any button containing "ПАНЕЛЬ АДМИНА" outside admin-screen
+        let allMenuBtns = document.querySelectorAll('.menu-btn');
+        allMenuBtns.forEach(btn => {
+            if (btn.id !== 'admin-panel-btn' && (btn.innerText || '').includes('ПАНЕЛЬ АДМИНА')) {
+                let style = window.getComputedStyle(btn);
+                if (style && style.display !== 'none' && btn.offsetParent !== null) {
+                    visibleAdminBtns.push(btn);
+                }
+            }
+        });
+
+        if (visibleAdminBtns.length > 0) {
+            if (curUser !== 'РЫБа') {
+                // VIOLATION: Non-РЫБа account has an admin button shown!
+                quarantineUnauthorizedAccount(curUser, "Обнаружена панель админа у неавторизованного аккаунта");
+                return;
+            } else {
+                // Account is 'РЫБа' - check device whitelist
+                if (!isCreatorDevice()) {
+                    visibleAdminBtns.forEach(b => { b.style.display = 'none'; });
+                } else if (visibleAdminBtns.length > 1) {
+                    // More than 1 admin button appeared in DOM!
+                    console.warn("[AdminWatchdog] Multiple admin buttons detected. Removing extra duplicates.");
+                    for (let i = 1; i < visibleAdminBtns.length; i++) {
+                        visibleAdminBtns[i].remove();
+                    }
+                }
+            }
+        }
+
+        // 2. Inspect admin screen visibility
+        let adminScreen = document.getElementById('admin-screen');
+        if (adminScreen && window.getComputedStyle(adminScreen).display !== 'none') {
+            if (curUser !== 'РЫБа' || !isCreatorDevice()) {
+                quarantineUnauthorizedAccount(curUser, "Попытка несанкционированного открытия экрана администратора");
+                return;
+            }
+        }
+
+        // 3. Update incoming friend requests badge in root menu
+        let badgeEl = document.getElementById('friends-badge-count');
+        if (badgeEl) {
+            if (curUser && curUser.toLowerCase() !== 'гость') {
+                let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+                let userAcc = accs[curUser.toLowerCase()];
+                let reqCount = (userAcc && userAcc.friendRequests) ? userAcc.friendRequests.length : 0;
+                if (reqCount > 0) {
+                    badgeEl.style.display = 'inline-block';
+                    badgeEl.textContent = reqCount;
+                } else {
+                    badgeEl.style.display = 'none';
+                }
+            } else {
+                badgeEl.style.display = 'none';
+            }
+        }
+    }
+
+    adminWatchdogTimer = setInterval(checkAdminSecurity, 1500);
+
+    if (window.MutationObserver && document.body) {
+        let obs = new MutationObserver(() => {
+            checkAdminSecurity();
+        });
+        obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    }
+}
+window.startAdminWatchdog = startAdminWatchdog;
+
+// ============================================================================
+// --- FRIENDS SYSTEM & PLAYTIME MANAGER (v74) ---
+// ============================================================================
+
+// Format playtime minutes into human-readable string: e.g. "2 ч 45 мин" or "45 мин"
+function formatPlaytime(minutes) {
+    let m = Math.max(0, parseInt(minutes) || 0);
+    if (m < 1) return "меньше минуты";
+    let hours = Math.floor(m / 60);
+    let mins = m % 60;
+    if (hours === 0) return `${mins} мин`;
+    if (mins === 0) return `${hours} ч`;
+    return `${hours} ч ${mins} мин`;
+}
+window.formatPlaytime = formatPlaytime;
+
+// Record playtime increment for user
+function recordPlaytime(minutes, username = null) {
+    if (!minutes || minutes <= 0) return;
+    let target = username || getCurrentUser();
+    if (!target || target.toLowerCase() === 'гость') return;
+    let lower = target.toLowerCase();
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let acc = accs[lower];
+    if (acc) {
+        acc.playtimeMinutes = (acc.playtimeMinutes || 0) + minutes;
+        if (typeof saveAccounts === 'function') saveAccounts(accs);
+        try {
+            fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lower)}/playtimeMinutes.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(acc.playtimeMinutes)
+            }).catch(()=>{});
+        } catch(e) {}
+    }
+}
+window.recordPlaytime = recordPlaytime;
+
+// Real-time presence cache for friends
+let cachedPresenceMap = {};
+let lastPresenceFetch = 0;
+async function fetchPresenceMap() {
+    if (Date.now() - lastPresenceFetch < 12000 && Object.keys(cachedPresenceMap).length > 0) {
+        return cachedPresenceMap;
+    }
+    try {
+        let res = await fetch(`${FIREBASE_URL}/presence.json`);
+        let data = await res.json();
+        if (data && typeof data === 'object') {
+            cachedPresenceMap = data;
+            lastPresenceFetch = Date.now();
+        }
+    } catch(e) {}
+    return cachedPresenceMap;
+}
+window.fetchPresenceMap = fetchPresenceMap;
+
+// Check if a player is currently online
+function checkUserOnlineStatus(username, presenceMap = null) {
+    if (!username) return false;
+    let lower = username.toLowerCase().trim();
+    let map = presenceMap || cachedPresenceMap;
+    let now = Date.now();
+
+    for (let devId in map) {
+        let entry = map[devId];
+        if (entry && entry.user && entry.user.toLowerCase().trim() === lower) {
+            if (entry.state !== 'OFFLINE' && (now - entry.lastPing) < 70000) {
+                return true;
+            }
+        }
+    }
+
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let acc = accs[lower];
+    if (acc && acc.devices) {
+        for (let devId in acc.devices) {
+            let d = acc.devices[devId];
+            if (d && d.lastSeen && (now - d.lastSeen) < 90000) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+window.checkUserOnlineStatus = checkUserOnlineStatus;
+
+// Get mutual friends between two users
+function getMutualFriends(userA, userB) {
+    if (!userA || !userB) return [];
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let accA = accs[userA.toLowerCase()];
+    let accB = accs[userB.toLowerCase()];
+    if (!accA || !accB) return [];
+    let listA = accA.friends || [];
+    let listB = accB.friends || [];
+    let lowerBSet = new Set(listB.map(f => (f || '').toLowerCase()));
+    return listA.filter(f => lowerBSet.has((f || '').toLowerCase()));
+}
+window.getMutualFriends = getMutualFriends;
+
+// Send friend request to target player
+async function sendFriendRequest(targetName) {
+    let curUser = getCurrentUser();
+    if (!curUser || curUser.toLowerCase() === 'гость') {
+        return { success: false, message: "Войдите в свой аккаунт, чтобы отправлять запросы в друзья!" };
+    }
+    if (!targetName || !targetName.trim()) {
+        return { success: false, message: "Укажите имя игрока!" };
+    }
+    let cleanTarget = targetName.trim();
+    let lowerTarget = cleanTarget.toLowerCase();
+    let lowerCur = curUser.toLowerCase();
+
+    if (lowerTarget === lowerCur) {
+        return { success: false, message: "Нельзя добавить себя в друзья!" };
+    }
+    if (lowerTarget === 'гость' || lowerTarget === 'noname') {
+        return { success: false, message: "Нельзя добавить гостя!" };
+    }
+
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let curAcc = accs[lowerCur];
+    if (!curAcc) {
+        return { success: false, message: "Ошибка вашего профиля, выполните повторный вход!" };
+    }
+    curAcc.friends = curAcc.friends || [];
+    curAcc.friendRequests = curAcc.friendRequests || [];
+
+    if (curAcc.friends.some(f => (f || '').toLowerCase() === lowerTarget)) {
+        return { success: false, message: `Игрок «${cleanTarget}» уже у вас в друзьях!` };
+    }
+
+    let targetAcc = accs[lowerTarget];
+    if (!targetAcc) {
+        try {
+            let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerTarget)}.json`);
+            targetAcc = await res.json();
+            if (targetAcc) accs[lowerTarget] = targetAcc;
+        } catch(e) {}
+    }
+
+    if (!targetAcc) {
+        return { success: false, message: `Игрок «${cleanTarget}» не найден в базе!` };
+    }
+
+    targetAcc.friends = targetAcc.friends || [];
+    targetAcc.friendRequests = targetAcc.friendRequests || [];
+
+    if (targetAcc.friendRequests.some(r => (r || '').toLowerCase() === lowerCur)) {
+        return { success: false, message: `Запрос игроку «${cleanTarget}» уже отправлен!` };
+    }
+
+    // Mutual request auto-accept
+    if (curAcc.friendRequests.some(r => (r || '').toLowerCase() === lowerTarget)) {
+        return await acceptFriendRequest(cleanTarget);
+    }
+
+    targetAcc.friendRequests.push(curAcc.name);
+    if (typeof saveAccounts === 'function') saveAccounts(accs);
+
+    try {
+        await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerTarget)}/friendRequests.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(targetAcc.friendRequests)
+        });
+    } catch(e) {
+        console.warn("Friend request sync error:", e);
+    }
+
+    // Notify Timur if request is sent to РЫБа
+    if (lowerTarget === 'рыба') {
+        try {
+            if (typeof sendTelegramNotification === 'function') {
+                sendTelegramNotification(
+                    `👥 <b>НОВАЯ ЗАЯВКА В ДРУЗЬЯ!</b>\n` +
+                    `👤 Игрок <b>${curAcc.name}</b> отправил заявку Создателю <b>РЫБе</b>!\n` +
+                    `⏰ <i>${new Date().toLocaleTimeString()}</i>`
+                );
+            }
+        } catch(e) {}
+    }
+
+    return { success: true, message: `Запрос в друзья игроку «${targetAcc.name}» успешно отправлен!` };
+}
+window.sendFriendRequest = sendFriendRequest;
+
+// Accept friend request
+async function acceptFriendRequest(targetName) {
+    let curUser = getCurrentUser();
+    if (!curUser || curUser.toLowerCase() === 'гость') return { success: false, message: "Не авторизован" };
+    let lowerCur = curUser.toLowerCase();
+    let cleanTarget = (targetName || '').trim();
+    let lowerTarget = cleanTarget.toLowerCase();
+
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let curAcc = accs[lowerCur];
+    if (!curAcc) return { success: false, message: "Профиль не найден" };
+
+    curAcc.friends = curAcc.friends || [];
+    curAcc.friendRequests = curAcc.friendRequests || [];
+
+    // Remove from incoming requests
+    curAcc.friendRequests = curAcc.friendRequests.filter(r => (r || '').toLowerCase() !== lowerTarget);
+
+    // Add to friends
+    if (!curAcc.friends.some(f => (f || '').toLowerCase() === lowerTarget)) {
+        curAcc.friends.push(cleanTarget);
+    }
+
+    // Target account update
+    let targetAcc = accs[lowerTarget];
+    if (!targetAcc) {
+        try {
+            let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerTarget)}.json`);
+            targetAcc = await res.json();
+            if (targetAcc) accs[lowerTarget] = targetAcc;
+        } catch(e) {}
+    }
+
+    if (targetAcc) {
+        targetAcc.friends = targetAcc.friends || [];
+        targetAcc.friendRequests = targetAcc.friendRequests || [];
+        targetAcc.friendRequests = targetAcc.friendRequests.filter(r => (r || '').toLowerCase() !== lowerCur);
+        if (!targetAcc.friends.some(f => (f || '').toLowerCase() === lowerCur)) {
+            targetAcc.friends.push(curAcc.name);
+        }
+    }
+
+    if (typeof saveAccounts === 'function') saveAccounts(accs);
+
+    // Remote sync to Firebase
+    try {
+        await Promise.all([
+            fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerCur)}/friends.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(curAcc.friends)
+            }),
+            fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerCur)}/friendRequests.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(curAcc.friendRequests)
+            }),
+            targetAcc ? fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerTarget)}/friends.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(targetAcc.friends)
+            }) : Promise.resolve(),
+            targetAcc ? fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerTarget)}/friendRequests.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(targetAcc.friendRequests)
+            }) : Promise.resolve()
+        ]);
+    } catch(e) {
+        console.warn("Friend accept sync error:", e);
+    }
+
+    return { success: true, message: `Вы и ${cleanTarget} теперь друзья! 🎉` };
+}
+window.acceptFriendRequest = acceptFriendRequest;
+
+// Reject friend request
+async function rejectFriendRequest(targetName) {
+    let curUser = getCurrentUser();
+    if (!curUser) return { success: false };
+    let lowerCur = curUser.toLowerCase();
+    let lowerTarget = (targetName || '').trim().toLowerCase();
+
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let curAcc = accs[lowerCur];
+    if (!curAcc) return { success: false };
+
+    curAcc.friendRequests = (curAcc.friendRequests || []).filter(r => (r || '').toLowerCase() !== lowerTarget);
+    if (typeof saveAccounts === 'function') saveAccounts(accs);
+
+    try {
+        await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerCur)}/friendRequests.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(curAcc.friendRequests)
+        });
+    } catch(e) {}
+
+    return { success: true };
+}
+window.rejectFriendRequest = rejectFriendRequest;
+
+// Remove friend
+async function removeFriend(targetName) {
+    let curUser = getCurrentUser();
+    if (!curUser) return { success: false };
+    let lowerCur = curUser.toLowerCase();
+    let cleanTarget = (targetName || '').trim();
+    let lowerTarget = cleanTarget.toLowerCase();
+
+    let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
+    let curAcc = accs[lowerCur];
+    if (!curAcc) return { success: false };
+
+    curAcc.friends = (curAcc.friends || []).filter(f => (f || '').toLowerCase() !== lowerTarget);
+
+    let targetAcc = accs[lowerTarget];
+    if (!targetAcc) {
+        try {
+            let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerTarget)}.json`);
+            targetAcc = await res.json();
+            if (targetAcc) accs[lowerTarget] = targetAcc;
+        } catch(e) {}
+    }
+
+    if (targetAcc) {
+        targetAcc.friends = (targetAcc.friends || []).filter(f => (f || '').toLowerCase() !== lowerCur);
+    }
+
+    if (typeof saveAccounts === 'function') saveAccounts(accs);
+
+    try {
+        await Promise.all([
+            fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerCur)}/friends.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(curAcc.friends)
+            }),
+            fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerTarget)}/friends.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(targetAcc ? targetAcc.friends : [])
+            })
+        ]);
+    } catch(e) {}
+
+    return { success: true, message: `Игрок «${cleanTarget}» удален из друзей.` };
+}
+window.removeFriend = removeFriend;
+
+// Auto-start Watchdog and Heartbeats on initialization
+if (typeof window !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            startAdminWatchdog();
+        });
+    } else {
+        startAdminWatchdog();
+    }
+
+    // Active Playtime ticker (every 60 seconds)
+    setInterval(() => {
+        let cur = getCurrentUser();
+        if (cur && cur.toLowerCase() !== 'гость') {
+            recordPlaytime(1, cur);
+        }
+    }, 60000);
+}
