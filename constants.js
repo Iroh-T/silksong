@@ -530,6 +530,16 @@ async function syncAccountsFromFirebase() {
             for (let k in cloudData) {
                 if (cloudData[k]) {
                     localAccs[k] = cloudData[k];
+                    // Backfill playtime from battles if not yet tracked
+                    let estTime = (typeof getAccountPlaytime === 'function') ? getAccountPlaytime(localAccs[k]) : 0;
+                    if ((!localAccs[k].playtimeMinutes || localAccs[k].playtimeMinutes < estTime) && estTime > 0) {
+                        localAccs[k].playtimeMinutes = estTime;
+                        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(k)}/playtimeMinutes.json`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(estTime)
+                        }).catch(()=>{});
+                    }
                     changed = true;
                 }
             }
@@ -3095,9 +3105,33 @@ window.startAdminWatchdog = startAdminWatchdog;
 // --- FRIENDS SYSTEM & PLAYTIME MANAGER (v74) ---
 // ============================================================================
 
-// Format playtime minutes into human-readable string: e.g. "2 ч 45 мин" or "45 мин"
-function formatPlaytime(minutes) {
-    let m = Math.max(0, parseInt(minutes) || 0);
+// Calculate total playtime for an account (combines explicit tracked minutes + historical battle estimate)
+function getAccountPlaytime(acc) {
+    if (!acc) return 0;
+    let explicit = parseInt(acc.playtimeMinutes) || 0;
+
+    // Estimate from historical battle stats if account played before v74
+    let st = acc.stats || {};
+    let totalBattles = (st.soloNormalWins || 0) + (st.soloNormalLosses || 0) +
+                       (st.soloSecretWins || 0) + (st.soloSecretLosses || 0) +
+                       (st.duoNormalWins || 0) + (st.duoNormalLosses || 0) +
+                       (st.duoSecretWins || 0) + (st.duoSecretLosses || 0);
+
+    // Each Silk Song match lasts ~2.5 - 3 minutes on average
+    let estimatedMinutes = Math.round(totalBattles * 2.5);
+
+    return Math.max(explicit, estimatedMinutes);
+}
+window.getAccountPlaytime = getAccountPlaytime;
+
+// Format playtime minutes into human-readable string: e.g. "8 ч 28 мин" or "45 мин"
+function formatPlaytime(minutesOrAcc) {
+    let m = 0;
+    if (typeof minutesOrAcc === 'object' && minutesOrAcc !== null) {
+        m = getAccountPlaytime(minutesOrAcc);
+    } else {
+        m = Math.max(0, parseInt(minutesOrAcc) || 0);
+    }
     if (m < 1) return "меньше минуты";
     let hours = Math.floor(m / 60);
     let mins = m % 60;

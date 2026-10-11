@@ -2880,7 +2880,6 @@ function renderFriendsModalList() {
         list.forEach(fName => {
             let fAcc = accs[fName.toLowerCase()];
             let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(fName);
-            let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(fAcc ? fAcc.playtimeMinutes : 0) : '0 мин';
             let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, fName) : [];
             let isCreator = (fName.toLowerCase() === 'рыба');
             let isBanana = (fName.toLowerCase() === 'сarrots_44444');
@@ -2900,8 +2899,7 @@ function renderFriendsModalList() {
                                     ${isOnline ? '🟢 В сети' : '⚪ Не в сети'}
                                 </span>
                             </div>
-                            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap;">
-                                <span>⏱️ Время в игре: <b style="color: #38bdf8;">${playtimeStr}</b></span>
+                            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 3px;">
                                 <span>🤝 Общие друзья: <b style="color: #c084fc;">${mutual.length}</b></span>
                             </div>
                         </div>
@@ -2935,7 +2933,6 @@ function renderFriendsModalList() {
         list.forEach(rName => {
             let rAcc = accs[rName.toLowerCase()];
             let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(rName);
-            let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(rAcc ? rAcc.playtimeMinutes : 0) : '0 мин';
             let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, rName) : [];
 
             html += `
@@ -2947,7 +2944,6 @@ function renderFriendsModalList() {
                         <div>
                             <div style="font-weight: bold; font-size: 15px; color: #fff;">${rName}</div>
                             <div style="font-size: 11.5px; color: #94a3b8; margin-top: 2px;">
-                                <span>⏱️ В игре: <b style="color: #38bdf8;">${playtimeStr}</b></span> • 
                                 <span>🤝 Общих друзей: <b style="color: #c084fc;">${mutual.length}</b></span>
                             </div>
                         </div>
@@ -2979,7 +2975,6 @@ function renderFriendsModalList() {
         list.forEach(pName => {
             let pAcc = accs[pName.toLowerCase()];
             let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(pName);
-            let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(pAcc ? pAcc.playtimeMinutes : 0) : '0 мин';
             let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, pName) : [];
             let isAlreadyFriend = friends.some(f => (f || '').toLowerCase() === pName.toLowerCase());
             let isIncomingReq = requests.some(r => (r || '').toLowerCase() === pName.toLowerCase());
@@ -3000,8 +2995,7 @@ function renderFriendsModalList() {
                                     ${isOnline ? '🟢 В сети' : '⚪ Не в сети'}
                                 </span>
                             </div>
-                            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 3px; display: flex; gap: 12px; flex-wrap: wrap;">
-                                <span>⏱️ Время в игре: <b style="color: #38bdf8;">${playtimeStr}</b></span>
+                            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 3px;">
                                 <span>🤝 Общие друзья: <b style="color: #c084fc;">${mutual.length}</b></span>
                             </div>
                         </div>
@@ -3086,7 +3080,6 @@ async function openFriendProfileModal(friendName) {
     if (!modal || !body) return;
 
     let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(friendName);
-    let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(friendAcc.playtimeMinutes || 0) : '0 мин';
     let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, friendName) : [];
 
     let isCreator = (friendName.toLowerCase() === 'рыба');
@@ -3118,8 +3111,7 @@ async function openFriendProfileModal(friendName) {
                         ${isOnline ? '🟢 В сети' : '⚪ Не в сети'}
                     </span>
                 </div>
-                <div style="font-size: 12px; color: #94a3b8; margin-top: 5px; display: flex; flex-direction: column; gap: 3px;">
-                    <div>⏱️ Общее время в игре: <b style="color: #38bdf8;">${playtimeStr}</b></div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 5px;">
                     <div>🤝 Общие друзья (${mutual.length}): <b style="color: #c084fc;">${mutual.length ? mutual.join(', ') : 'Нет'}</b></div>
                 </div>
             </div>
@@ -3227,7 +3219,6 @@ function openSelectFriendForP2Modal() {
         friends.forEach(fName => {
             let fAcc = accs[fName.toLowerCase()];
             let isOnline = typeof checkUserOnlineStatus === 'function' && checkUserOnlineStatus(fName);
-            let playtimeStr = typeof formatPlaytime === 'function' ? formatPlaytime(fAcc ? fAcc.playtimeMinutes : 0) : '0 мин';
             let isCreator = (fName.toLowerCase() === 'рыба');
             let avatarEmoji = isCreator ? '👑' : (fName.toLowerCase() === 'сarrots_44444' ? '🍌' : '👤');
 
@@ -3237,7 +3228,6 @@ function openSelectFriendForP2Modal() {
                         <span style="font-size: 22px;">${avatarEmoji}</span>
                         <div>
                             <div style="font-weight: bold; font-size: 14px; color: ${isCreator ? '#ffd700' : '#fff'};">${fName}</div>
-                            <div style="font-size: 11px; color: #94a3b8;">⏱️ В игре: ${playtimeStr}</div>
                         </div>
                     </div>
                     <span style="font-size: 11px; color: ${isOnline ? '#4ade80' : '#94a3b8'};">
