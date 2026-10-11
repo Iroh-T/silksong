@@ -13,38 +13,38 @@ function loadExternalGameAssets() {
     if (typeof Image === 'undefined') return;
     try {
         let flowerFrames = ['00000', '00005', '00010', '00015', '00020', '00025', '00030', '00035', '00040', '00045', '00050', '00055'];
-        flowerFrames.forEach(f => {
+        flowerFrames.forEach((f, idx) => {
             let fl = new Image();
             fl.src = `assets/plants/blue_flower/opt/BlueFlower_${f}.png`;
-            fl.onload = () => { externalGameAssets.blueFlowers.push(fl); };
+            externalGameAssets.blueFlowers[idx] = fl;
         });
 
         let plantFrames = ['00000', '00008', '00016', '00024', '00032', '00040', '00048', '00056', '00064', '00072', '00080', '00088'];
-        plantFrames.forEach(f => {
+        plantFrames.forEach((f, idx) => {
             let p1 = new Image();
             p1.src = `assets/plants/plant1/opt/Plant1_${f}.png`;
-            p1.onload = () => { externalGameAssets.plants1.push(p1); };
+            externalGameAssets.plants1[idx] = p1;
 
             let p2 = new Image();
             p2.src = `assets/plants/plant2/opt/Plant2_${f}.png`;
-            p2.onload = () => { externalGameAssets.plants2.push(p2); };
+            externalGameAssets.plants2[idx] = p2;
 
             let p3 = new Image();
             p3.src = `assets/plants/plant3/opt/Plant3_${f}.png`;
-            p3.onload = () => { externalGameAssets.plants3.push(p3); };
+            externalGameAssets.plants3[idx] = p3;
         });
 
         let slimeFrames = ['00000', '00004', '00008', '00012', '00016', '00020', '00024', '00028'];
-        slimeFrames.forEach(s => {
+        slimeFrames.forEach((s, idx) => {
             let sl = new Image();
             sl.src = `assets/slime/opt/SlimeBasic_${s}.png`;
-            sl.onload = () => { externalGameAssets.slimes.push(sl); };
+            externalGameAssets.slimes[idx] = sl;
         });
 
-        ['boulder1.png', 'boulder2.png', 'boulder3.png'].forEach(b => {
+        ['boulder1.png', 'boulder2.png', 'boulder3.png'].forEach((b, idx) => {
             let bImg = new Image();
             bImg.src = `assets/cave/${b}`;
-            bImg.onload = () => { externalGameAssets.boulders.push(bImg); };
+            externalGameAssets.boulders[idx] = bImg;
         });
 
         externalGameAssets.loaded = true;
@@ -2280,64 +2280,95 @@ function drawBackground() {
         ctx.stroke();
     }
 
-    // Растительность в обычном режиме: анимированные Цветки 1 на поле боя и Растения 1, 2, 3 по краям арены
-    if (!secretMode && !boss.state.startsWith("L_CLIMB") && externalGameAssets.loaded) {
+    // Растительность на арене: анимированные Цветки (BlueFlower1) на поле боя и Растения 1, 2, 3 по краям арены
+    // В L-режиме растительности НЕТ (мёртвая арена Бездны)
+    if (!secretMode && !boss.state.startsWith("L_CLIMB") && !boss.floorSplitted) {
         ctx.save();
         let now = Date.now();
 
-        // 1. Несколько анимированных цветков 1 (BlueFlower1) на поле боя
-        if (externalGameAssets.blueFlowers && externalGameAssets.blueFlowers.length > 0) {
-            let flCount = externalGameAssets.blueFlowers.length;
-            let flowerPositions = [210, 390, 630, 800];
-            flowerPositions.forEach((fx, idx) => {
-                let frameIdx = Math.floor(now / 140 + idx * 3) % flCount;
-                let flImg = externalGameAssets.blueFlowers[frameIdx];
-                if (flImg) {
-                    let fw = 34, fh = 34;
-                    // Слегка притапливаем в пол на 4px, чтобы естественно росли из камня
-                    ctx.drawImage(flImg, fx, FLOOR - fh + 4, fw, fh);
-                }
-            });
-        }
+        // 1. Анимированные цветки (BlueFlower1) на полу арены
+        let flFrames = externalGameAssets.blueFlowers || [];
+        let flCount = flFrames.length;
+        let flowerPositions = [210, 390, 630, 800];
 
-        // 2. Анимированные Растения 1, 2, 3 ближе к краям арены (чуть подрезаны у основания полом)
-        let p1Frames = externalGameAssets.plants1;
-        let p2Frames = externalGameAssets.plants2;
-        let p3Frames = externalGameAssets.plants3;
+        flowerPositions.forEach((fx, idx) => {
+            let fw = 34, fh = 34;
+            let fy = FLOOR - fh + 4;
+            let drawn = false;
+
+            if (flCount > 0) {
+                let frameIdx = Math.floor(now / 140 + idx * 3) % flCount;
+                let flImg = flFrames[frameIdx];
+                if (flImg && flImg.complete && flImg.naturalWidth > 0) {
+                    ctx.drawImage(flImg, fx, fy, fw, fh);
+                    drawn = true;
+                }
+            }
+
+            // Процедурный резервный цветок, если изображение еще декодируется браузером
+            if (!drawn) {
+                ctx.save();
+                let sway = Math.sin(now / 350 + idx) * 2;
+                ctx.strokeStyle = "#15803d";
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(fx + 17, FLOOR);
+                ctx.quadraticCurveTo(fx + 17 + sway, FLOOR - 14, fx + 17 + sway * 1.5, FLOOR - 24);
+                ctx.stroke();
+
+                // Лепестки цветка
+                ctx.fillStyle = secretMode ? "#38bdf8" : "#60a5fa";
+                ctx.beginPath();
+                ctx.arc(fx + 17 + sway * 1.5, FLOOR - 25, 6, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Светящаяся сердцевина
+                ctx.fillStyle = "#fef08a";
+                ctx.beginPath();
+                ctx.arc(fx + 17 + sway * 1.5, FLOOR - 25, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        });
+
+        // 2. Анимированные Растения 1, 2, 3 по краям арены
+        let p1Frames = externalGameAssets.plants1 || [];
+        let p2Frames = externalGameAssets.plants2 || [];
+        let p3Frames = externalGameAssets.plants3 || [];
+
+        function drawPlantSprite(frames, speed, offset, x, y, w, h, fallbackColor) {
+            let drawn = false;
+            if (frames && frames.length > 0) {
+                let fIdx = Math.floor(now / speed + offset) % frames.length;
+                let img = frames[fIdx];
+                if (img && img.complete && img.naturalWidth > 0) {
+                    ctx.drawImage(img, x, y, w, h);
+                    drawn = true;
+                }
+            }
+            if (!drawn) {
+                // Процедурные листья/папоротник
+                ctx.save();
+                ctx.fillStyle = fallbackColor || "#166534";
+                let sway = Math.sin(now / 400 + offset) * 3;
+                ctx.beginPath();
+                ctx.moveTo(x + w / 2, FLOOR);
+                ctx.quadraticCurveTo(x + w / 2 + sway, y + h / 2, x + w / 2 + sway * 1.5, y);
+                ctx.quadraticCurveTo(x + w / 2 + 8, y + h / 2, x + w / 2, FLOOR);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
 
         // Левый край арены: Plant 1, Plant 2, Plant 3
-        if (p1Frames && p1Frames.length > 0) {
-            let f1 = Math.floor(now / 110) % p1Frames.length;
-            let img = p1Frames[f1];
-            if (img) ctx.drawImage(img, 28, FLOOR - 46, 48, 52); // +6px утоплено в пол
-        }
-        if (p2Frames && p2Frames.length > 0) {
-            let f2 = Math.floor(now / 125 + 2) % p2Frames.length;
-            let img = p2Frames[f2];
-            if (img) ctx.drawImage(img, 76, FLOOR - 42, 44, 48);
-        }
-        if (p3Frames && p3Frames.length > 0) {
-            let f3 = Math.floor(now / 115 + 4) % p3Frames.length;
-            let img = p3Frames[f3];
-            if (img) ctx.drawImage(img, 126, FLOOR - 40, 42, 46);
-        }
+        drawPlantSprite(p1Frames, 110, 0, 28, FLOOR - 46, 48, 52, "#15803d");
+        drawPlantSprite(p2Frames, 125, 2, 76, FLOOR - 42, 44, 48, "#166534");
+        drawPlantSprite(p3Frames, 115, 4, 126, FLOOR - 40, 42, 46, "#14532d");
 
         // Правый край арены: Plant 3, Plant 2, Plant 1
-        if (p3Frames && p3Frames.length > 0) {
-            let f3r = Math.floor(now / 115 + 6) % p3Frames.length;
-            let img = p3Frames[f3r];
-            if (img) ctx.drawImage(img, ARENA_W - 170, FLOOR - 40, 42, 46);
-        }
-        if (p2Frames && p2Frames.length > 0) {
-            let f2r = Math.floor(now / 125 + 8) % p2Frames.length;
-            let img = p2Frames[f2r];
-            if (img) ctx.drawImage(img, ARENA_W - 122, FLOOR - 42, 44, 48);
-        }
-        if (p1Frames && p1Frames.length > 0) {
-            let f1r = Math.floor(now / 110 + 10) % p1Frames.length;
-            let img = p1Frames[f1r];
-            if (img) ctx.drawImage(img, ARENA_W - 74, FLOOR - 46, 48, 52);
-        }
+        drawPlantSprite(p3Frames, 115, 6, ARENA_W - 170, FLOOR - 40, 42, 46, "#14532d");
+        drawPlantSprite(p2Frames, 125, 8, ARENA_W - 122, FLOOR - 42, 44, 48, "#166534");
+        drawPlantSprite(p1Frames, 110, 10, ARENA_W - 74, FLOOR - 46, 48, 52, "#15803d");
 
         ctx.restore();
     }

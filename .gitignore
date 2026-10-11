@@ -1,0 +1,14 @@
+# Git protection: block heavy archives, temp and raw project files
+*.zip
+*.rar
+*.7z
+*.tar.gz
+*.psd
+*.ai
+*.mp4
+
+# OS and Temp files
+Thumbs.db
+.DS_Store
+*.tmp
+*.bak
