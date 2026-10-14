@@ -60,10 +60,13 @@ function createPlayer(id, type, keysObj, inputType, startX) {
         jumpHoldTimer: 0, waterDrop: null, waterDropActive: false, isSilkRunning: false, silkRunTimer: 0,
         ropeUltAttempts: 3, staminaUltAttempts: 2, halberdVaultTimer: 0, halberdVaultSwinging: false,
         airAttackTimer: 0, fireBlastTimer: 0, fireBadgeSlot: null,
-        earthFlipTimer: 0, earthFlipDir: 0, holdingBossRope: false, ropeHarpoon: null
+        earthFlipTimer: 0, earthFlipDir: 0, holdingBossRope: false, ropeHarpoon: null,
+        // v75 Fire Boss Duel fields
+        burnGauge: 0, burnTimer: 0
     };
     let isL = (typeof secretMode !== 'undefined' && !!secretMode) || (typeof window !== 'undefined' && !!window.secretMode);
-    let baseHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : 6;
+    let isFireDuel = (typeof isFireBossMode !== 'undefined' && !!isFireBossMode) || (typeof window !== 'undefined' && !!window.isFireBossMode);
+    let baseHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : (isFireDuel ? 8 : (isL ? 8 : 6));
     if (type === 'WATER') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#3366ff", atkCdBase: 24, atkRange: 95, jumpPowerBase: -12, type: 'WATER', dmgMulti: 1 }); } 
     else if (type === 'EARTH') { Object.assign(p, { speed: 5.6, hp: baseHp, maxHp: baseHp, color: "#33cc33", atkCdBase: 8, atkRange: 65, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.7 }); } 
     else if (type === 'AIR') { Object.assign(p, { speed: 5.5, hp: baseHp, maxHp: baseHp, color: "#ffdd00", atkCdBase: 20, atkRange: 80, jumpPowerBase: -13, type: 'AIR', dmgMulti: 0.8 }); } 
@@ -73,6 +76,19 @@ function createPlayer(id, type, keysObj, inputType, startX) {
     else if (type === 'WATER_ROPE') { let rHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : (isL ? 6 : 4); Object.assign(p, { width: 22, height: 38, speed: 5.4, hp: rHp, maxHp: rHp, color: "#00e5ff", atkCdBase: 18, atkRange: 58, jumpPowerBase: -11.8, type: 'WATER_ROPE', dmgMulti: 0.75, concentrateTimer: 0, concentrateReady: false, ropeA: null, ropeB: null, ropeActive: false, ropeDrainTimer: 0, ropeSlideTimer: 0, isRopeSliding: false, ropeT: 0, ropeUltAttempts: 3 }); }
     return p;
 }
+
+function addPlayerBurnGauge(p, amount) {
+    if (!p) return;
+    if (p.burnGauge === undefined) p.burnGauge = 0;
+    p.burnGauge = Math.min(3, p.burnGauge + amount);
+    if (p.burnGauge >= 3) {
+        p.burnGauge = 0;
+        p.burnTimer = 60; // 1 second of burning animation
+        if (typeof playSound === 'function') playSound('heatIgnite');
+        if (typeof triggerShake === 'function') triggerShake(5, 8);
+    }
+}
+window.addPlayerBurnGauge = addPlayerBurnGauge;
 
 function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassInvuln = false, isVoidPuddle = false, isBoulder = false, isFallGoo = false) {
     if (godModeActive || window.godModeActive) return;
@@ -579,6 +595,39 @@ function updatePlayers() {
         if (p.voidDamageTimer > 0) p.voidDamageTimer--;
         if (p.crackedImmuneTimer > 0) p.crackedImmuneTimer--;
         if (p.fireLungeTimer > 0) p.fireLungeTimer--;
+
+        // Fire Boss Duel: Burn Gauge timer and burning effect
+        if (p.burnTimer > 0) {
+            p.burnTimer--;
+            if (Math.random() < 0.45 && typeof voidExplosions !== 'undefined') {
+                voidExplosions.push({
+                    x: p.x + Math.random() * p.width,
+                    y: p.y + Math.random() * p.height,
+                    timer: 12,
+                    isWhite: false,
+                    isOrange: true,
+                    r: 10 + Math.random() * 8
+                });
+            }
+            if (p.burnTimer === 1) {
+                p.hp = Math.max(0, Math.round((p.hp - 0.5) * 4) / 4);
+                if (typeof triggerShake === 'function') triggerShake(6, 10);
+                if (typeof playSound === 'function') {
+                    playSound('hitBoss');
+                    playSound('heatIgnite');
+                }
+                if (typeof voidExplosions !== 'undefined') {
+                    voidExplosions.push({
+                        x: p.x + p.width / 2,
+                        y: p.y + p.height / 2,
+                        timer: 20,
+                        isWhite: false,
+                        isOrange: true,
+                        r: 45
+                    });
+                }
+            }
+        }
         
         let onPlatform = false;
         if (p.vy >= 0) {
@@ -1623,7 +1672,7 @@ function updatePlayers() {
             let onWall = false;
             let isClimbPhase = boss.state.startsWith("L_CLIMB") || boss.phase === 2.5;
             
-            if (!isClimbPhase) {
+            if (!isClimbPhase && !window.isFireBossMode) {
                 if (p.x <= 5 && kLeft && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = -1; p.facingRight = true; } 
                 else if (p.x >= ARENA_W - p.width - 5 && kRight && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = 1; p.facingRight = false; }
             }
@@ -1861,6 +1910,7 @@ function updatePlayers() {
                         p.isHealing = false; 
                         p.healingWithReserve = false;
                         p.healTimer = 0; 
+                        p.burnGauge = 0;
                         p.hallucinationHits = 0; 
                         teamHallucinationHits = 0;
                         for (let pl of players) pl.hallucinationHits = 0;
@@ -1961,6 +2011,7 @@ function updatePlayers() {
                         }
 
                         p.isHealing = false; p.isAoEHealing = false; p.isFieryHealing = false; p.healingWithReserve = false; p.healTimer = 0;
+                        p.burnGauge = 0;
                         p.hallucinationHits = 0;
                         teamHallucinationHits = 0;
                         for (let pl of players) pl.hallucinationHits = 0;
@@ -2727,9 +2778,27 @@ function updatePlayers() {
 
         if (p.bleedTimer > 0) { p.bleedTimer--; if (p.bleedTimer <= 0) { let wasH = p.isHealing; takeDamage(p, 0.5, true); if(wasH) triggerVibration('heal_interrupt'); else triggerVibration('damage'); } }
         p.x += p.vx; p.y += p.vy;
-        let ceilingLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) ? -2000 : 0;
-        if (p.y < ceilingLimit) { p.y = ceilingLimit; if (p.vy < 0) p.vy = 0; } 
-        if (p.x < 0) p.x = 0; if (p.x > ARENA_W - p.width) p.x = ARENA_W - p.width;
+        if (window.isFireBossMode) {
+            let domeRx = 700;
+            let domeRy = 480;
+            let domeFloor = FLOOR || 520;
+            let domeCenterX = 750;
+            let minX = domeCenterX - domeRx + 15;
+            let maxX = domeCenterX + domeRx - p.width - 15;
+            if (p.x < minX) { p.x = minX; if (p.vx < 0) p.vx = 0; }
+            if (p.x > maxX) { p.x = maxX; if (p.vx > 0) p.vx = 0; }
+            let dx = Math.abs((p.x + p.width / 2) - domeCenterX);
+            let normX = Math.min(0.999, dx / domeRx);
+            let domeCeilY = domeFloor - domeRy * Math.sqrt(Math.max(0, 1 - normX * normX));
+            if (p.y < domeCeilY) {
+                p.y = domeCeilY;
+                if (p.vy < 0) p.vy = 0;
+            }
+        } else {
+            let ceilingLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) ? -2000 : 0;
+            if (p.y < ceilingLimit) { p.y = ceilingLimit; if (p.vy < 0) p.vy = 0; } 
+            if (p.x < 0) p.x = 0; if (p.x > ARENA_W - p.width) p.x = ARENA_W - p.width;
+        }
         if (Math.abs(p.vx) > 0 && p.y + p.height >= FLOOR && !boss.state.startsWith("CINEMATIC")) applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 1);
         let isGrounded = (p.y + p.height >= FLOOR - 2 || onFloor || onPlatform);
         p.onGround = isGrounded;
@@ -4334,6 +4403,27 @@ function drawPlayer(p) {
             ctx.stroke();
             ctx.restore();
         }
+    }
+
+    if (p.burnTimer > 0) {
+        ctx.save();
+        let flameH = 14 + Math.sin(Date.now() / 60) * 6;
+        ctx.fillStyle = "rgba(255, 68, 0, 0.4)";
+        ctx.shadowColor = "#ff4400";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(p.x + p.width / 2, p.y + p.height / 2, p.width * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        for (let f = 0; f < 3; f++) {
+            let fx = p.x + 6 + f * 9;
+            let fy = p.y + 10;
+            ctx.beginPath();
+            ctx.moveTo(fx - 4, fy);
+            ctx.quadraticCurveTo(fx, fy - flameH - f * 2, fx + 4, fy);
+            ctx.fillStyle = f === 1 ? "rgba(255, 230, 80, 0.75)" : "rgba(255, 90, 0, 0.75)";
+            ctx.fill();
+        }
+        ctx.restore();
     }
 }
 

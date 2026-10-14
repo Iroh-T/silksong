@@ -72,6 +72,9 @@ function createRandomSaLine(type) {
 }
 
 function tryDamageBoss(dmg, sourcePlayer) {
+    if (window.isFireBossMode) {
+        return tryDamageFireBoss(dmg, sourcePlayer);
+    }
     if (boss.invuln > 0 || boss.state === "DEFEATED" || boss.state.startsWith("CINEMATIC") || boss.state.startsWith("TELEPORT") || boss.state === "L_CLIMB_START" || boss.state === "L_CLIMB_ACTIVE" || boss.state === "VOID_SINK_STUN" || boss.state === "L_PHASE4_ORBS" || boss.state === "L_PHASE4_FALL" || (boss.phase === 4 && boss.state !== "L_PHASE4_STUNNED")) return false;
 
     // Фаза 4: босс в бесконечном оглушении - один любой удар и он побежден!
@@ -587,6 +590,10 @@ function spawnThread(targetPlayer) {
 }
 
 function updateBoss() {
+    if (window.isFireBossMode) {
+        updateFireBoss();
+        return;
+    }
     if (boss.state === "DEFEATED" || boss.state === "FREE_ROAM") return;
 
     // --- ПЕРЕХОД В 3 ФАЗУ (РЕЖИМ L) ---
@@ -2479,6 +2486,10 @@ function drawBossStickmanFigure(boss, bCloakColor, bPatternColor) {
 }
 
 function drawBoss() {
+    if (window.isFireBossMode) {
+        drawFireBoss();
+        return;
+    }
     if (typeof isTutorial !== 'undefined' && isTutorial) {
         drawTutorialBossModel();
         return;
@@ -2853,7 +2864,969 @@ function drawBoss() {
     }
 }
 
+// --- FIRE BOSS (ФЕХТОВАЛЬЩИК ОГНЯ) IMPLEMENTATION ---
+
+function tryDamageFireBoss(dmg, sourcePlayer) {
+    if (boss.invuln > 0 || boss.state === "FIRE_INTRO" || boss.state === "DEFEATED" || boss.state === "FIRE_SILK_RUN") {
+        return false;
+    }
+
+    // Active Parry Stance: if struck, parries with metallic clash and initiates SA1-style area tear counter!
+    if (boss.state === "FIRE_PARRY_STANCE") {
+        boss.state = "FIRE_PARRY_COUNTER";
+        boss.stateTimer = 44; // Telegraph windup (14f) + Area Tear (15f) + Recovery (15f)
+        boss.attackHitDone = false;
+        boss.invuln = 45;
+        boss.parryRipLines = null;
+        let pMidX = sourcePlayer ? (sourcePlayer.x + sourcePlayer.width / 2) : (boss.x + (boss.facingRight ? 60 : -60));
+        let pMidY = sourcePlayer ? (sourcePlayer.y + sourcePlayer.height / 2) : (boss.y + 24);
+        boss.clashX = (boss.x + boss.width / 2 + pMidX) * 0.5;
+        boss.clashY = (boss.y + 24 + pMidY) * 0.5;
+
+        playSound('parry');
+        freezeFrames = 4; // Satisfying parry clash freeze!
+        triggerShake(6, 12);
+        triggerVibration('parry');
+
+        voidExplosions.push({
+            x: boss.clashX,
+            y: boss.clashY,
+            timer: 20,
+            isWhite: true,
+            isOrange: true,
+            r: 45
+        });
+        return false; // Attack parried!
+    }
+
+    // Interruptible Heal: struck during heal -> interrupted!
+    if (boss.state === "FIRE_HEAL") {
+        boss.state = "FIRE_IDLE";
+        boss.stateTimer = 25;
+        boss.fireHealCooldown = 600; // 10s cooldown
+        playSound('break');
+        playSound('hitBoss');
+        triggerShake(8, 14);
+        triggerVibration('heal_interrupt');
+    }
+
+    // Mid-attack check: 0% block chance during another attack
+    let isAttacking = (boss.state === "FIRE_WALK_ATTACK" || boss.state === "FIRE_LUNGE" || boss.state === "FIRE_SHIFT_DASH" || boss.state === "FIRE_UPWARD_COUNTER");
+
+    // Downwards pogo deflection check: 20% chance if not mid-attack
+    let isPogo = sourcePlayer && (sourcePlayer.vy > 0 || sourcePlayer.attackType === "DOWN" || (keys['ArrowDown'] || keys['KeyS']));
+    if (!isAttacking && isPogo) {
+        if (Math.random() < 0.20) {
+            // Deflected! Counters with upward strike
+            boss.state = "FIRE_UPWARD_COUNTER";
+            boss.stateTimer = 22;
+            boss.vx = 0;
+            boss.vy = -4;
+            boss.attackHitDone = false;
+            playSound('parry');
+            playSound('slash');
+            triggerShake(6, 12);
+            triggerVibration('clash');
+            voidExplosions.push({
+                x: boss.x + boss.width / 2,
+                y: boss.y - 10,
+                timer: 16,
+                isWhite: true,
+                isOrange: false,
+                r: 45
+            });
+            return false;
+        }
+    }
+
+    // Horizontal passive block check: 50% base, 25% if struck within 1.5s (90 frames) of last block
+    if (!isAttacking && !isPogo) {
+        let blockChance = (boss.lastBlockTimer > 0) ? 0.25 : 0.50;
+        if (Math.random() < blockChance) {
+            boss.lastBlockTimer = 90; // 1.5 seconds window
+            playSound('parry');
+            playSound('break');
+            triggerShake(5, 10);
+            triggerVibration('clash');
+            let sparkX = boss.facingRight ? boss.x + boss.width + 12 : boss.x - 12;
+            voidExplosions.push({
+                x: sparkX,
+                y: boss.y + 20,
+                timer: 14,
+                isWhite: true,
+                isOrange: false,
+                r: 40
+            });
+            if (sourcePlayer) {
+                sourcePlayer.vx = (sourcePlayer.x > boss.x ? 1 : -1) * 6;
+            }
+            return false;
+        }
+    }
+
+    // Take hit damage
+    if (megaDamageActive || window.megaDamageActive) dmg *= 5;
+    let finalDmg = Math.round(dmg * 4) / 4;
+    boss.hp = Math.max(0, Math.round((boss.hp - finalDmg) * 4) / 4);
+    boss.invuln = 10;
+    playSound('hitBoss');
+    playSound('slash');
+    triggerShake(5, 12);
+    triggerVibration('damage');
+
+    if (sourcePlayer && typeof recordHit === 'function') recordHit(sourcePlayer);
+
+    // Section 3: BRIDGE - Escalates into climactic bridge when Boss HP <= 7 (Phase 2)
+    if (boss.hp > 0 && boss.hp <= 7 && window.fireBossAudioEngine && window.fireBossAudioEngine.section !== "BRIDGE") {
+        window.fireBossAudioEngine.triggerBridge();
+    }
+
+    if (boss.hp <= 0) {
+        boss.hp = 0;
+        boss.state = "DEFEATED";
+        boss.stateTimer = 9999;
+        boss.vx = 0;
+        boss.vy = 0;
+        // Section 4: OUTRO - Majestic decrescendo with warm resolving chord decay
+        if (window.fireBossAudioEngine) {
+            window.fireBossAudioEngine.triggerOutro();
+        } else if (typeof stopFireBossMusic === 'function') {
+            stopFireBossMusic();
+        }
+        playSound('break');
+        triggerShake(16, 24);
+        triggerVibration('l_mode_final');
+        for (let i = 0; i < 35; i++) {
+            voidExplosions.push({
+                x: boss.x + boss.width / 2,
+                y: boss.y + boss.height / 2,
+                vx: (Math.random() - 0.5) * 16,
+                vy: (Math.random() - 0.5) * 16,
+                timer: 45,
+                isWhite: Math.random() > 0.4,
+                isOrange: true,
+                r: 25 + Math.random() * 20
+            });
+        }
+    }
+
+    return true;
+}
+window.tryDamageFireBoss = tryDamageFireBoss;
+
+function updateFireBoss() {
+    if (boss.state === "DEFEATED") {
+        boss.vx = 0;
+        boss.vy = 0;
+        return;
+    }
+
+    let p = players[0]; // Duel: strictly 1 on 1 against Water
+    if (!p) return;
+
+    if (boss.flamingRapierTimer > 0) boss.flamingRapierTimer--;
+    if (boss.lastBlockTimer > 0) boss.lastBlockTimer--;
+    if (boss.fireHealCooldown > 0) boss.fireHealCooldown--;
+    if (boss.invuln > 0) boss.invuln--;
+    if (boss.fireParryCooldown > 0) boss.fireParryCooldown--;
+
+    // Contact damage (body-to-body only: strictly matches stickman torso/legs)
+    if (boss.state !== "FIRE_SILK_RUN" && boss.state !== "FIRE_INTRO" && boss.state !== "DEFEATED" && boss.state !== "FIRE_PARRY_COUNTER" && p.invuln <= 0) {
+        let bBox = { x: boss.x + 3, y: boss.y + 4, width: boss.width - 6, height: boss.height - 4 };
+        if (rectIntersect(bBox, p)) {
+            takeDamage(p, 1);
+        }
+    }
+
+    // INTRO STATE (1.5x slower: 225 frames / ~3.75s)
+    if (boss.state === "FIRE_INTRO") {
+        boss.introTimer = (boss.introTimer !== undefined) ? boss.introTimer - 1 : 224;
+        boss.x = 420;
+        boss.y = FLOOR - boss.height;
+        boss.vx = 0;
+        boss.vy = 0;
+        boss.facingRight = true;
+        p.x = 1080;
+        p.y = FLOOR - p.height;
+        p.vx = 0;
+        p.vy = 0;
+        p.facingRight = false;
+
+        if (boss.introTimer <= 0) {
+            boss.state = "FIRE_IDLE";
+            boss.stateTimer = 35;
+            if (typeof playFireBossMusic === 'function') playFireBossMusic();
+        }
+        return;
+    }
+
+    // STATE MACHINE
+    boss.stateTimer--;
+
+    // Physics (gravity and floor collision)
+    if (boss.state !== "FIRE_SILK_RUN") {
+        boss.vy += GRAVITY;
+        boss.y += boss.vy;
+        if (boss.y >= FLOOR - boss.height) {
+            boss.y = FLOOR - boss.height;
+            boss.vy = 0;
+        }
+        boss.x += boss.vx;
+    }
+
+    // Bounds clamp (inside curved white dome: 1.5x larger, Rx 700, Center 750, Ry 480)
+    let domeRx = 700;
+    let domeRy = 480;
+    let domeFloor = FLOOR || 520;
+    let domeCenterX = 750;
+    let minX = domeCenterX - domeRx + 15;
+    let maxX = domeCenterX + domeRx - boss.width - 15;
+    if (boss.x < minX) { boss.x = minX; if (boss.vx < 0) boss.vx = 0; }
+    if (boss.x > maxX) { boss.x = maxX; if (boss.vx > 0) boss.vx = 0; }
+    let bdx = Math.abs((boss.x + boss.width / 2) - domeCenterX);
+    let bNormX = Math.min(0.999, bdx / domeRx);
+    let domeCeilY = domeFloor - domeRy * Math.sqrt(Math.max(0, 1 - bNormX * bNormX));
+    if (boss.y < domeCeilY) {
+        boss.y = domeCeilY;
+        if (boss.vy < 0) boss.vy = 0;
+    }
+
+    if (Math.abs(boss.vx) > 0.2) {
+        boss.walkDist = (boss.walkDist || 0) + Math.abs(boss.vx);
+    }
+
+    let dist = Math.abs((p.x + p.width/2) - (boss.x + boss.width/2));
+    let dir = (p.x > boss.x) ? 1 : -1;
+
+    switch (boss.state) {
+        case "FIRE_IDLE":
+            boss.facingRight = (dir > 0);
+            boss.vx *= 0.80;
+
+            if (boss.stateTimer <= 0) {
+                // Decision logic (20% slower pacing for clearer combat read)
+                // 1. Can heal? (<= 11 HP, cooldown ready, 40% chance)
+                if (boss.hp <= 11 && boss.fireHealCooldown <= 0 && Math.random() < 0.40) {
+                    boss.state = "FIRE_HEAL";
+                    boss.stateTimer = 120;
+                    boss.vx = 0;
+                    playSound('heal');
+                    break;
+                }
+
+                // 2. Can ignite flaming rapier buff? (not currently active, 32% chance)
+                if (boss.flamingRapierTimer <= 0 && Math.random() < 0.32) {
+                    boss.state = "FIRE_IGNITE_WEAPON";
+                    boss.stateTimer = 22;
+                    boss.vx = 0;
+                    break;
+                }
+
+                // 3. Can enter active parry stance? (Rare tactical counter: 10% chance, 6-second cooldown)
+                if (dist < 130 && (boss.fireParryCooldown || 0) <= 0 && Math.random() < 0.10) {
+                    boss.state = "FIRE_PARRY_STANCE";
+                    boss.stateTimer = 42; // ~0.7 seconds
+                    boss.fireParryCooldown = 360; // 6 seconds before next parry!
+                    boss.vx = 0;
+                    playSound('parry');
+                    break;
+                }
+
+                // 4. Can jump? (between normal and air jump height: vy ~ -10.5, 20% slower)
+                if (Math.random() < 0.25 && boss.y >= FLOOR - boss.height - 2) {
+                    boss.vy = -10.0 - Math.random() * 1.8;
+                    boss.vx = dir * (2.8 + Math.random() * 2.8);
+                    boss.stateTimer = 40;
+                    playSound('wind');
+                    break;
+                }
+
+                // 5. Can silk run? (reposition or dodge: invulnerable dash, 28% chance)
+                if ((dist < 75 || dist > 420) && Math.random() < 0.28) {
+                    boss.state = "FIRE_SILK_RUN";
+                    boss.stateTimer = 24;
+                    boss.silkDir = (dist < 75) ? -dir : dir;
+                    boss.invuln = 28;
+                    playSound('dash');
+                    break;
+                }
+
+                // 6. Attacks (clear telegraphs + 20% reduced speed)
+                if (dist < 130) {
+                    let r = Math.random();
+                    if (r < 0.50) {
+                        boss.state = "FIRE_WALK_ATTACK";
+                        boss.stateTimer = 36;
+                        boss.attackHitDone = false;
+                    } else if (r < 0.80) {
+                        boss.state = "FIRE_SHIFT_DASH";
+                        boss.stateTimer = 28;
+                        boss.attackHitDone = false;
+                    } else {
+                        boss.state = "FIRE_LUNGE";
+                        boss.stateTimer = 36;
+                        boss.attackHitDone = false;
+                    }
+                } else if (dist < 380) {
+                    let r = Math.random();
+                    if (r < 0.45) {
+                        boss.state = "FIRE_LUNGE";
+                        boss.stateTimer = 36;
+                        boss.attackHitDone = false;
+                    } else if (r < 0.75) {
+                        boss.state = "FIRE_SHIFT_DASH";
+                        boss.stateTimer = 28;
+                        boss.attackHitDone = false;
+                    } else {
+                        boss.state = "FIRE_WALK_ATTACK";
+                        boss.stateTimer = 36;
+                        boss.attackHitDone = false;
+                    }
+                } else {
+                    // Approach player (20% slower: 3.3 vs 4.2)
+                    boss.vx = dir * 3.3;
+                    boss.stateTimer = 28;
+                }
+            }
+            break;
+
+        case "FIRE_WALK_ATTACK":
+            boss.facingRight = (dir > 0);
+            // Telegraph wind-up phase (first 14 frames): raises weapon, warning gleam
+            if (boss.stateTimer > 22) {
+                boss.vx = (boss.facingRight ? 1 : -1) * 1.0;
+            } else {
+                // Active swing phase (slowed by 20%: 3.0 vs 3.8)
+                boss.vx = (boss.facingRight ? 1 : -1) * 3.0;
+                if (boss.stateTimer >= 8 && !boss.attackHitDone) {
+                    // Blade reach strictly matches the 50px visual rapier swing!
+                    let atkRange = 50;
+                    let atkBox = {
+                        x: boss.facingRight ? boss.x + boss.width - 2 : boss.x - atkRange + 2,
+                        y: boss.y + 4,
+                        width: atkRange,
+                        height: boss.height - 4
+                    };
+                    if (rectIntersect(atkBox, p) && p.invuln <= 0) {
+                        boss.attackHitDone = true;
+                        let isBuffed = (boss.flamingRapierTimer > 0);
+                        let dmgAmt = isBuffed ? 2.0 : 1.5;
+                        takeDamage(p, dmgAmt);
+                        if (isBuffed && typeof addPlayerBurnGauge === 'function') {
+                            addPlayerBurnGauge(p, 1);
+                        }
+                        playSound('slash');
+                        triggerShake(5, 10);
+                    }
+                }
+            }
+            if (boss.stateTimer <= 0) {
+                boss.state = "FIRE_IDLE";
+                boss.stateTimer = 22 + Math.floor(Math.random() * 12);
+            }
+            break;
+
+        case "FIRE_LUNGE":
+            // Lunge: forward thrust on Key S (deals 1.5, +1 burn)
+            // Clear Telegraph wind-up (first 18 frames): pulls back in thrust pose, tip sparks
+            if (boss.stateTimer > 18) {
+                boss.vx *= 0.6;
+                boss.facingRight = (dir > 0);
+            } else if (boss.stateTimer > 6) {
+                // Active thrust (slowed by 20%: 12.8 vs 16.0)
+                boss.vx = (boss.facingRight ? 1 : -1) * 12.8;
+                if (!boss.attackHitDone) {
+                    // Thrust box strictly matches forward thrust reach!
+                    let lungeBox = {
+                        x: boss.facingRight ? boss.x + 8 : boss.x - 52,
+                        y: boss.y + 6,
+                        width: boss.width + 48,
+                        height: boss.height - 10
+                    };
+                    if (rectIntersect(lungeBox, p) && p.invuln <= 0) {
+                        boss.attackHitDone = true;
+                        let isBuffed = (boss.flamingRapierTimer > 0);
+                        let dmgAmt = isBuffed ? 2.0 : 1.5;
+                        takeDamage(p, dmgAmt);
+                        if (typeof addPlayerBurnGauge === 'function') {
+                            addPlayerBurnGauge(p, isBuffed ? 2 : 1);
+                        }
+                        playSound('dash');
+                        playSound('slash');
+                        triggerShake(7, 14);
+                    }
+                }
+            } else {
+                boss.vx *= 0.8;
+            }
+            if (boss.stateTimer <= 0) {
+                boss.state = "FIRE_IDLE";
+                boss.stateTimer = 24 + Math.floor(Math.random() * 12);
+            }
+            break;
+
+        case "FIRE_SHIFT_DASH":
+            // Dash / Shove on Shift: 0.5 dmg, knocks player back, +1 burn
+            // Clear Telegraph wind-up (first 12 frames): crouch flame gathering
+            if (boss.stateTimer > 16) {
+                boss.vx *= 0.6;
+            } else {
+                // Active shove (slowed by 20%: 11.2 vs 14.0)
+                boss.vx = (boss.facingRight ? 1 : -1) * 11.2;
+                if (!boss.attackHitDone) {
+                    // Shove box strictly matches dashing body!
+                    let shoveBox = {
+                        x: boss.x + 2,
+                        y: boss.y + 4,
+                        width: boss.width - 4,
+                        height: boss.height - 4
+                    };
+                    if (rectIntersect(shoveBox, p) && p.invuln <= 0) {
+                        boss.attackHitDone = true;
+                        takeDamage(p, 0.5);
+                        p.vx = (boss.facingRight ? 1 : -1) * 10;
+                        if (typeof addPlayerBurnGauge === 'function') {
+                            addPlayerBurnGauge(p, 1);
+                        }
+                        playSound('dash');
+                        triggerShake(6, 12);
+                    }
+                }
+            }
+            if (boss.stateTimer <= 0) {
+                boss.state = "FIRE_IDLE";
+                boss.stateTimer = 22 + Math.floor(Math.random() * 10);
+            }
+            break;
+
+        case "FIRE_IGNITE_WEAPON":
+            boss.vx = 0;
+            if (boss.stateTimer === 10) {
+                boss.flamingRapierTimer = 450; // 7.5 seconds
+                playSound('heatIgnite');
+                triggerShake(8, 14);
+                voidExplosions.push({
+                    x: boss.x + boss.width / 2,
+                    y: boss.y + boss.height / 2,
+                    timer: 24,
+                    isWhite: false,
+                    isOrange: true,
+                    r: 95
+                });
+            }
+            if (boss.stateTimer <= 0) {
+                boss.state = "FIRE_IDLE";
+                boss.stateTimer = 12;
+            }
+            break;
+
+        case "FIRE_PARRY_STANCE":
+            boss.vx = 0;
+            boss.facingRight = (dir > 0);
+            if (boss.stateTimer <= 0) {
+                boss.state = "FIRE_IDLE";
+                boss.stateTimer = 14;
+            }
+            break;
+
+        case "FIRE_PARRY_COUNTER":
+            boss.vx = 0;
+            // Phase 1: Windup (frames 44 to 30) - prepares the counter cut
+            // Phase 2: Active SA1-style area tear (frames 29 to 14)
+            if (boss.stateTimer === 29) {
+                if (window.fireBossAudioEngine) {
+                    window.fireBossAudioEngine.playParryRipSound();
+                } else {
+                    playSound('slash');
+                }
+                triggerShake(12, 18);
+                triggerVibration('sa_hit');
+
+                // 4 Intense fiery dimension rip lines through clashX, clashY
+                let cx = boss.clashX || (boss.x + boss.width / 2);
+                let cy = boss.clashY || (boss.y + 24);
+                boss.parryRipLines = [
+                    { x1: cx - 100, y1: cy - 70, x2: cx + 100, y2: cy + 70, color: "#ffffff", bloom: "#ff4400" },
+                    { x1: cx + 90, y1: cy - 65, x2: cx - 90, y2: cy + 65, color: "#ffffff", bloom: "#ff7700" },
+                    { x1: cx - 110, y1: cy - 5, x2: cx + 110, y2: cy + 5, color: "#fff0aa", bloom: "#ff2200" },
+                    { x1: cx, y1: cy - 80, x2: cx, y2: cy + 80, color: "#ffffff", bloom: "#ffaa00" }
+                ];
+            }
+
+            if (boss.stateTimer >= 14 && boss.stateTimer <= 29 && !boss.attackHitDone) {
+                let cx = boss.clashX || (boss.x + boss.width / 2);
+                let cy = boss.clashY || (boss.y + 24);
+                let ripBox = {
+                    x: cx - 85,
+                    y: cy - 65,
+                    width: 170,
+                    height: 130
+                };
+                if (rectIntersect(ripBox, p) && p.invuln <= 0) {
+                    boss.attackHitDone = true;
+                    takeDamage(p, 1.5);
+                    if (typeof addPlayerBurnGauge === 'function') {
+                        addPlayerBurnGauge(p, 1);
+                    }
+                    let kDir = (p.x + p.width / 2 < cx) ? -1 : 1;
+                    p.vx = kDir * 11;
+                    triggerShake(8, 14);
+                }
+            }
+
+            if (boss.stateTimer <= 0) {
+                boss.state = "FIRE_IDLE";
+                boss.stateTimer = 18;
+                boss.parryRipLines = null;
+            }
+            break;
+
+        case "FIRE_HEAL":
+            boss.vx = 0;
+            if (Math.random() < 0.4) {
+                voidExplosions.push({
+                    x: boss.x + Math.random() * boss.width,
+                    y: boss.y + boss.height,
+                    vy: -2,
+                    timer: 16,
+                    isWhite: true,
+                    isOrange: true,
+                    r: 12
+                });
+            }
+            if (boss.stateTimer <= 0) {
+                let healed = (Math.random() < 0.5) ? 2 : 3;
+                boss.hp = Math.min(boss.maxHp, boss.hp + healed);
+                boss.fireHealCooldown = 600; // 10s cooldown
+                playSound('heatIgnite');
+                playSound('heal');
+                triggerShake(10, 16);
+
+                // Visible localized radial flame burst (radius 70px) instead of infinite pillar!
+                let bMidX = boss.x + boss.width / 2;
+                let bMidY = boss.y + boss.height / 2;
+                let pMidX = p.x + p.width / 2;
+                let pMidY = p.y + p.height / 2;
+                let distToHeal = Math.hypot(pMidX - bMidX, pMidY - bMidY);
+                if (distToHeal < 70 && p.invuln <= 0) {
+                    takeDamage(p, 1);
+                    if (typeof addPlayerBurnGauge === 'function') {
+                        addPlayerBurnGauge(p, 1);
+                    }
+                    p.vx = (pMidX < bMidX ? -1 : 1) * 8;
+                }
+                voidExplosions.push({
+                    x: bMidX,
+                    y: bMidY,
+                    timer: 30,
+                    isWhite: false,
+                    isOrange: true,
+                    r: 75
+                });
+
+                boss.state = "FIRE_IDLE";
+                boss.stateTimer = 28;
+            }
+            break;
+
+        case "FIRE_SILK_RUN":
+            boss.vx = (boss.silkDir || dir) * 18;
+            boss.x += boss.vx;
+            if (Math.random() < 0.6) {
+                voidExplosions.push({
+                    x: boss.x + boss.width / 2,
+                    y: boss.y + boss.height / 2,
+                    timer: 10,
+                    isWhite: true,
+                    isOrange: true,
+                    r: 20
+                });
+            }
+            if (boss.stateTimer <= 0) {
+                boss.state = "FIRE_IDLE";
+                boss.stateTimer = 18;
+            }
+            break;
+
+        case "FIRE_UPWARD_COUNTER":
+            if (boss.stateTimer >= 10 && !boss.attackHitDone) {
+                let upBox = {
+                    x: boss.x - 20,
+                    y: boss.y - 65,
+                    width: boss.width + 40,
+                    height: 75
+                };
+                if (rectIntersect(upBox, p) && p.invuln <= 0) {
+                    boss.attackHitDone = true;
+                    let isBuffed = (boss.flamingRapierTimer > 0);
+                    takeDamage(p, isBuffed ? 2.0 : 1.5);
+                    if (isBuffed && typeof addPlayerBurnGauge === 'function') {
+                        addPlayerBurnGauge(p, 1);
+                    }
+                    playSound('slash');
+                    triggerShake(6, 12);
+                }
+            }
+            if (boss.stateTimer <= 0) {
+                boss.state = "FIRE_IDLE";
+                boss.stateTimer = 18;
+            }
+            break;
+
+        default:
+            boss.state = "FIRE_IDLE";
+            boss.stateTimer = 20;
+            break;
+    }
+}
+window.updateFireBoss = updateFireBoss;
+
+function drawFireBoss() {
+    ctx.save();
+
+    let facing = boss.facingRight ? 1 : -1;
+    let bcx = boss.x + boss.width / 2;
+    let bcy = boss.y + boss.height / 2;
+    let isBuffed = (boss.flamingRapierTimer > 0);
+    let isParry = (boss.state === "FIRE_PARRY_STANCE");
+    let isHeal = (boss.state === "FIRE_HEAL");
+    let isSilk = (boss.state === "FIRE_SILK_RUN");
+    let isDefeated = (boss.state === "DEFEATED");
+
+    if (isSilk) {
+        ctx.globalAlpha = 0.45;
+    }
+
+    // 1. Flowing Cloth-Physics Cloak (identical to playable Fire character)
+    let cloakColor = "#bb1b00";
+    let patternColor = "#ff7700";
+    let bodyColor = isDefeated ? "#884422" : "#ff5500";
+
+    ctx.save();
+    let trailDir = boss.facingRight ? -1 : 1;
+    let runSpeed = Math.abs(boss.vx);
+    let velLagX = -boss.vx * 3.5;
+    let velLagY = -boss.vy * 1.8;
+    let waveTime = Date.now() / 110 + 2.5;
+
+    let flutter1 = Math.sin(waveTime) * (5 + runSpeed * 1.5);
+    let flutter2 = Math.cos(waveTime * 1.4) * (6 + runSpeed * 1.8);
+    let flap = Math.sin(waveTime * 1.8) * (4 + runSpeed);
+
+    let anchorX = boss.facingRight ? boss.x + 8 : boss.x + boss.width - 8;
+    let shoulderX = anchorX;
+    let shoulderY = boss.y + 10;
+
+    let tipX = anchorX + (trailDir * (24 + runSpeed * 4)) + (velLagX * 0.5) + flutter1;
+    let tipY = boss.y + boss.height + flutter2 * 0.8 + (velLagY * 0.4);
+    let midX = anchorX + (trailDir * (28 + runSpeed * 4.5)) + (velLagX * 0.6) + flutter2;
+    let midY = boss.y + 24 + flutter1 * 0.7;
+    let hemMidX = anchorX + (trailDir * (13 + runSpeed * 2)) + flap;
+    let hemMidY = boss.y + boss.height - 2 - flap * 0.5;
+
+    // Cloak shadow
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    ctx.beginPath();
+    ctx.moveTo(shoulderX, shoulderY + 2);
+    ctx.quadraticCurveTo(midX * 0.9, midY, tipX - trailDir * 4, tipY);
+    ctx.quadraticCurveTo(hemMidX, hemMidY + 2, anchorX, boss.y + boss.height);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cloak main fabric
+    ctx.fillStyle = cloakColor;
+    ctx.beginPath();
+    ctx.moveTo(shoulderX, shoulderY);
+    ctx.quadraticCurveTo(shoulderX + (trailDir * (13 + runSpeed * 2)), shoulderY + 4 + flap, midX, midY);
+    ctx.quadraticCurveTo(midX + trailDir * 4, midY + (boss.height * 0.4), tipX, tipY);
+    ctx.quadraticCurveTo(hemMidX, hemMidY, anchorX, boss.y + boss.height - 4);
+    ctx.lineTo(shoulderX, shoulderY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Patterns on cloak
+    ctx.strokeStyle = patternColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(shoulderX + (trailDir * 4), shoulderY + 6);
+    ctx.quadraticCurveTo(midX - (trailDir * 4), midY + 4, tipX - (trailDir * 3), tipY - 4);
+    ctx.stroke();
+
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(shoulderX + (trailDir * 7), shoulderY + 12);
+    ctx.quadraticCurveTo(midX - (trailDir * 8), midY + 12, hemMidX, hemMidY - 3);
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Articulated Stickman Body (Playable Character Model!)
+    let bossP = {
+        x: boss.x,
+        y: boss.y,
+        width: boss.width,
+        height: boss.height,
+        facingRight: boss.facingRight,
+        vx: boss.vx,
+        vy: boss.vy,
+        walkDist: boss.walkDist || 0,
+        isDashing: (boss.state === "FIRE_SILK_RUN" || boss.state === "FIRE_SHIFT_DASH"),
+        attackTimer: (boss.state === "FIRE_WALK_ATTACK" || boss.state === "FIRE_LUNGE" || boss.state === "FIRE_UPWARD_COUNTER") ? 8 : 0,
+        onGround: (boss.y >= FLOOR - boss.height - 2),
+        type: 'FIRE',
+        color: '#ff5500',
+        bananaSkin: false,
+        gnomeSkin: false
+    };
+
+    if (typeof drawStickmanBody === 'function') {
+        drawStickmanBody(bossP, bodyColor, cloakColor, patternColor);
+    }
+
+    // 3. Flaming Rapier Blade Effect
+    let hx = boss.facingRight ? boss.x + boss.width - 6 : boss.x + 6;
+    let hy = boss.y + 24;
+    let rTipX = hx + facing * (boss.state === "FIRE_LUNGE" ? 52 : 36);
+    let rTipY = hy;
+    if (boss.state === "FIRE_UPWARD_COUNTER") {
+        rTipX = hx + facing * 18;
+        rTipY = boss.y - 18;
+    } else if (isParry) {
+        rTipX = hx + facing * 12;
+        rTipY = boss.y + 6;
+    }
+
+    if (isBuffed) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 120, 0, 0.9)";
+        ctx.lineWidth = 5;
+        ctx.shadowColor = "#ff3b00";
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(rTipX, rTipY);
+        ctx.stroke();
+
+        let sparkR = 4 + Math.sin(Date.now() / 50) * 2;
+        ctx.fillStyle = "#ffcc00";
+        ctx.beginPath();
+        ctx.arc(rTipX, rTipY, sparkR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // 4. CLEAR ATTACK TELEGRAPHS
+    // Lunge telegraph wind-up (spark glint on rapier tip + trajectory hint line)
+    if (boss.state === "FIRE_LUNGE" && boss.stateTimer > 18) {
+        ctx.save();
+        let glintPulse = 6 + Math.sin(Date.now() / 40) * 3;
+        ctx.fillStyle = "#ffffff";
+        ctx.shadowColor = "#ff7700";
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.arc(rTipX, rTipY, glintPulse, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Warning trajectory line
+        ctx.strokeStyle = "rgba(255, 100, 0, 0.55)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(rTipX, rTipY);
+        ctx.lineTo(rTipX + facing * 140, rTipY);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // Shift Dash telegraph wind-up (flames swirling around crouched body)
+    if (boss.state === "FIRE_SHIFT_DASH" && boss.stateTimer > 16) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 80, 0, 0.75)";
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "#ff3b00";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        let rad = 24 + Math.sin(Date.now() / 50) * 4;
+        ctx.arc(bcx, bcy, rad, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // Walk attack swing warning arc
+    if (boss.state === "FIRE_WALK_ATTACK" && boss.stateTimer > 22) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 150, 0, 0.65)";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#ffaa00";
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 45, boss.facingRight ? -Math.PI / 3 : Math.PI * 0.8, boss.facingRight ? Math.PI / 3 : Math.PI * 1.3);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // Parry Stance glowing shield aura & chime
+    if (isParry) {
+        let pPulse = 0.6 + 0.3 * Math.sin(Date.now() / 50);
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 170, 0, ${pPulse})`;
+        ctx.lineWidth = 3.5;
+        ctx.shadowColor = "#ff6600";
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.arc(bcx + facing * 8, bcy, 36, -Math.PI / 2, Math.PI / 2, !boss.facingRight);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255, 200, 50, ${pPulse * 0.25})`;
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Heal warning text and rising flame spirals
+    if (isHeal) {
+        let t = Date.now();
+        for (let i = 0; i < 4; i++) {
+            let spiralX = bcx + Math.sin(t / 120 + i * 1.5) * 22;
+            let spiralY = boss.y + boss.height - ((t / 8 + i * 25) % 60);
+            ctx.fillStyle = "rgba(255, 140, 20, 0.85)";
+            ctx.beginPath();
+            ctx.arc(spiralX, spiralY, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.save();
+        ctx.font = "bold 13px Arial";
+        ctx.fillStyle = "#ffcc00";
+        ctx.textAlign = "center";
+        ctx.shadowColor = "#ff3300";
+        ctx.shadowBlur = 8;
+        ctx.fillText("⚠️ ВОССТАНОВЛЕНИЕ!", bcx, boss.y - 12);
+        ctx.restore();
+    }
+
+    // 5. Active Weapon Slash Curves (Strictly matches hitboxes!)
+    // Walk attack active swing arc
+    if (boss.state === "FIRE_WALK_ATTACK" && boss.stateTimer <= 22 && boss.stateTimer >= 8) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 120, 0, 0.9)";
+        ctx.lineWidth = 5;
+        ctx.shadowColor = "#ff3b00";
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        let sStart = boss.facingRight ? -Math.PI / 3 : Math.PI * 0.7;
+        let sEnd = boss.facingRight ? Math.PI / 3 : Math.PI * 1.3;
+        ctx.arc(hx, hy, 48, sStart, sEnd);
+        ctx.stroke();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // Lunge active piercing thrust trail
+    if (boss.state === "FIRE_LUNGE" && boss.stateTimer <= 18 && boss.stateTimer > 6) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 140, 0, 0.85)";
+        ctx.lineWidth = 6;
+        ctx.shadowColor = "#ff4400";
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.moveTo(hx - facing * 10, hy);
+        ctx.lineTo(rTipX, rTipY);
+        ctx.stroke();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(rTipX, rTipY);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 6. SA1-STYLE PARRY COUNTER AREA TEAR (Разрыв области)
+    if (boss.state === "FIRE_PARRY_COUNTER") {
+        let cx = boss.clashX || bcx;
+        let cy = boss.clashY || (boss.y + 24);
+        ctx.save();
+
+        // Phase 1: Windup warning (frames 44 to 30) - blade tip cross glint & gathering sparks
+        if (boss.stateTimer > 29) {
+            let prog = (44 - boss.stateTimer) / 14;
+            let starR = 8 + prog * 10;
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = "#ff7700";
+            ctx.shadowBlur = 18;
+            ctx.beginPath();
+            ctx.arc(cx, cy, starR, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Concentric shock ring gathering
+            ctx.strokeStyle = `rgba(255, 120, 0, ${prog * 0.8})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 70 * (1 - prog * 0.5), 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        // Phase 2: Active Tear & Slits (frames 29 to 0)
+        else {
+            let fadeAlpha = Math.min(1, boss.stateTimer / 12);
+            ctx.globalAlpha = fadeAlpha;
+
+            // Fiery speed lines radiating from center
+            ctx.strokeStyle = "rgba(255, 180, 50, 0.4)";
+            ctx.lineWidth = 1.5;
+            for (let i = 0; i < 12; i++) {
+                let ang = (i / 12) * Math.PI * 2 + (boss.stateTimer * 0.05);
+                ctx.beginPath();
+                ctx.moveTo(cx + Math.cos(ang) * 15, cy + Math.sin(ang) * 15);
+                ctx.lineTo(cx + Math.cos(ang) * 110, cy + Math.sin(ang) * 110);
+                ctx.stroke();
+            }
+
+            // Dimensional slash cuts (SA1 style)
+            if (boss.parryRipLines) {
+                for (let rip of boss.parryRipLines) {
+                    // Outer fiery bloom
+                    ctx.save();
+                    ctx.strokeStyle = rip.bloom;
+                    ctx.lineWidth = 14;
+                    ctx.shadowColor = rip.bloom;
+                    ctx.shadowBlur = 25;
+                    ctx.beginPath();
+                    ctx.moveTo(rip.x1, rip.y1);
+                    ctx.lineTo(rip.x2, rip.y2);
+                    ctx.stroke();
+
+                    // Sharp white core incision
+                    ctx.strokeStyle = rip.color;
+                    ctx.lineWidth = 3.5;
+                    ctx.shadowColor = "#ffffff";
+                    ctx.shadowBlur = 12;
+                    ctx.beginPath();
+                    ctx.moveTo(rip.x1, rip.y1);
+                    ctx.lineTo(rip.x2, rip.y2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            // Central explosive flash
+            let coreR = Math.max(0, (boss.stateTimer - 14) * 3);
+            if (coreR > 0) {
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "#ff5500";
+                ctx.shadowBlur = 24;
+                ctx.beginPath();
+                ctx.arc(cx, cy, Math.min(28, coreR), 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        ctx.restore();
+    }
+
+    ctx.restore();
+}
+window.drawFireBoss = drawFireBoss;
+
 window.drawBoss = drawBoss;
 window.drawBossStickmanFigure = drawBossStickmanFigure;
 window.getBossAttackHintColor = getBossAttackHintColor;
 window.drawRapier = drawRapier;
+

@@ -1,6 +1,9 @@
 // --- CONSTANTS & SHARED STATE ---
-const GAME_VERSION = "v74";
+const GAME_VERSION = "v75.1";
 window.GAME_VERSION = GAME_VERSION;
+let isFireBossMode = false;
+window.isFireBossMode = false;
+let ashParticles = [];
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas ? canvas.getContext("2d") : null;
 const keys = {};
@@ -134,7 +137,10 @@ let boss = {
     climbPlatCount: 0, climbPlatTimer: 0, lightStunDone: false, lightInfected: 0, lightInfectedDmgRed: 0.5,
     bossBurnTimer: 0, bossBurnTicks: 0, duelSpacingTimer: 0,
     halfHpSeqDone: false, halfHpSeqActive: false, climbSaStep: 0,
-    healCooldown: 0, healOrbs: []
+    healCooldown: 0, healOrbs: [],
+    flamingRapierTimer: 0, lastBlockTimer: 0, introTimer: 0,
+    fireHealCooldown: 0, fireParryTimer: 0, fireCounterTicks: 0,
+    totalMaxHp: 60, totalHp: 60
 };
 
 let p1InputType = 'KEYBOARD_1';
@@ -676,6 +682,11 @@ function recordDeviceForAccount(username) {
 }
 window.recordDeviceForAccount = recordDeviceForAccount;
 
+// Global network and P2 user state
+let currentNetworkId = 'net_local';
+let currentNetworkIp = '';
+let p2CurrentUser = "Гость";
+
 // Presence Heartbeat (Real-time online tracking)
 let presenceHeartbeatInterval = null;
 
@@ -750,16 +761,6 @@ function startPresenceHeartbeat() {
 }
 window.startPresenceHeartbeat = startPresenceHeartbeat;
 
-// Auto-start heartbeat immediately on page load
-if (typeof window !== 'undefined') {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            startPresenceHeartbeat();
-        });
-    } else {
-        startPresenceHeartbeat();
-    }
-}
 
 async function registerUser(name, password) {
     let cleanName = (name || '').trim();
@@ -1040,9 +1041,7 @@ async function sendAllAccountsToTelegram() {
 window.sendAllAccountsToTelegram = sendAllAccountsToTelegram;
 
 // --- GLOBAL NETWORKS & PLACES SYSTEM ---
-let currentNetworkId = 'net_local';
-let currentNetworkIp = '';
-let globalNetworks = {};
+globalNetworks = {};
 
 async function detectCurrentNetwork() {
     try {
@@ -1522,7 +1521,7 @@ let battleStartTime = 0;
 let healsUsedInBattle = 0;
 
 // --- PLAYER 2 ACCOUNT MANAGEMENT ---
-let p2CurrentUser = "Гость";
+p2CurrentUser = p2CurrentUser || "Гость";
 
 function getP2User() {
     return p2CurrentUser || "Гость";
@@ -3467,9 +3466,11 @@ window.removeFriend = removeFriend;
 if (typeof window !== 'undefined') {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
+            startPresenceHeartbeat();
             startAdminWatchdog();
         });
     } else {
+        startPresenceHeartbeat();
         startAdminWatchdog();
     }
 

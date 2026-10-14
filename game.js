@@ -4,6 +4,7 @@ const externalGameAssets = {
     plants1: [],
     plants2: [],
     plants3: [],
+    compPlants: [],
     slimes: [],
     boulders: [],
     loaded: false
@@ -34,6 +35,14 @@ function loadExternalGameAssets() {
             externalGameAssets.plants3[idx] = p3;
         });
 
+        // Animated Comp 1 plant frames for Fire Boss Arena
+        for (let idx = 0; idx < 12; idx++) {
+            let padded = String(idx).padStart(5, '0');
+            let compImg = new Image();
+            compImg.src = `assets/plants/comp/Comp 1_${padded}.png`;
+            externalGameAssets.compPlants[idx] = compImg;
+        }
+
         let slimeFrames = ['00000', '00004', '00008', '00012', '00016', '00020', '00024', '00028'];
         slimeFrames.forEach((s, idx) => {
             let sl = new Image();
@@ -54,6 +63,388 @@ function loadExternalGameAssets() {
 }
 loadExternalGameAssets();
 
+// --- UNIFIED CONTINUOUS TOTAL BOSS HEALTH HELPER ---
+function getBossTotalHp() {
+    if (!boss) return 0;
+    if (window.isFireBossMode) {
+        return Math.max(0, boss.hp);
+    }
+    if (boss.state === "DEFEATED") return 0;
+    
+    let p2 = (typeof phase2Hp !== 'undefined' && phase2Hp) ? phase2Hp : 0;
+    let p3 = (typeof phase3Hp !== 'undefined' && phase3Hp) ? phase3Hp : 0;
+    
+    if (boss.phase === 1) {
+        return Math.max(0, boss.hp) + p2 + p3;
+    } else if (boss.phase === 2) {
+        return Math.max(0, boss.hp) + p3;
+    } else if (boss.phase === 2.5) {
+        return p3;
+    } else {
+        return Math.max(0, boss.hp);
+    }
+}
+window.getBossTotalHp = getBossTotalHp;
+
+// --- FIRE BOSS DUEL: ASH PARTICLES & COMP PLANTS ---
+function initAshParticles() {
+    ashParticles = [];
+    for (let i = 0; i < 50; i++) {
+        let isEmber = Math.random() < 0.22;
+        let grey = Math.floor(130 + Math.random() * 80);
+        let alpha = 0.4 + Math.random() * 0.45;
+        ashParticles.push({
+            x: Math.random() * 1000,
+            y: Math.random() * 400,
+            vx: (Math.random() - 0.5) * 0.4,
+            vy: Math.random() * 0.5 + 0.25,
+            size: 2.5 + Math.random() * 3.5,
+            angle: Math.random() * Math.PI * 2,
+            spin: (Math.random() - 0.5) * 0.05,
+            phase: Math.random() * Math.PI * 2,
+            isEmber: isEmber,
+            color: isEmber ? `rgba(255, ${100 + Math.floor(Math.random() * 80)}, 30, ${alpha})` : `rgba(${grey}, ${grey}, ${grey + 10}, ${alpha})`
+        });
+    }
+}
+window.initAshParticles = initAshParticles;
+
+function updateAshParticles() {
+    if (!ashParticles || ashParticles.length === 0) return;
+    for (let a of ashParticles) {
+        a.x += Math.sin(Date.now() / 800 + a.phase) * 0.4 + a.vx;
+        a.y += a.vy;
+        a.angle += a.spin;
+        a.vx *= 0.95;
+        if (a.y > FLOOR + 10) {
+            a.y = -10;
+            a.x = Math.random() * ARENA_W;
+            a.vx = (Math.random() - 0.5) * 0.4;
+        }
+        if (a.x < -10) a.x = ARENA_W + 10;
+        if (a.x > ARENA_W + 10) a.x = -10;
+    }
+}
+window.updateAshParticles = updateAshParticles;
+
+function drawAshParticles() {
+    if (!ashParticles || ashParticles.length === 0) return;
+    ctx.save();
+    for (let a of ashParticles) {
+        ctx.save();
+        ctx.translate(a.x, a.y);
+        ctx.rotate(a.angle);
+        ctx.fillStyle = a.color;
+        if (a.isEmber) {
+            ctx.shadowColor = "#ff5500";
+            ctx.shadowBlur = 5;
+        }
+        ctx.fillRect(-a.size / 2, -a.size / 2, a.size, a.size * 0.7);
+        ctx.restore();
+    }
+    ctx.restore();
+}
+window.drawAshParticles = drawAshParticles;
+
+function drawCompPlants() {
+    if (!externalGameAssets || !externalGameAssets.compPlants || externalGameAssets.compPlants.length === 0) return;
+    let frameIdx = Math.floor(Date.now() / 110) % externalGameAssets.compPlants.length;
+    let img = externalGameAssets.compPlants[frameIdx];
+    if (!img || !img.complete || img.naturalWidth === 0) return;
+
+    let plantPositions = [
+        { x: 140, w: 42, h: 84 },
+        { x: 380, w: 38, h: 76 },
+        { x: 620, w: 44, h: 88 },
+        { x: 880, w: 40, h: 80 },
+        { x: 1120, w: 44, h: 86 },
+        { x: 1360, w: 38, h: 78 }
+    ];
+
+    ctx.save();
+    for (let p of plantPositions) {
+        ctx.drawImage(img, p.x - p.w / 2, FLOOR - p.h, p.w, p.h);
+    }
+    ctx.restore();
+}
+window.drawCompPlants = drawCompPlants;
+
+function drawFireBossArena(introTimer) {
+    let w = ARENA_W || 1500;
+    let h = ARENA_H || 400;
+    let isIntro = (boss && boss.state === "FIRE_INTRO");
+    let timer = (introTimer !== undefined) ? introTimer : (boss ? boss.introTimer : 0);
+    let elapsed = 225 - timer;
+
+    if (isIntro && elapsed < 135) {
+        // --- 0.0s - 2.25s: PRE-FLASH ATMOSPHERE (1.5x slower) ---
+        // Dark purple sky across the 1500 arena
+        let skyGrad = ctx.createLinearGradient(0, 0, 0, FLOOR);
+        skyGrad.addColorStop(0, "#190624");
+        skyGrad.addColorStop(0.4, "#2c0e3e");
+        skyGrad.addColorStop(1, "#3e1754");
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, w, FLOOR);
+
+        // Heavy purple clouds at the top
+        ctx.save();
+        ctx.fillStyle = "rgba(42, 11, 58, 0.85)";
+        for (let i = 0; i < 11; i++) {
+            let cx = 80 + i * 145;
+            let cy = 35 + (i % 2) * 20;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 75, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.fillStyle = "rgba(74, 25, 99, 0.6)";
+        for (let i = 0; i < 10; i++) {
+            let cx = 130 + i * 150;
+            let cy = 25 + ((i + 1) % 2) * 15;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 65, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+
+        // Floor
+        ctx.fillStyle = "#1e1322";
+        ctx.fillRect(0, FLOOR, w, h - FLOOR);
+        ctx.strokeStyle = "rgba(160, 90, 220, 0.4)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, FLOOR);
+        ctx.lineTo(w, FLOOR);
+        ctx.stroke();
+
+        // Blurred glowing red-orange round object on the ground in the middle
+        let orbX = w / 2; // 750
+        let orbY = FLOOR - 25;
+        let orbR = 25;
+
+        // Blurred background glow
+        ctx.save();
+        let glowGrad = ctx.createRadialGradient(orbX, orbY, 5, orbX, orbY, 90);
+        glowGrad.addColorStop(0, "rgba(255, 100, 0, 0.85)");
+        glowGrad.addColorStop(0.3, "rgba(255, 60, 0, 0.45)");
+        glowGrad.addColorStop(0.7, "rgba(200, 30, 0, 0.15)");
+        glowGrad.addColorStop(1, "rgba(150, 0, 0, 0)");
+        ctx.fillStyle = glowGrad;
+        ctx.beginPath();
+        ctx.arc(orbX, orbY, 90, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glowing orb itself (soft blurred edges)
+        let orbGrad = ctx.createRadialGradient(orbX, orbY, 2, orbX, orbY, orbR);
+        orbGrad.addColorStop(0, "#fff2b2");
+        orbGrad.addColorStop(0.35, "#ff8800");
+        orbGrad.addColorStop(0.8, "#ff3300");
+        orbGrad.addColorStop(1, "rgba(200, 20, 0, 0.85)");
+        ctx.fillStyle = orbGrad;
+        ctx.shadowColor = "#ff5500";
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(orbX, orbY, orbR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Animated Comp plants on arena floor
+        drawCompPlants();
+
+        // Purple ambient lighting overlay
+        ctx.fillStyle = "rgba(65, 20, 90, 0.22)";
+        ctx.fillRect(0, 0, w, h);
+
+        // Silk thread sequence (from elapsed 90 to 135)
+        if (elapsed >= 90) {
+            let fireStartX = 420;
+            let fireStartY = FLOOR - 35;
+            let waterStartX = 1080;
+            let waterStartY = FLOOR - 35;
+            let meetX = orbX;
+            let meetY = FLOOR - 70;
+
+            let fProg = Math.min(1, Math.max(0, (elapsed - 90) / 30));
+            let wProg = Math.min(1, Math.max(0, (elapsed - 102) / 26));
+
+            ctx.save();
+            ctx.strokeStyle = "#ffffff";
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 10;
+            ctx.lineWidth = 2.5;
+
+            // Draw Fire thread
+            if (fProg > 0) {
+                let curFX = fireStartX + (meetX - fireStartX) * fProg;
+                let curFY = fireStartY + (meetY - fireStartY) * fProg - Math.sin(fProg * Math.PI) * 20;
+                ctx.beginPath();
+                ctx.moveTo(fireStartX, fireStartY);
+                ctx.quadraticCurveTo(
+                    fireStartX + (curFX - fireStartX) * 0.5,
+                    Math.min(fireStartY, curFY) - 20,
+                    curFX,
+                    curFY
+                );
+                ctx.stroke();
+            }
+
+            // Draw Water thread
+            if (wProg > 0) {
+                let curWX = waterStartX + (meetX - waterStartX) * wProg;
+                let curWY = waterStartY + (meetY - waterStartY) * wProg - Math.sin(wProg * Math.PI) * 20;
+                ctx.beginPath();
+                ctx.moveTo(waterStartX, waterStartY);
+                ctx.quadraticCurveTo(
+                    waterStartX + (curWX - waterStartX) * 0.5,
+                    Math.min(waterStartY, curWY) - 20,
+                    curWX,
+                    curWY
+                );
+                ctx.stroke();
+            }
+
+            // When they touch / meet (elapsed >= 128)
+            if (elapsed >= 128) {
+                let orbProgress = (elapsed - 128) / 7;
+                let mR = 4 + orbProgress * 30;
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "#ffffff";
+                ctx.shadowBlur = 25;
+                ctx.beginPath();
+                ctx.arc(meetX, meetY, mR, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+    } else {
+        // --- WHITE DOME ARENA (Revealed / Active) ---
+        let domeCx = 750;
+        let domeFloor = FLOOR || 520;
+        let domeRx = 700; // 1.5x diameter
+        let domeRy = 480; // Taller soaring dome! Apex at y = 40 (520 - 480)
+
+        // 1. Entire background outside dome is pitch black void (#000000)
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, w, h);
+
+        // 2. Interior of the dome: deep comfortable atmosphere with luminous silvery-white ambient glow (not blinding!)
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
+        ctx.lineTo(domeCx + domeRx, domeFloor);
+        ctx.lineTo(domeCx - domeRx, domeFloor);
+        ctx.closePath();
+
+        // Comfortable deep twilight slate backdrop with soft luminous mist
+        let innerGrad = ctx.createRadialGradient(domeCx, 120, 60, domeCx, domeFloor, domeRx);
+        innerGrad.addColorStop(0.0, "rgba(220, 230, 248, 0.45)");
+        innerGrad.addColorStop(0.4, "rgba(180, 200, 230, 0.25)");
+        innerGrad.addColorStop(0.8, "rgba(28, 32, 45, 0.95)");
+        innerGrad.addColorStop(1.0, "#12151f");
+        ctx.fillStyle = innerGrad;
+        ctx.fill();
+
+        // Soft celestial light beams from the apex (comfortably translucent, not blinding)
+        let lightWash = ctx.createLinearGradient(0, 40, 0, domeFloor);
+        lightWash.addColorStop(0, "rgba(255, 255, 255, 0.25)");
+        lightWash.addColorStop(0.4, "rgba(230, 240, 255, 0.08)");
+        lightWash.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = lightWash;
+        ctx.fill();
+        ctx.restore();
+
+        // 3. Floor beneath y = 350 inside the dome
+        ctx.save();
+        ctx.fillStyle = "#12141c";
+        ctx.fillRect(domeCx - domeRx, domeFloor, domeRx * 2, h - domeFloor);
+
+        // Subtle glowing floor border line
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(domeCx - domeRx, domeFloor);
+        ctx.lineTo(domeCx + domeRx, domeFloor);
+        ctx.stroke();
+        ctx.restore();
+
+        // 4. Comp plants on the arena floor
+        drawCompPlants();
+
+        // 5. Radiant White Dome Perimeter Arc (Glowing white light)
+        ctx.save();
+        // Diffuse outer bloom
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.lineWidth = 10;
+        ctx.shadowColor = "#ffffff";
+        ctx.shadowBlur = 30;
+        ctx.beginPath();
+        ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
+        ctx.stroke();
+
+        // Core bright white arch
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 4;
+        ctx.shadowColor = "#ffffff";
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+window.drawFireBossArena = drawFireBossArena;
+
+function maskOutsideFireDome() {
+    if (!ctx) return;
+    if (boss && boss.state === "FIRE_INTRO" && (225 - boss.introTimer) < 135) {
+        return;
+    }
+    let domeCx = 750;
+    let domeFloor = FLOOR || 520;
+    let domeRx = 700;
+    let domeRy = 480;
+    let w = ARENA_W || 1500;
+    let h = ARENA_H || 650;
+
+    ctx.save();
+    ctx.fillStyle = "#000000";
+
+    // 1. Top-Left Corner (Outside the Dome Arch)
+    ctx.beginPath();
+    ctx.moveTo(-500, -500);
+    ctx.lineTo(domeCx, -500);
+    ctx.lineTo(domeCx, domeFloor - domeRy);
+    ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, 3 * Math.PI / 2, Math.PI, true);
+    ctx.lineTo(-500, domeFloor);
+    ctx.closePath();
+    ctx.fill();
+
+    // 2. Top-Right Corner (Outside the Dome Arch)
+    ctx.beginPath();
+    ctx.moveTo(w + 500, -500);
+    ctx.lineTo(domeCx, -500);
+    ctx.lineTo(domeCx, domeFloor - domeRy);
+    ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, 3 * Math.PI / 2, 2 * Math.PI, false);
+    ctx.lineTo(w + 500, domeFloor);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3. Outer strips below floor outside dome base
+    ctx.fillRect(-500, domeFloor, (domeCx - domeRx) + 500, (h - domeFloor) + 500);
+    ctx.fillRect(domeCx + domeRx, domeFloor, (w - (domeCx + domeRx)) + 500, (h - domeFloor) + 500);
+
+    // 4. Crisp glowing perimeter line on top (boundary ceiling)
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 4;
+    ctx.shadowColor = "#ffffff";
+    ctx.shadowBlur = 18;
+    ctx.beginPath();
+    ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
+    ctx.stroke();
+
+    ctx.restore();
+}
+window.maskOutsideFireDome = maskOutsideFireDome;
+
 function buildAndStartGame() {
     try {
         initAudio(); 
@@ -68,7 +459,16 @@ function buildAndStartGame() {
         fallingBananaPeels = [];
         isTutorial = false;
         
-        if (secretMode) { 
+        if (window.isFireBossMode) {
+            ARENA_W = 1500;
+            ARENA_H = 650;
+            FLOOR = 520;
+            platforms = [];
+            secretMode = false;
+            numPlayers = 1;
+            p1HeroSelection = 'WATER';
+            hasAiCompanion = false;
+        } else if (secretMode) { 
             ARENA_W = 2500; 
             ARENA_H = 600; 
             FLOOR = 550; 
@@ -138,8 +538,13 @@ function buildAndStartGame() {
         if (!Array.isArray(configBadges.p2)) configBadges.p2 = ['none', 'none', 'none'];
         if (!configBadges.team) configBadges.team = 'none';
 
-        let startX1 = secretMode ? ARENA_W/2 - 50 : 150;
+        let startX1 = window.isFireBossMode ? 1080 : (secretMode ? ARENA_W/2 - 50 : 150);
         let p1 = createPlayer(1, p1HeroSelection, p1Keys, p1InputType, startX1);
+        if (window.isFireBossMode) {
+            p1.facingRight = false;
+            p1.maxHp = 8;
+            p1.hp = 8;
+        }
         p1.abilities = { ...(configAbilities.p1 || defaultAbilities[p1HeroSelection] || {}) };
         p1.bananaSkin = !!(typeof bananaSkinP1 !== 'undefined' && bananaSkinP1 && typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
         p1.gnomeSkin = !!(typeof gnomeSkinP1 !== 'undefined' && gnomeSkinP1 && typeof isGnomeSkinAllowed === 'function' && isGnomeSkinAllowed());
@@ -163,13 +568,13 @@ function buildAndStartGame() {
 
         // Add AI companion if enabled (v74)
         if (typeof hasAiCompanion !== 'undefined' && hasAiCompanion) {
-            let aiHero = (aiCompanionConfig && aiCompanionConfig.hero) ? aiCompanionConfig.hero : (p1HeroSelection === 'WATER' ? 'EARTH' : 'WATER');
+            let aiHero = (typeof aiCompanionConfig !== 'undefined' && aiCompanionConfig && aiCompanionConfig.hero) ? aiCompanionConfig.hero : (p1HeroSelection === 'WATER' ? 'EARTH' : 'WATER');
             if (aiHero === 'WATER_ROPE') aiHero = 'WATER';
             let aiId = players.length + 1;
             let startXAi = secretMode ? ARENA_W/2 + 80 : (players.length === 2 ? 260 : 200);
             let pAi = createPlayer(aiId, aiHero, {}, 'AI', startXAi);
             pAi.isAi = true;
-            pAi.aiPersonality = (aiCompanionConfig && aiCompanionConfig.personality) ? aiCompanionConfig.personality : 'TACTICIAN';
+            pAi.aiPersonality = (typeof aiCompanionConfig !== 'undefined' && aiCompanionConfig && aiCompanionConfig.personality) ? aiCompanionConfig.personality : 'TACTICIAN';
             pAi.abilities = { ...(defaultAbilities[aiHero] || {}) };
             applyBadgesToPlayer(pAi, false, 'ai');
             players.push(pAi);
@@ -190,23 +595,60 @@ function buildAndStartGame() {
         }
 
         // Boss HP and Shared Heals scaling based on total fighters
-        if (players.length === 1) {
-            boss.maxHp = secretMode ? 60 : 25; 
-            phase2Hp = secretMode ? 39 : 18; 
-            phase3Hp = secretMode ? 35 : 18; // Увеличено в 1.75 раз (было 20 / 10)
+        if (window.isFireBossMode) {
+            boss.maxHp = 14;
+            phase2Hp = 0;
+            phase3Hp = 0;
+            boss.totalMaxHp = 14;
+            boss.totalHp = 14;
             maxSharedHeals = 3;
-        } else if (players.length === 2) {
-            // 2 fighters (2 humans OR 1 human + 1 AI)
-            boss.maxHp = secretMode ? 100 : 50; 
-            phase2Hp = secretMode ? 66 : 36; 
-            phase3Hp = secretMode ? 58 : 35; // Увеличено в 1.75 раз (было 33 / 20)
-            maxSharedHeals = 4;
+            platforms = [];
+        } else if (!secretMode) {
+            // Normal Mode exact total HP table specified by Timur:
+            // 1P = 60 (24 + 18 + 18 = 60)
+            // 2P = 120 (49 + 36 + 35 = 120)
+            // 3P = 135 (60 + 40 + 35 = 135)
+            if (players.length === 1) {
+                boss.maxHp = 24; 
+                phase2Hp = 18; 
+                phase3Hp = 18;
+                maxSharedHeals = 3;
+            } else if (players.length === 2) {
+                boss.maxHp = 49; 
+                phase2Hp = 36; 
+                phase3Hp = 35;
+                maxSharedHeals = 4;
+            } else {
+                boss.maxHp = 60; 
+                phase2Hp = 40; 
+                phase3Hp = 35;
+                maxSharedHeals = 5;
+            }
+            boss.totalMaxHp = boss.maxHp + phase2Hp + phase3Hp;
+            boss.totalHp = boss.totalMaxHp;
         } else {
-            // 3 fighters (2 humans + 1 AI): Boss has 20% more HP than duo, 5 heal charges
-            boss.maxHp = Math.round((secretMode ? 100 : 50) * 1.2); 
-            phase2Hp = Math.round(boss.maxHp * 0.66); 
-            phase3Hp = Math.round(boss.maxHp * 0.33 * 1.75); // Увеличено в 1.75 раз
-            maxSharedHeals = 5;
+            // L-Mode (Secret Mode) exact total HP table specified by Timur:
+            // L1 = 130 (56 + 39 + 35 = 130)
+            // L2 = 120 (45 + 40 + 35 = 120)
+            // L3 = 160 (70 + 50 + 40 = 160)
+            if (players.length === 1) {
+                boss.maxHp = 56; 
+                phase2Hp = 39; 
+                phase3Hp = 35;
+                maxSharedHeals = 3;
+            } else if (players.length === 2) {
+                boss.maxHp = 45; 
+                phase2Hp = 40; 
+                phase3Hp = 35;
+                maxSharedHeals = 4;
+            } else {
+                boss.maxHp = 70; 
+                phase2Hp = 50; 
+                phase3Hp = 40;
+                maxSharedHeals = 5;
+            }
+            boss.totalMaxHp = boss.maxHp + phase2Hp + phase3Hp;
+            boss.totalHp = boss.totalMaxHp;
         }
 
         if (secretMode) { 
@@ -226,7 +668,7 @@ function buildAndStartGame() {
             }
         }
 
-        if (!secretMode) {
+        if (!secretMode && !window.isFireBossMode) {
             platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10 } ];
         } else {
             platforms = [];
@@ -237,6 +679,8 @@ function buildAndStartGame() {
             boss.maxHp = Math.round(boss.maxHp * 0.75);
             phase2Hp = Math.round(phase2Hp * 0.75);
             phase3Hp = Math.round(phase3Hp * 0.75);
+            boss.totalMaxHp = boss.maxHp + phase2Hp + phase3Hp;
+            boss.totalHp = boss.totalMaxHp;
             activeWorldMessage = {
                 text: `🌿 ОСЛАБЛЕНИЕ БОССА: ВКЛЮЧЕНО (HP: ${boss.maxHp}, УРОН: -50%)`,
                 sender: 'Система',
@@ -402,7 +846,18 @@ function resetGameParams() {
         if (p.badges && p.badges.includes('shield')) p.hasAegisShield = true;
         if (p.badges && p.badges.includes('cracked_life')) { p.hasCrackedLife = true; p.crackedShieldBroken = false; }
     }
-    if (players.length > 0 && players[0]) players[0].x = ARENA_W/2 - 50; 
+    if (players.length > 0 && players[0]) {
+        if (window.isFireBossMode) {
+            players[0].x = 760;
+            players[0].facingRight = false;
+            players[0].maxHp = 8;
+            players[0].hp = 8;
+            players[0].burnGauge = 0;
+            players[0].burnTimer = 0;
+        } else {
+            players[0].x = ARENA_W/2 - 50;
+        }
+    }
     if (players.length > 1 && players[1]) players[1].x = ARENA_W/2 + 50;
     
     sharedHeals = maxSharedHeals; 
@@ -414,7 +869,11 @@ function resetGameParams() {
     voidExplosions = []; voidPortals = []; looms = []; chaosBalls = []; screamRings = [];
     loomThreads = []; lightAmuletWaves = []; battleAnnouncements = [];
     waterRopes = []; fallingBananaPeels = []; slowMoTimer = 0;
-    if (typeof initArenaLeaves === 'function') initArenaLeaves();
+    if (window.isFireBossMode) {
+        initAshParticles();
+    } else if (typeof initArenaLeaves === 'function') {
+        initArenaLeaves();
+    }
     
     floorCracks = [];
     voidPuddles = [];
@@ -431,18 +890,27 @@ function resetGameParams() {
     teamHallucinationHits = 0;
 
     if (boss) {
-        boss.hp = boss.maxHp || 25; boss.phase = 1; boss.damageBonus = 0; boss.x = ARENA_W/2; boss.y = FLOOR - 50; 
-        boss.state = "IDLE"; boss.stateTimer = 60; boss.flashTimer = 0; boss.vx = 0; 
-        boss.speed = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? (6.5 * 1.25) : 6.5; 
-        boss.missCount = 0; boss.directAttackActive = false; boss.directAttackHit = false; boss.comboCount = 0; 
-        boss.heroBleedTimer = 0; boss.heroBleedTicks = 0; boss.superQueue = []; boss.sa1Arr = []; 
-        boss.hunterInfected = 0; boss.infectedTimer = 0; boss.voidWindDisabled = 0; boss.sa1Count = 0; 
-        boss.saLines = null; boss.color = "#e6c800"; boss.climbSaTimer = 0; boss.saLinesState = ""; boss.saLinesTimer = 0;
-        boss.lightStunDone = false; boss.lightInfected = 0; boss.lightInfectedDmgRed = 0.5;
-        boss.climbSaStep = 0; boss.halfHpSeqDone = false;
-        boss.attackCount = 0; boss.firstAttackAwarded = false; boss.healSpammerAwarded = false;
-        boss.stunP1_1 = false; boss.stunP1_2 = false; boss.stunP2 = false;
-        boss.lPhase4Orbs = []; boss.lPhase4AttackTimer = 0; boss.gooSeqTriggered = false;
+        if (window.isFireBossMode) {
+            boss.hp = 14; boss.maxHp = 14; boss.totalMaxHp = 14; boss.totalHp = 14;
+            boss.phase = 1; boss.damageBonus = 0; boss.x = 420; boss.y = FLOOR - boss.height;
+            boss.facingRight = true; boss.state = "FIRE_INTRO"; boss.introTimer = 225; boss.stateTimer = 225;
+            boss.flamingRapierTimer = 0; boss.lastBlockTimer = 0; boss.fireHealCooldown = 0;
+            boss.fireParryTimer = 0; boss.fireCounterTicks = 0; boss.vx = 0; boss.vy = 0; boss.invuln = 0;
+            boss.flashTimer = 0;
+        } else {
+            boss.hp = boss.maxHp || 25; boss.phase = 1; boss.damageBonus = 0; boss.x = ARENA_W/2; boss.y = FLOOR - 50; 
+            boss.state = "IDLE"; boss.stateTimer = 60; boss.flashTimer = 0; boss.vx = 0; 
+            boss.speed = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.bossSpeed) ? (6.5 * 1.25) : 6.5; 
+            boss.missCount = 0; boss.directAttackActive = false; boss.directAttackHit = false; boss.comboCount = 0; 
+            boss.heroBleedTimer = 0; boss.heroBleedTicks = 0; boss.superQueue = []; boss.sa1Arr = []; 
+            boss.hunterInfected = 0; boss.infectedTimer = 0; boss.voidWindDisabled = 0; boss.sa1Count = 0; 
+            boss.saLines = null; boss.color = "#e6c800"; boss.climbSaTimer = 0; boss.saLinesState = ""; boss.saLinesTimer = 0;
+            boss.lightStunDone = false; boss.lightInfected = 0; boss.lightInfectedDmgRed = 0.5;
+            boss.climbSaStep = 0; boss.halfHpSeqDone = false;
+            boss.attackCount = 0; boss.firstAttackAwarded = false; boss.healSpammerAwarded = false;
+            boss.stunP1_1 = false; boss.stunP1_2 = false; boss.stunP2 = false;
+            boss.lPhase4Orbs = []; boss.lPhase4AttackTimer = 0; boss.gooSeqTriggered = false;
+        }
     }
     battleStartTime = Date.now();
     
@@ -453,6 +921,11 @@ function resetGameParams() {
     try {
         let bgm = document.getElementById("lModeMusic"); 
         if (bgm) bgm.pause();
+        if (window.isFireBossMode) {
+            if (window.fireBossAudioEngine) window.fireBossAudioEngine.startIntro();
+        } else {
+            if (typeof stopFireBossMusic === 'function') stopFireBossMusic();
+        }
     } catch(e) {}
 }
 
@@ -698,16 +1171,20 @@ function updateProjectiles() {
         if (ph.timer <= 0 || boss.state === "DEFEATED") phantoms.splice(i, 1);
     }
 
-    // Arena leaves
-    for (let l of arenaLeaves) {
-        l.x += Math.sin(Date.now()/1000 + l.spin*100) * 0.5 + l.vx; 
-        if (globalWindMode === "DOWN") { l.vy = 8 + Math.random() * 4; l.vx = (Math.random() - 0.5) * 2; } 
-        else if (globalWindMode === "UP") { l.vy = -8 - Math.random() * 4; l.vx = (Math.random() - 0.5) * 2; } 
-        else { l.vy += 0.05; if (l.vy > 2) l.vy *= 0.95; }
-        l.y += l.vy; l.angle += l.spin; l.vx *= 0.9; 
-        if (l.y > FLOOR + 10) { l.y = -10; l.x = Math.random() * ARENA_W; l.vx = 0; if (globalWindMode === "NONE") l.vy = Math.random() * 0.5 + 0.2; }
-        if (l.y < -20) { l.y = FLOOR + 10; l.x = Math.random() * ARENA_W; l.vx = 0; } 
-        if (l.x > ARENA_W+10) l.x = -10; if (l.x < -10) l.x = ARENA_W+10;
+    // Arena leaves or Fire Boss ash particles
+    if (window.isFireBossMode) {
+        updateAshParticles();
+    } else {
+        for (let l of arenaLeaves) {
+            l.x += Math.sin(Date.now()/1000 + l.spin*100) * 0.5 + l.vx; 
+            if (globalWindMode === "DOWN") { l.vy = 8 + Math.random() * 4; l.vx = (Math.random() - 0.5) * 2; } 
+            else if (globalWindMode === "UP") { l.vy = -8 - Math.random() * 4; l.vx = (Math.random() - 0.5) * 2; } 
+            else { l.vy += 0.05; if (l.vy > 2) l.vy *= 0.95; }
+            l.y += l.vy; l.angle += l.spin; l.vx *= 0.9; 
+            if (l.y > FLOOR + 10) { l.y = -10; l.x = Math.random() * ARENA_W; l.vx = 0; if (globalWindMode === "NONE") l.vy = Math.random() * 0.5 + 0.2; }
+            if (l.y < -20) { l.y = FLOOR + 10; l.x = Math.random() * ARENA_W; l.vx = 0; } 
+            if (l.x > ARENA_W+10) l.x = -10; if (l.x < -10) l.x = ARENA_W+10;
+        }
     }
 
     // Scream rings
@@ -1549,7 +2026,7 @@ function update() {
     }
 
     // Camera follow
-    let shouldFollowCam = (secretMode || boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5) && (!secretMode ? boss.state !== "SA1_ACTIVE" : true);
+    let shouldFollowCam = (secretMode || window.isFireBossMode || boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5) && (!secretMode ? boss.state !== "SA1_ACTIVE" : true);
     if (activeCinematic) {
         // Во время катсцены камера сохраняет свои текущие координаты, не сбрасываясь в 0!
     } else if (gooCinematicTimer > 0) {
@@ -1559,25 +2036,53 @@ function update() {
         camX += (targetCamX - camX) * 0.08;
         camY += (targetCamY - camY) * 0.08;
     } else if (shouldFollowCam) {
-        let ax = 0, ay = 0, c = 0;
-        for (let p of players) { 
-            if (p.hp > 0 && !p.isDowned) { ax += p.x; ay += p.y; c++; } 
-        }
-        if (c > 0) { ax /= c; ay /= c; }
-        if (ARENA_W > GAME_WIDTH) {
-            camX += (ax - GAME_WIDTH/2 - camX) * 0.1; 
-            if (camX < 0) camX = 0; 
-            if (camX > ARENA_W - GAME_WIDTH) camX = ARENA_W - GAME_WIDTH;
+        if (window.isFireBossMode) {
+            if (boss && boss.state === "FIRE_INTRO") {
+                let targetCamX = (ARENA_W - GAME_WIDTH) / 2; // exact center of arena
+                let targetCamY = FLOOR - 350; // 170: perfectly frames ground
+                camX += (targetCamX - camX) * 0.1;
+                camY += (targetCamY - camY) * 0.1;
+            } else {
+                let p1 = players[0];
+                let pMidX = p1 ? (p1.x + p1.width / 2) : 750;
+                let bMidX = boss ? (boss.x + boss.width / 2) : 750;
+                let midBetweenBoth = (pMidX + bMidX) * 0.5; // точка между водой и огнем
+                let focusX = (pMidX + midBetweenBoth) * 0.5; // между водой и точкой между водой и огнем
+                let targetCamX = focusX - GAME_WIDTH / 2;
+                if (targetCamX < 0) targetCamX = 0;
+                if (targetCamX > ARENA_W - GAME_WIDTH) targetCamX = ARENA_W - GAME_WIDTH;
+                camX += (targetCamX - camX) * 0.08;
+
+                let pMidY = p1 ? (p1.y + p1.height / 2) : (FLOOR - 25);
+                let bMidY = boss ? (boss.y + boss.height / 2) : (FLOOR - 25);
+                let midY = (pMidY + bMidY) * 0.5;
+                let targetCamY = midY - GAME_HEIGHT / 2 - 20;
+                if (targetCamY < 0) targetCamY = 0;
+                let maxCamY = FLOOR - 340; // keeps floor visible
+                if (targetCamY > maxCamY) targetCamY = maxCamY;
+                camY += (targetCamY - camY) * 0.08;
+            }
         } else {
-            camX = 0;
+            let ax = 0, ay = 0, c = 0;
+            for (let p of players) { 
+                if (p.hp > 0 && !p.isDowned) { ax += p.x; ay += p.y; c++; } 
+            }
+            if (c > 0) { ax /= c; ay /= c; }
+            if (ARENA_W > GAME_WIDTH) {
+                camX += (ax - GAME_WIDTH/2 - camX) * 0.1; 
+                if (camX < 0) camX = 0; 
+                if (camX > ARENA_W - GAME_WIDTH) camX = ARENA_W - GAME_WIDTH;
+            } else {
+                camX = 0;
+            }
+            let isFallingTransition = (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120);
+            let lerpY = isFallingTransition ? 0.35 : 0.1;
+            camY += (ay - GAME_HEIGHT/2 - camY) * lerpY;
+            let minCamY = -2000;
+            if (camY < minCamY) camY = minCamY;
+            let maxCamY = isFallingTransition ? 99999 : (FLOOR - GAME_HEIGHT + 100);
+            if (camY > maxCamY && maxCamY > 0) camY = maxCamY;
         }
-        let isFallingTransition = (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120);
-        let lerpY = isFallingTransition ? 0.35 : 0.1;
-        camY += (ay - GAME_HEIGHT/2 - camY) * lerpY;
-        let minCamY = -2000;
-        if (camY < minCamY) camY = minCamY;
-        let maxCamY = isFallingTransition ? 99999 : (FLOOR - GAME_HEIGHT + 100);
-        if (camY > maxCamY && maxCamY > 0) camY = maxCamY;
     } else { 
         camX = 0; camY = 0; 
     }
@@ -2204,6 +2709,10 @@ function drawAbyssGooFloor() {
 }
 
 function drawBackground() {
+    if (window.isFireBossMode) {
+        drawFireBossArena(boss ? boss.introTimer : 0);
+        return;
+    }
     let bgTop = (boss.phase >= 2.5 || boss.state.startsWith("L_CLIMB") || secretMode) ? -6000 : 0;
     ctx.fillStyle = secretMode ? "#111" : (globalWindMode === "DOWN" ? "#1a100c" : "#2e1a12"); 
     ctx.fillRect(0, bgTop, ARENA_W, FLOOR - bgTop);
@@ -2758,7 +3267,7 @@ function drawMasks() {
             ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"; ctx.lineWidth = 2; ctx.stroke();
             
             let hpColor = p.color; 
-            if (secretMode && i >= p.maxHp - 2) hpColor = "rgba(255,255,255,0.8)";
+            if ((secretMode || window.isFireBossMode) && i >= p.maxHp - 2) hpColor = "rgba(255,255,255,0.8)";
             
             if (p.hp > i) {
                 let fraction = p.hp - i;
@@ -2892,6 +3401,38 @@ function drawMasks() {
             ctx.fillStyle = "red"; ctx.font = "12px Arial"; ctx.fillText("Кровотечение!", tagOffset, yOffset + 4); 
             ctx.fillRect(tagOffset + 90, yOffset - 2, (p.bleedTimer / 120) * 50, 6); 
             tagOffset += 150;
+        }
+
+        // Fire Boss Duel: 3-segment Burn Gauge display near player's HP
+        if (window.isFireBossMode || p.burnGauge > 0 || p.burnTimer > 0) {
+            let burnX = tagOffset;
+            ctx.save();
+            ctx.font = "bold 11px Arial";
+            ctx.textAlign = "left";
+            if (p.burnTimer > 0) {
+                let flash = Math.floor(Date.now() / 100) % 2 === 0;
+                ctx.fillStyle = flash ? "#ff3300" : "#ffcc00";
+                ctx.shadowColor = "#ff3300";
+                ctx.shadowBlur = 8;
+                ctx.fillText("🔥 ГОРИТ! (-0.5)", burnX, yOffset + 4);
+                tagOffset += 120;
+            } else {
+                ctx.fillStyle = "#ff8800";
+                ctx.fillText("🔥 Поджог:", burnX, yOffset + 4);
+                let segStartX = burnX + 66;
+                for (let b = 0; b < 3; b++) {
+                    let segFilled = b < (p.burnGauge || 0);
+                    ctx.beginPath();
+                    ctx.rect(segStartX + b * 16, yOffset - 6, 12, 12);
+                    ctx.fillStyle = segFilled ? "#ff4400" : "rgba(255, 68, 0, 0.2)";
+                    ctx.fill();
+                    ctx.strokeStyle = segFilled ? "#ffcc00" : "rgba(255, 200, 100, 0.4)";
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                }
+                tagOffset += 130;
+            }
+            ctx.restore();
         }
 
         let tagText = "";
@@ -3564,11 +4105,15 @@ function draw() {
             }
         }
 
-        for (let l of arenaLeaves) { 
-            ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(l.angle); 
-            ctx.fillStyle = secretMode ? "rgba(150,0,255,0.5)" : l.color; 
-            ctx.fillRect(-l.size/2, -l.size/2, l.size, l.size/2); 
-            ctx.restore(); 
+        if (window.isFireBossMode) {
+            drawAshParticles();
+        } else {
+            for (let l of arenaLeaves) { 
+                ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(l.angle); 
+                ctx.fillStyle = secretMode ? "rgba(150,0,255,0.5)" : l.color; 
+                ctx.fillRect(-l.size/2, -l.size/2, l.size, l.size/2); 
+                ctx.restore(); 
+            }
         }
 
         // Falling & grounded banana peels from ability
@@ -4028,6 +4573,14 @@ function draw() {
         }
     }
     
+    // 1. World Events rendering (in world coordinates)
+    drawWorldEvents();
+
+    // 2. Dome arena masking (in world coordinates)
+    if (window.isFireBossMode && typeof maskOutsideFireDome === 'function') {
+        maskOutsideFireDome();
+    }
+
     ctx.filter = "none";
     ctx.restore(); 
 
@@ -4094,8 +4647,13 @@ function draw() {
             ctx.shadowBlur = 10;
             ctx.fillText("Обучение пройдено, теперь ты готов(-а) к настоящему бою", GAME_WIDTH/2, 185);
         } else {
-            // Фраза звучит ТОЛЬКО в обычном режиме и пишется ТОЛЬКО ОДИН РАЗ (под «ПОБЕДА»):
-            if (!secretMode) {
+            if (window.isFireBossMode) {
+                ctx.font = "bold 22px Arial";
+                ctx.fillStyle = "#ff7733";
+                ctx.shadowColor = "rgba(0,0,0,0.9)";
+                ctx.shadowBlur = 8;
+                ctx.fillText("«Пламя угасло... Достойный поединок!»", GAME_WIDTH/2, 175);
+            } else if (!secretMode) {
                 ctx.font = "bold 22px Arial";
                 ctx.fillStyle = "#ffdd44";
                 ctx.shadowColor = "rgba(0,0,0,0.9)";
@@ -4114,19 +4672,47 @@ function draw() {
         ctx.textAlign = "left"; 
     }
 
+    // 1. Fire Boss Intro blinding white flash overlay (screen space)
+    if (window.isFireBossMode && boss && boss.state === "FIRE_INTRO") {
+        let elapsed = 225 - boss.introTimer;
+        if (elapsed === 136 && window.fireBossAudioEngine) {
+            window.fireBossAudioEngine.flashApexImpact();
+        }
+        if (elapsed >= 135) {
+            let flashAlpha = 1.0;
+            if (elapsed < 145) {
+                flashAlpha = (elapsed - 135) / 10;
+            } else if (elapsed > 175) {
+                flashAlpha = Math.max(0, (225 - elapsed) / 50);
+            }
+            ctx.save();
+            ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            ctx.restore();
+        }
+    }
+
+    // ============================================================
+    // --- FOREFRONT HUD & UI LAYER ---
+    // (Pinned to top-left screen (0,0), rendered on top of EVERYTHING)
+    // ============================================================
     if (gameState === "PLAYING") {
         drawMasks(); 
-        if (!activeCinematic && !isTutorial && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM" && !boss.state.startsWith("L_CLIMB")) { 
+        if (!activeCinematic && !isTutorial && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM" && !boss.state.startsWith("L_CLIMB") && boss.state !== "FIRE_INTRO") { 
             ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(GAME_WIDTH/2 - 200, 375, 400, 10); 
+            let maxTotal = (boss.totalMaxHp || (boss.maxHp + (phase2Hp || 0) + (phase3Hp || 0))) || 60;
+            let currentTotal = Math.max(0, Math.ceil(getBossTotalHp()));
             let hpBarColor = "red";
             let isLightGlow = (boss.lightInfected > 0 || boss.hunterInfected > 0);
-            if (isLightGlow) {
+            if (window.isFireBossMode) {
+                hpBarColor = "#ff3b00";
+            } else if (isLightGlow) {
                 hpBarColor = "#00ffff";
             } else if (boss.heroBleedTimer > 0) {
                 hpBarColor = "#ff00aa";
             }
             ctx.fillStyle = hpBarColor;
-            let barW = (Math.max(0, boss.hp) / boss.maxHp) * 400;
+            let barW = Math.min(400, Math.max(0, (getBossTotalHp() / maxTotal) * 400));
             ctx.fillRect(GAME_WIDTH/2 - 200, 375, barW, 10); 
             if (isLightGlow) {
                 ctx.save();
@@ -4141,7 +4727,12 @@ function draw() {
             let isEasy = !!(typeof easyBossMode !== 'undefined' && easyBossMode) || !!window.easyBossMode;
             let easyBadge = isEasy ? "  [🌿 Ослаблен: 0.75x HP, урон -50%]" : "";
             ctx.fillStyle = isEasy ? "#4ade80" : "#ffffff";
-            ctx.fillText(`Фаза: ${boss.phase}  |  ${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp} HP${easyBadge}`, GAME_WIDTH/2, 385);
+            if (window.isFireBossMode) {
+                ctx.fillText(`🔥 Фехтовальщик Огня  |  ${Math.max(0, Math.ceil(boss.hp))} / 14 HP`, GAME_WIDTH/2, 385);
+            } else {
+                let phaseLabel = boss.phase >= 4 ? "Фаза: 4" : (boss.phase >= 3 ? "Фаза: 3" : (boss.phase >= 2 ? "Фаза: 2" : "Фаза: 1"));
+                ctx.fillText(`${phaseLabel}  |  ${currentTotal} / ${maxTotal} HP${easyBadge}`, GAME_WIDTH/2, 385);
+            }
             ctx.restore();
 
             // Phase 4: 3 фиолетовых значка (Сфера, Монолит, Сфера) рядом с полоской босса
@@ -4418,7 +5009,6 @@ function drawTutorialHUD() {
         ctx.fillText(`Тренировочный Манекен: ${Math.max(0, Math.ceil(boss.hp))} / 7 HP`, GAME_WIDTH / 2, bBarY + 22);
     }
 
-    drawWorldEvents();
     ctx.restore();
 }
 

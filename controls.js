@@ -217,6 +217,10 @@ window.addEventListener("keydown", e => {
             buildAndStartTutorialGame();
             return;
         }
+        if (window.isFireBossMode) {
+            buildAndStartGame();
+            return;
+        }
         gameState = "MENU";
         if (typeof sendPresencePing === 'function') sendPresencePing();
         battleResultRecorded = false;
@@ -914,8 +918,16 @@ function menuGoBack() {
     }
     if (menuHistory.length > 0) {
         let prev = menuHistory.pop();
+        if (prev === 'root-menu' || prev === 'mode-select') {
+            window.isFireBossMode = false;
+            isFireBossMode = false;
+            if (typeof stopFireBossMusic === 'function') stopFireBossMusic();
+        }
         openScreen(prev, false);
     } else {
+        window.isFireBossMode = false;
+        isFireBossMode = false;
+        if (typeof stopFireBossMusic === 'function') stopFireBossMusic();
         openScreen('root-menu', false);
     }
 }
@@ -1060,7 +1072,25 @@ function proceedToInputSelectDuo() {
 }
 window.proceedToInputSelectDuo = proceedToInputSelectDuo;
 
+function startFireBossDuel() {
+    window.isFireBossMode = true;
+    isFireBossMode = true;
+    secretMode = false;
+    window.secretMode = false;
+    numPlayers = 1;
+    p1HeroSelection = 'WATER';
+    hasAiCompanion = false;
+    openScreen('input-select');
+    let in1 = document.getElementById("input-1p");
+    let in2 = document.getElementById("input-2p");
+    if (in1) in1.style.display = "block";
+    if (in2) in2.style.display = "none";
+}
+window.startFireBossDuel = startFireBossDuel;
+
 function selectMode(mode, keepP2 = false) {
+    window.isFireBossMode = false;
+    isFireBossMode = false;
     let in1 = document.getElementById("input-1p");
     let in2 = document.getElementById("input-2p");
     if (mode === '1P_AI') {
@@ -1264,6 +1294,19 @@ function selectInput(in1, in2) {
             if (mobUi) mobUi.style.display = "flex";
         }
         buildAndStartTutorialGame();
+        return;
+    }
+
+    if (window.isFireBossMode) {
+        if (in1 === 'TOUCH') {
+            let mobUi = document.getElementById("mobile-ui");
+            if (mobUi) mobUi.style.display = "flex";
+        }
+        p1HeroSelection = 'WATER';
+        numPlayers = 1;
+        hasAiCompanion = false;
+        openScreen('badge-select');
+        prepBadgeMenu();
         return;
     }
 
@@ -2332,6 +2375,11 @@ function prepBadgeMenu() {
     if (heroSelectEl) heroSelectEl.style.display = "none";
     let badgeSelectEl = document.getElementById("badge-select");
     if (badgeSelectEl) badgeSelectEl.style.display = "block";
+
+    let offBtn = document.getElementById("badge-select-offline-btn");
+    if (offBtn) offBtn.style.display = "inline-block";
+    let onlineBox = document.getElementById("online-badge-bottom-box");
+    if (onlineBox) onlineBox.style.display = "none";
 
     if (typeof updateEasyBossButtonUI === 'function') updateEasyBossButtonUI();
     if (typeof updateBroadcastButtonUI === 'function') updateBroadcastButtonUI();

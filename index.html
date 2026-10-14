@@ -9,6 +9,7 @@
 <body>
     <audio id="lModeMusic" src="lost_lace.mp3" loop></audio>
     <audio id="menuMusic" src="menu.mp3" loop></audio>
+    <audio id="fireBossMusic" src="битва с боссом огня.mp3" loop preload="auto"></audio>
     <h2>Убежище</h2>
     
     <div class="game-wrapper">
@@ -34,7 +35,7 @@
                 </div>
             </div>
             <!-- Discreet Corner Version Tag -->
-            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v74</div>
+            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v75.1</div>
         </div>
         <div id="mobile-ui">
             <div id="joy-base"><div id="joy-stick"></div></div>
@@ -139,6 +140,9 @@
         <div id="mode-select" style="display: none;">
             <div style="font-size: 24px; margin-bottom: 15px;">ВЫБЕРИТЕ РЕЖИМ</div>
             <div class="menu-btn btn-tutorial-green" onclick="startTutorial()">🎓 ОБУЧЕНИЕ (Основы боя)</div>
+            <div class="menu-btn" onclick="startFireBossDuel()" style="border-color: #ef4444; color: #fca5a5; background: rgba(239, 68, 68, 0.18); box-shadow: 0 0 16px rgba(239, 68, 68, 0.45); font-weight: bold; letter-spacing: 1px;">
+                🔥 БОЙ С БОССОМ ОГНЯ
+            </div>
             <div class="menu-btn" onclick="selectMode(1)">1 ИГРОК</div>
             <div class="menu-btn" onclick="selectMode(2)">2 ИГРОКА (Локально)</div>
             <div class="menu-btn" onclick="selectMode('1P_AI')" style="border-color: #00e5ff; color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.25); font-weight: bold;">🤖 1 ИГРОК + ИИ</div>
@@ -728,15 +732,15 @@
     </div>
 
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=74"></script>
-    <script src="audio.js?v=74"></script>
-    <script src="controls.js?v=74"></script>
-    <script src="ai.js?v=74"></script>
-    <script src="player.js?v=74"></script>
-    <script src="boss.js?v=74"></script>
-    <script src="game.js?v=74"></script>
+    <script src="constants.js?v=75"></script>
+    <script src="audio.js?v=75"></script>
+    <script src="controls.js?v=75"></script>
+    <script src="ai.js?v=75"></script>
+    <script src="player.js?v=75"></script>
+    <script src="boss.js?v=75"></script>
+    <script src="game.js?v=75"></script>
 
     <!-- Pure Firebase Online Multiplayer Module -->
-    <script src="network.js?v=74"></script>
+    <script src="network.js?v=75"></script>
 </body>
 </html>
