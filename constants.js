@@ -1,5 +1,5 @@
 // --- CONSTANTS & SHARED STATE ---
-const GAME_VERSION = "v75.1";
+const GAME_VERSION = "v76.0";
 window.GAME_VERSION = GAME_VERSION;
 let isFireBossMode = false;
 window.isFireBossMode = false;
@@ -306,6 +306,103 @@ function clearCurrentUser() {
         localStorage.removeItem(CURRENT_USER_KEY);
     } catch(e){}
 }
+
+// --- STORY MODE CLOUD SAVES (FIREBASE & LOCAL CACHE) ---
+async function fetchStorySaves(username) {
+    if (!username && typeof getCurrentUser === 'function') username = getCurrentUser();
+    let lowerUser = (username && username.trim()) ? username.trim().toLowerCase() : 'guest';
+    
+    // 1. Read local cache first for instant UI response
+    let localCache = null;
+    try {
+        let raw = localStorage.getItem(`shelter_story_saves_${lowerUser}`);
+        if (raw) localCache = JSON.parse(raw);
+    } catch(e) {}
+    if (!localCache || typeof localCache !== 'object') {
+        localCache = { slot1: null, slot2: null };
+    }
+
+    // 2. Fetch fresh cloud saves from Firebase
+    try {
+        let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerUser)}/storySaves.json`);
+        if (res.ok) {
+            let cloudData = await res.json();
+            if (cloudData && typeof cloudData === 'object') {
+                localCache = {
+                    slot1: cloudData.slot1 || null,
+                    slot2: cloudData.slot2 || null
+                };
+                localStorage.setItem(`shelter_story_saves_${lowerUser}`, JSON.stringify(localCache));
+            } else if (cloudData === null) {
+                // If cloud is explicitly null, don't wipe local if local has something unless verified
+            }
+        }
+    } catch(e) {
+        console.warn("Could not sync story saves from Firebase, using local cache:", e);
+    }
+
+    return localCache;
+}
+window.fetchStorySaves = fetchStorySaves;
+
+async function saveStorySlot(slotNum, slotData, username) {
+    if (!username && typeof getCurrentUser === 'function') username = getCurrentUser();
+    let lowerUser = (username && username.trim()) ? username.trim().toLowerCase() : 'guest';
+    let slotKey = `slot${slotNum}`;
+
+    // Update local cache
+    let localCache = {};
+    try {
+        let raw = localStorage.getItem(`shelter_story_saves_${lowerUser}`);
+        if (raw) localCache = JSON.parse(raw);
+    } catch(e) {}
+    localCache[slotKey] = slotData;
+    try {
+        localStorage.setItem(`shelter_story_saves_${lowerUser}`, JSON.stringify(localCache));
+    } catch(e) {}
+
+    // Cloud Firebase update
+    try {
+        await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerUser)}/storySaves/${slotKey}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(slotData)
+        });
+        return true;
+    } catch(e) {
+        console.warn("Failed to write story save to Firebase:", e);
+        return false;
+    }
+}
+window.saveStorySlot = saveStorySlot;
+
+async function deleteStorySlot(slotNum, username) {
+    if (!username && typeof getCurrentUser === 'function') username = getCurrentUser();
+    let lowerUser = (username && username.trim()) ? username.trim().toLowerCase() : 'guest';
+    let slotKey = `slot${slotNum}`;
+
+    // Remove from local cache
+    try {
+        let raw = localStorage.getItem(`shelter_story_saves_${lowerUser}`);
+        if (raw) {
+            let localCache = JSON.parse(raw);
+            delete localCache[slotKey];
+            localStorage.setItem(`shelter_story_saves_${lowerUser}`, JSON.stringify(localCache));
+        }
+    } catch(e) {}
+
+    // Cloud Firebase deletion
+    try {
+        await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerUser)}/storySaves/${slotKey}.json`, {
+            method: 'DELETE'
+        });
+        return true;
+    } catch(e) {
+        console.warn("Failed to delete story save from Firebase:", e);
+        return false;
+    }
+}
+window.deleteStorySlot = deleteStorySlot;
 
 // --- TELEGRAM ADMIN BOT INTEGRATION ---
 const TG_BOT_TOKEN = '8425811496:AAHkIJ_d1Ax4VyLvyKq4hWoWJfsC6SCYk-Q';
@@ -2209,7 +2306,7 @@ try {
 function isDashaUser(name) {
     if (!name) return false;
     let n = name.toLowerCase().trim();
-    return n === 'dasha545' || n.startsWith('dasha') || n.startsWith('даша');
+    return n === 'dasha_545' || n === 'dasha545' || n.startsWith('dasha') || n.startsWith('даша');
 }
 window.isDashaUser = isDashaUser;
 

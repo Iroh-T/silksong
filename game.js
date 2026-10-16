@@ -169,6 +169,50 @@ function drawCompPlants() {
 }
 window.drawCompPlants = drawCompPlants;
 
+function drawFireArenaBackdrop(w, h) {
+    // Dark purple sky across the 1500 arena
+    let skyGrad = ctx.createLinearGradient(0, 0, 0, FLOOR);
+    skyGrad.addColorStop(0, "#190624");
+    skyGrad.addColorStop(0.4, "#2c0e3e");
+    skyGrad.addColorStop(1, "#3e1754");
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, w, FLOOR);
+
+    // Heavy purple clouds at the top
+    ctx.save();
+    ctx.fillStyle = "rgba(42, 11, 58, 0.85)";
+    for (let i = 0; i < 11; i++) {
+        let cx = 80 + i * 145;
+        let cy = 35 + (i % 2) * 20;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 75, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.fillStyle = "rgba(74, 25, 99, 0.6)";
+    for (let i = 0; i < 10; i++) {
+        let cx = 130 + i * 150;
+        let cy = 25 + ((i + 1) % 2) * 15;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 65, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+
+    // Floor
+    ctx.fillStyle = "#1e1322";
+    ctx.fillRect(0, FLOOR, w, h - FLOOR);
+    ctx.strokeStyle = "rgba(160, 90, 220, 0.4)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, FLOOR);
+    ctx.lineTo(w, FLOOR);
+    ctx.stroke();
+
+    // Animated Comp plants on arena floor
+    drawCompPlants();
+}
+window.drawFireArenaBackdrop = drawFireArenaBackdrop;
+
 function drawFireBossArena(introTimer) {
     let w = ARENA_W || 1500;
     let h = ARENA_H || 400;
@@ -178,43 +222,7 @@ function drawFireBossArena(introTimer) {
 
     if (isIntro && elapsed < 135) {
         // --- 0.0s - 2.25s: PRE-FLASH ATMOSPHERE (1.5x slower) ---
-        // Dark purple sky across the 1500 arena
-        let skyGrad = ctx.createLinearGradient(0, 0, 0, FLOOR);
-        skyGrad.addColorStop(0, "#190624");
-        skyGrad.addColorStop(0.4, "#2c0e3e");
-        skyGrad.addColorStop(1, "#3e1754");
-        ctx.fillStyle = skyGrad;
-        ctx.fillRect(0, 0, w, FLOOR);
-
-        // Heavy purple clouds at the top
-        ctx.save();
-        ctx.fillStyle = "rgba(42, 11, 58, 0.85)";
-        for (let i = 0; i < 11; i++) {
-            let cx = 80 + i * 145;
-            let cy = 35 + (i % 2) * 20;
-            ctx.beginPath();
-            ctx.arc(cx, cy, 75, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.fillStyle = "rgba(74, 25, 99, 0.6)";
-        for (let i = 0; i < 10; i++) {
-            let cx = 130 + i * 150;
-            let cy = 25 + ((i + 1) % 2) * 15;
-            ctx.beginPath();
-            ctx.arc(cx, cy, 65, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.restore();
-
-        // Floor
-        ctx.fillStyle = "#1e1322";
-        ctx.fillRect(0, FLOOR, w, h - FLOOR);
-        ctx.strokeStyle = "rgba(160, 90, 220, 0.4)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(0, FLOOR);
-        ctx.lineTo(w, FLOOR);
-        ctx.stroke();
+        drawFireArenaBackdrop(w, h);
 
         // Blurred glowing red-orange round object on the ground in the middle
         let orbX = w / 2; // 750
@@ -246,9 +254,6 @@ function drawFireBossArena(introTimer) {
         ctx.arc(orbX, orbY, orbR, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-
-        // Animated Comp plants on arena floor
-        drawCompPlants();
 
         // Purple ambient lighting overlay
         ctx.fillStyle = "rgba(65, 20, 90, 0.22)";
@@ -316,88 +321,124 @@ function drawFireBossArena(introTimer) {
             ctx.restore();
         }
     } else {
-        // --- WHITE DOME ARENA (Revealed / Active) ---
-        let domeCx = 750;
-        let domeFloor = FLOOR || 520;
-        let domeRx = 700; // 1.5x diameter
-        let domeRy = 480; // Taller soaring dome! Apex at y = 40 (520 - 480)
+        // ALWAYS render the underlying purple arena backdrop!
+        drawFireArenaBackdrop(w, h);
 
-        // 1. Entire background outside dome is pitch black void (#000000)
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, w, h);
+        // --- WHITE DOME ARENA LAYER ---
+        let domeAlpha = 1.0;
+        if (boss && boss.domeDissolving) {
+            domeAlpha = Math.max(0, 1 - (boss.domeDissolveProgress || 0));
+        }
 
-        // 2. Interior of the dome: deep comfortable atmosphere with luminous silvery-white ambient glow (not blinding!)
-        ctx.save();
-        ctx.beginPath();
-        ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
-        ctx.lineTo(domeCx + domeRx, domeFloor);
-        ctx.lineTo(domeCx - domeRx, domeFloor);
-        ctx.closePath();
+        if (domeAlpha > 0) {
+            ctx.save();
+            ctx.globalAlpha = domeAlpha;
 
-        // Comfortable deep twilight slate backdrop with soft luminous mist
-        let innerGrad = ctx.createRadialGradient(domeCx, 120, 60, domeCx, domeFloor, domeRx);
-        innerGrad.addColorStop(0.0, "rgba(220, 230, 248, 0.45)");
-        innerGrad.addColorStop(0.4, "rgba(180, 200, 230, 0.25)");
-        innerGrad.addColorStop(0.8, "rgba(28, 32, 45, 0.95)");
-        innerGrad.addColorStop(1.0, "#12151f");
-        ctx.fillStyle = innerGrad;
-        ctx.fill();
+            let domeCx = 750;
+            let domeFloor = FLOOR || 520;
+            let domeRx = 700; // 1.5x diameter
+            let domeRy = 480; // Taller soaring dome! Apex at y = 40 (520 - 480)
 
-        // Soft celestial light beams from the apex (comfortably translucent, not blinding)
-        let lightWash = ctx.createLinearGradient(0, 40, 0, domeFloor);
-        lightWash.addColorStop(0, "rgba(255, 255, 255, 0.25)");
-        lightWash.addColorStop(0.4, "rgba(230, 240, 255, 0.08)");
-        lightWash.addColorStop(1, "rgba(255, 255, 255, 0)");
-        ctx.fillStyle = lightWash;
-        ctx.fill();
-        ctx.restore();
+            // 1. Entire background outside dome is pitch black void (#000000)
+            ctx.fillStyle = "#000000";
+            // Top-left outside arch
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(domeCx, 0);
+            ctx.lineTo(domeCx, domeFloor - domeRy);
+            ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, 3 * Math.PI / 2, Math.PI, true);
+            ctx.lineTo(0, domeFloor);
+            ctx.closePath();
+            ctx.fill();
 
-        // 3. Floor beneath y = 350 inside the dome
-        ctx.save();
-        ctx.fillStyle = "#12141c";
-        ctx.fillRect(domeCx - domeRx, domeFloor, domeRx * 2, h - domeFloor);
+            // Top-right outside arch
+            ctx.beginPath();
+            ctx.moveTo(w, 0);
+            ctx.lineTo(domeCx, 0);
+            ctx.lineTo(domeCx, domeFloor - domeRy);
+            ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, 3 * Math.PI / 2, 2 * Math.PI, false);
+            ctx.lineTo(w, domeFloor);
+            ctx.closePath();
+            ctx.fill();
 
-        // Subtle glowing floor border line
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(domeCx - domeRx, domeFloor);
-        ctx.lineTo(domeCx + domeRx, domeFloor);
-        ctx.stroke();
-        ctx.restore();
+            // Outer margin strips below floor outside dome base
+            ctx.fillRect(0, domeFloor, Math.max(0, domeCx - domeRx), h - domeFloor);
+            ctx.fillRect(domeCx + domeRx, domeFloor, Math.max(0, w - (domeCx + domeRx)), h - domeFloor);
 
-        // 4. Comp plants on the arena floor
-        drawCompPlants();
+            // 2. Interior of the dome: deep comfortable atmosphere with luminous silvery-white ambient glow
+            ctx.beginPath();
+            ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
+            ctx.lineTo(domeCx + domeRx, domeFloor);
+            ctx.lineTo(domeCx - domeRx, domeFloor);
+            ctx.closePath();
 
-        // 5. Radiant White Dome Perimeter Arc (Glowing white light)
-        ctx.save();
-        // Diffuse outer bloom
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-        ctx.lineWidth = 10;
-        ctx.shadowColor = "#ffffff";
-        ctx.shadowBlur = 30;
-        ctx.beginPath();
-        ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
-        ctx.stroke();
+            // Comfortable deep twilight slate backdrop with soft luminous mist
+            let innerGrad = ctx.createRadialGradient(domeCx, 120, 60, domeCx, domeFloor, domeRx);
+            innerGrad.addColorStop(0.0, "rgba(220, 230, 248, 0.45)");
+            innerGrad.addColorStop(0.4, "rgba(180, 200, 230, 0.25)");
+            innerGrad.addColorStop(0.8, "rgba(28, 32, 45, 0.95)");
+            innerGrad.addColorStop(1.0, "#12151f");
+            ctx.fillStyle = innerGrad;
+            ctx.fill();
 
-        // Core bright white arch
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 4;
-        ctx.shadowColor = "#ffffff";
-        ctx.shadowBlur = 16;
-        ctx.beginPath();
-        ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
-        ctx.stroke();
-        ctx.restore();
+            // Soft celestial light beams from the apex
+            let lightWash = ctx.createLinearGradient(0, 40, 0, domeFloor);
+            lightWash.addColorStop(0, "rgba(255, 255, 255, 0.25)");
+            lightWash.addColorStop(0.4, "rgba(230, 240, 255, 0.08)");
+            lightWash.addColorStop(1, "rgba(255, 255, 255, 0)");
+            ctx.fillStyle = lightWash;
+            ctx.fill();
+
+            // 3. Floor beneath y = 350 inside the dome
+            ctx.fillStyle = "#12141c";
+            ctx.fillRect(domeCx - domeRx, domeFloor, domeRx * 2, h - domeFloor);
+
+            // Subtle glowing floor border line
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(domeCx - domeRx, domeFloor);
+            ctx.lineTo(domeCx + domeRx, domeFloor);
+            ctx.stroke();
+
+            // 4. Radiant White Dome Perimeter Arc (Glowing white light)
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+            ctx.lineWidth = 10;
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 30;
+            ctx.beginPath();
+            ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
+            ctx.stroke();
+
+            // Core bright white arch
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 4;
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 16;
+            ctx.beginPath();
+            ctx.ellipse(domeCx, domeFloor, domeRx, domeRy, 0, Math.PI, 0, false);
+            ctx.stroke();
+
+            ctx.restore();
+        }
     }
 }
 window.drawFireBossArena = drawFireBossArena;
 
 function maskOutsideFireDome() {
     if (!ctx) return;
+    if (boss && (boss.domeDissolveProgress || 0) >= 1) {
+        return;
+    }
     if (boss && boss.state === "FIRE_INTRO" && (225 - boss.introTimer) < 135) {
         return;
     }
+    let maskAlpha = 1.0;
+    if (boss && boss.domeDissolving) {
+        maskAlpha = Math.max(0, 1 - (boss.domeDissolveProgress || 0));
+    }
+    if (maskAlpha <= 0) return;
+
     let domeCx = 750;
     let domeFloor = FLOOR || 520;
     let domeRx = 700;
@@ -406,6 +447,7 @@ function maskOutsideFireDome() {
     let h = ARENA_H || 650;
 
     ctx.save();
+    ctx.globalAlpha = maskAlpha;
     ctx.fillStyle = "#000000";
 
     // 1. Top-Left Corner (Outside the Dome Arch)
@@ -804,6 +846,50 @@ function buildAndStartTutorialGame() {
 }
 window.buildAndStartTutorialGame = buildAndStartTutorialGame;
 
+// --- STORY MODE PROLOGUE LAUNCHER & RETURN ---
+function launchStoryPrologue(slotData) {
+    try {
+        initAudio();
+        if (typeof stopMenuMusic === 'function') stopMenuMusic();
+        
+        window.isStoryMode = true;
+        isTutorial = false;
+        window.isFireBossMode = false;
+        isFireBossMode = false;
+        gameState = "PLAYING";
+
+        let overlay = document.getElementById("overlay");
+        if (overlay) overlay.style.display = "none";
+
+        // Initialize dedicated Prologue engine
+        if (typeof initStoryPrologue === 'function') {
+            initStoryPrologue(slotData);
+        }
+        
+        if (typeof sendPresencePing === 'function') sendPresencePing();
+    } catch(err) {
+        console.error("Story mode start failed:", err);
+        returnFromStoryToMenu();
+    }
+}
+window.launchStoryPrologue = launchStoryPrologue;
+
+function returnFromStoryToMenu() {
+    window.isStoryMode = false;
+    if (typeof storyState !== 'undefined') storyState.active = false;
+    gameState = "MENU";
+    let overlay = document.getElementById("overlay");
+    if (overlay) overlay.style.display = "block";
+    let mobUi = document.getElementById("mobile-ui");
+    if (mobUi) mobUi.style.display = "none";
+    let ctrlCont = document.getElementById("controls-container");
+    if (ctrlCont) ctrlCont.style.display = "block";
+    if (typeof openStorySlotsScreen === 'function') {
+        openStorySlotsScreen();
+    }
+}
+window.returnFromStoryToMenu = returnFromStoryToMenu;
+
 function resetGameParams() {
     for (let p of players) { 
         if (!p) continue;
@@ -854,6 +940,8 @@ function resetGameParams() {
             players[0].hp = 8;
             players[0].burnGauge = 0;
             players[0].burnTimer = 0;
+        } else if (window.isStoryMode) {
+            // Story Mode manages player coordinates explicitly!
         } else {
             players[0].x = ARENA_W/2 - 50;
         }
@@ -1871,6 +1959,12 @@ function updateTutorial() {
 function update() {
     if (gameState !== "PLAYING") return;
 
+    // Story Mode: Campaign update loop
+    if (window.isStoryMode && typeof updateStoryMode === 'function') {
+        updateStoryMode();
+        return;
+    }
+
     // 1. Update flying emoji reactions
     if (window.flyingReactions && window.flyingReactions.length > 0) {
         for (let i = window.flyingReactions.length - 1; i >= 0; i--) {
@@ -1992,7 +2086,7 @@ function update() {
     }
 
     if (!isTutorial) {
-        if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") { 
+        if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM" && !window.isFireBossMode && boss.state !== "FIRE_FINALE") { 
             checkPhaseTransition(); 
         }
 
@@ -3268,6 +3362,7 @@ function drawMasks() {
             
             let hpColor = p.color; 
             if ((secretMode || window.isFireBossMode) && i >= p.maxHp - 2) hpColor = "rgba(255,255,255,0.8)";
+            if (p.type === 'WATER' && p.stance === 'DEMON') hpColor = "#c084fc";
             
             if (p.hp > i) {
                 let fraction = p.hp - i;
@@ -3328,19 +3423,19 @@ function drawMasks() {
                 ctx.restore();
             }
         }
-        if (p.purpleHp > 0) {
+        if (p.purpleHp > 0 && !window.isStoryMode) {
             for (let i = 0; i < p.purpleHp; i++) {
                 let cx = 30 + (p.maxHp + i) * 30 + mShakeX; let cy = yOffset + mShakeY;
                 ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); 
                 ctx.fillStyle = "#9900ff"; ctx.fill(); ctx.strokeStyle = "#ff55ff"; ctx.lineWidth = 2; ctx.stroke();
             }
         }
-        if (p.orangeHp > 0) {
+        if (p.orangeHp > 0 && !window.isStoryMode) {
             let cx = 30 + (p.maxHp + p.purpleHp) * 30 + mShakeX; let cy = yOffset + mShakeY;
             ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); 
             ctx.fillStyle = "#ffaa00"; ctx.fill(); ctx.strokeStyle = "yellow"; ctx.lineWidth = 2; ctx.stroke();
         }
-        if (p.type === 'STAMINA') {
+        if (p.type === 'STAMINA' && !window.isStoryMode) {
             for (let i = 0; i < p.maxStamina; i++) {
                 let cx = 30 + i * 16; let cy = yOffset + 18;
                 ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI*2);
@@ -3351,7 +3446,7 @@ function drawMasks() {
         
         let brewX = 30 + (p.maxHp + (p.purpleHp > 0 ? p.purpleHp : 0)) * 30 + (p.orangeHp > 0 ? 30 : 0) + 10;
         let pAbList = (p.abilities && typeof p.abilities === 'object') ? Object.values(p.abilities) : [];
-        if (p.chillBrews > 0 || pAbList.includes('chill')) {
+        if (!window.isStoryMode && (p.chillBrews > 0 || pAbList.includes('chill'))) {
             for (let i = 0; i < p.chillBrews; i++) {
                 ctx.beginPath(); ctx.arc(brewX + i * 16, yOffset, 5, 0, Math.PI*2);
                 ctx.fillStyle = "cyan"; ctx.fill();
@@ -3359,7 +3454,7 @@ function drawMasks() {
             }
             if (p.chillBrews > 0) brewX += p.chillBrews * 16 + 10;
         }
-        if (p.invigBrews > 0 || pAbList.includes('invig')) {
+        if (!window.isStoryMode && (p.invigBrews > 0 || pAbList.includes('invig'))) {
             for (let i = 0; i < p.invigBrews; i++) {
                 ctx.beginPath(); ctx.arc(brewX + i * 16, yOffset, 5, 0, Math.PI*2);
                 ctx.fillStyle = "#ffcc00"; ctx.fill();
@@ -3369,7 +3464,7 @@ function drawMasks() {
         }
 
         // Water Rope Ult Indicator (3 glowing cyan circles)
-        if (p.type === 'WATER_ROPE') {
+        if (!window.isStoryMode && p.type === 'WATER_ROPE') {
             for (let i = 0; i < 3; i++) {
                 ctx.beginPath();
                 ctx.arc(brewX + i * 16, yOffset, 6, 0, Math.PI * 2);
@@ -3383,7 +3478,7 @@ function drawMasks() {
         }
 
         // 4G Stamina Pink Ult Indicator (2 glowing pink circles)
-        if (p.type === 'STAMINA' && (p.weaponMode === 'PINK' || p.stance === 'PINK')) {
+        if (!window.isStoryMode && p.type === 'STAMINA' && (p.weaponMode === 'PINK' || p.stance === 'PINK')) {
             for (let i = 0; i < 2; i++) {
                 ctx.beginPath();
                 ctx.arc(brewX + i * 16, yOffset, 6, 0, Math.PI * 2);
@@ -3435,232 +3530,245 @@ function drawMasks() {
             ctx.restore();
         }
 
-        let tagText = "";
-        let tagColor = "#ffffff";
-        if (p.type === 'WATER') {
-            let canDemon = !(!secretMode && numPlayers === 2);
-            if (p.stance === 'DEMON') {
-                tagText = secretMode ? "[ДЕМОНСКАЯ СИЛА] (F+Вниз: Бездна | C+F: Бег | S)" : "[ДЕМОНСКАЯ СИЛА] (C+F: Бег | S)";
-                tagColor = "#d000ff";
-            } else {
-                tagText = canDemon ? "[СВЕТЛАЯ СИЛА] (X+F: Капля | C+F: Бег | S)" : "[СВЕТЛАЯ СИЛА] (X+F: Капля | C+F: Бег)";
-                tagColor = "#00e5ff";
-            }
-        } else if (p.type === 'EARTH') {
-            let critVal = 0;
-            if (sharedHeals >= 5) critVal = 15;
-            else if (sharedHeals >= 4) critVal = 12.5;
-            else if (sharedHeals >= 3) critVal = 10;
-            else if (sharedHeals >= 2) critVal = 7.5;
-            else if (sharedHeals >= 1) critVal = 5;
-            if (p.hasLuckyCharm) critVal += 2;
-
-            let dodgeVal = 0;
-            if (p.hasLuckyCharm) dodgeVal += 5;
-            if (sharedHeals >= 4) {
-                dodgeVal += 5;
-                if (p.hasLuckyCharm) dodgeVal += 2;
-            }
-            tagText = `[КИНЖАЛЫ ТЕНИ] (X+C: Удар-сальто | Крит: ${critVal}%${dodgeVal > 0 ? ` | Уворот: ${dodgeVal}%` : ''})`;
-            tagColor = "#55ff77";
-        } else if (p.type === 'AIR') {
-            tagText = "[КЛИНКИ ВЕТРА] (S: Воздушная атака | Удерживай Z: Прыжок выше)";
-            tagColor = "#fff066";
-        } else if (p.type === 'STAMINA') {
-            if (p.stance === 'PINK' || p.weaponMode === 'PINK') {
-                tagText = `[ВИРУСНЫЙ МЕЧ | x2.5] (X+S: Ульта [${p.staminaUltAttempts !== undefined ? p.staminaUltAttempts : 2}] | S: Режим)`;
-                tagColor = "#ff33aa";
-            } else {
-                tagText = "[СИНИЕ КИНЖАЛЫ | СЕРИЯ] (S: Режим)";
-                tagColor = "#33ffff";
-            }
-        } else if (p.type === 'FIRE') {
-            if (p.heatBladeTimer > 0) {
-                tagText = `[НАГРЕВ КЛИНКА: ${(p.heatBladeTimer/60).toFixed(1)}с] (S: Выпад 2.5 | Shift: Взрыв)`;
-                tagColor = "#ff4400";
-            } else {
-                tagText = "[ШПАГА ОГНЯ] (Shift: Взрыв огня | S: Выпад | C+F: Бег)";
-                tagColor = "#ffaa33";
-            }
-        } else if (p.type === 'FIRE_HALBERD') {
-            if (p.heatBladeTimer > 0) {
-                tagText = `[ОГНЕННАЯ ВОЛНА: ${(p.heatBladeTimer/60).toFixed(1)}с] (+1.25 урон | S: Прыжок-шест)`;
-                tagColor = "#ff3300";
-            } else {
-                tagText = "[АЛЕБАРДА ОГНЯ] (S: Прыжок-шест с ударом 3.0 | F: Замах)";
-                tagColor = "#ff7733";
-            }
-        } else if (p.type === 'WATER_ROPE') {
-            if (p.concentrateReady) {
-                tagText = `[ФОКУС ГОТОВ!] (Отпусти X: Удар 2.5 | X+S: Гарпун [${p.ropeUltAttempts !== undefined ? p.ropeUltAttempts : 3}])`;
-                tagColor = "#00ffff";
-            } else if (p.concentrateTimer > 0) {
-                tagText = `[ФОКУС: ${Math.round((p.concentrateTimer/60)*100)}%]`;
-                tagColor = "#38bdf8";
-            } else {
-                tagText = `[МАЛЫШ ВОДЫ] (X+S: Гарпун-захват [${p.ropeUltAttempts !== undefined ? p.ropeUltAttempts : 3}] | Трос: Движение)`;
-                tagColor = "#00e5ff";
-            }
-        }
-
-        if (p.bananaSkin || Object.values(p.abilities).includes('banana_snack')) {
-            let uCount = p.bananaSnackUses !== undefined ? p.bananaSnackUses : 3;
-            ctx.save();
-            ctx.font = "16px sans-serif";
-            for (let b = 0; b < 3; b++) {
-                let bx = tagOffset + b * 22;
-                let by = yOffset + 5;
-                if (b < uCount) {
-                    ctx.globalAlpha = 1.0;
-                    ctx.shadowColor = "rgba(255, 215, 0, 0.8)";
-                    ctx.shadowBlur = 6;
+        // Arcade ability & stance hint tags: completely disabled in Story Mode!
+        if (!window.isStoryMode) {
+            let tagText = "";
+            let tagColor = "#ffffff";
+            if (p.type === 'WATER') {
+                let canDemon = !(!secretMode && numPlayers === 2);
+                if (p.stance === 'DEMON') {
+                    tagText = secretMode ? "[ДЕМОНСКАЯ СИЛА] (F+Вниз: Бездна | C+F: Бег | S)" : "[ДЕМОНСКАЯ СИЛА] (C+F: Бег | S)";
+                    tagColor = "#d000ff";
                 } else {
-                    ctx.globalAlpha = 0.22;
-                    ctx.shadowBlur = 0;
+                    tagText = canDemon ? "[СВЕТЛАЯ СИЛА] (X+F: Капля | C+F: Бег | S)" : "[СВЕТЛАЯ СИЛА] (X+F: Капля | C+F: Бег)";
+                    tagColor = "#00e5ff";
                 }
-                ctx.fillText("🍌", bx, by);
-            }
-            ctx.restore();
-            tagOffset += 76;
-        }
+            } else if (p.type === 'EARTH') {
+                let critVal = 0;
+                if (sharedHeals >= 5) critVal = 15;
+                else if (sharedHeals >= 4) critVal = 12.5;
+                else if (sharedHeals >= 3) critVal = 10;
+                else if (sharedHeals >= 2) critVal = 7.5;
+                else if (sharedHeals >= 1) critVal = 5;
+                if (p.hasLuckyCharm) critVal += 2;
 
-        if (tagText) {
-            ctx.save();
-            ctx.font = "bold 12px Arial";
-            ctx.fillStyle = tagColor;
-            ctx.fillText(tagText, tagOffset, yOffset + 4);
-            ctx.restore();
-            tagOffset += 210;
-        }
-
-        let maxHallHits = (p.hasLightAmulet && !p.lightAmuletBroken) ? 4 : 3;
-        if (secretMode && (p.hallucinationHits || 0) >= maxHallHits && !(p.type === 'WATER' && p.stance === 'DEMON')) {
-            ctx.save();
-            ctx.font = "bold 11px Arial";
-            let hPulse = 0.6 + 0.4 * Math.sin(Date.now() / 120);
-            ctx.fillStyle = `rgba(220, 0, 255, ${hPulse})`;
-            ctx.fillText(`⚠ ИСКАЖЕНИЕ ПУСТОТЫ (${maxHallHits}/${maxHallHits})`, tagOffset, yOffset + 4);
-            ctx.restore();
-        } else if (secretMode && (p.hallucinationHits || 0) > 0 && !(p.type === 'WATER' && p.stance === 'DEMON')) {
-            ctx.save();
-            ctx.font = "11px Arial";
-            ctx.fillStyle = "rgba(180, 100, 220, 0.8)";
-            ctx.fillText(`Удары пустоты: ${p.hallucinationHits}/${maxHallHits}`, tagOffset, yOffset + 4);
-            ctx.restore();
-        }
-    }
-
-    if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal) {
-        let healY = 25 + (players.length * 35) + 15;
-        ctx.fillStyle = "#ffaa00"; 
-        ctx.font = "bold 13px Arial"; 
-        ctx.fillText(`Ограниченный хил: ${sharedHealPoints}/12`, 20, healY);
-        
-        let barX = 20;
-        let barY = healY + 6;
-        let segW = 12;
-        let segH = 12;
-        let gap = 3;
-        for (let s = 0; s < 12; s++) {
-            let sx = barX + s * (segW + gap);
-            if (s < sharedHealPoints) {
-                ctx.fillStyle = (s < 4) ? "#00ffff" : ((s < 8) ? "#4ade80" : "#ffcc00");
-                ctx.fillRect(sx, barY, segW, segH);
-                ctx.strokeStyle = "#ffffff";
-                ctx.lineWidth = 1;
-                ctx.strokeRect(sx, barY, segW, segH);
-            } else {
-                ctx.fillStyle = "rgba(0,0,0,0.5)";
-                ctx.fillRect(sx, barY, segW, segH);
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
-                ctx.lineWidth = 1;
-                ctx.strokeRect(sx, barY, segW, segH);
-            }
-        }
-        ctx.font = "11px Arial";
-        ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
-        ctx.fillText("Хил: 8 | F: 4 | Огонь A+Вверх: 12", 20, barY + segH + 15);
-    } else {
-        let healY = 25 + (players.length * 35) + 15;
-        ctx.fillStyle = "lime"; ctx.font = "14px Arial"; ctx.fillText("Заряды исцеления:", 20, healY);
-        let hasGen = typeof players !== 'undefined' && players.some(p => p.badges && p.badges.includes('generator'));
-        
-        // Резерв хила (Синие деления в самом начале)
-        let reservePlayers = (typeof players !== 'undefined' && players) ? players.filter(p => p.badges && p.badges.includes('heal_reserve')) : [];
-        let startX = 155;
-        for (let r = 0; r < reservePlayers.length; r++) {
-            let rp = reservePlayers[r];
-            let rx = startX + r * 16;
-            let ry = healY - 5;
-            ctx.save();
-            ctx.beginPath(); ctx.moveTo(rx, ry - 6); ctx.lineTo(rx + 6, ry); ctx.lineTo(rx, ry + 6); ctx.lineTo(rx - 6, ry); ctx.closePath();
-            if (!rp.healReserveUsed) {
-                ctx.fillStyle = "#00e5ff";
-                ctx.shadowColor = "#00e5ff";
-                ctx.shadowBlur = rp.healingWithReserve ? 14 : 7;
-                ctx.fill();
-                ctx.strokeStyle = "#ffffff";
-                ctx.lineWidth = 1.2;
-                ctx.stroke();
-            } else {
-                ctx.strokeStyle = "rgba(0, 229, 255, 0.35)";
-                ctx.lineWidth = 1;
-                ctx.stroke();
-            }
-            ctx.restore();
-        }
-
-        let greenStartX = startX + reservePlayers.length * 16;
-        let genTargetIdx = Math.floor(sharedHeals);
-        for (let j = 0; j < maxSharedHeals; j++) {
-            let hx = greenStartX + j * 15; let hy = healY - 5;
-            if (j < Math.floor(sharedHeals)) { 
-                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
-                ctx.fillStyle = "lime"; ctx.fill(); 
-            } else if (j < sharedHeals) { 
-                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
-                ctx.fillStyle = "lime"; ctx.fill(); 
-                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
-                ctx.strokeStyle = "rgba(0, 255, 0, 0.5)"; ctx.stroke(); 
-            } else { 
-                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
-                ctx.strokeStyle = "rgba(0, 255, 0, 0.3)"; ctx.stroke(); 
+                let dodgeVal = 0;
+                if (p.hasLuckyCharm) dodgeVal += 5;
+                if (sharedHeals >= 4) {
+                    dodgeVal += 5;
+                    if (p.hasLuckyCharm) dodgeVal += 2;
+                }
+                tagText = `[КИНЖАЛЫ ТЕНИ] (X+C: Удар-сальто | Крит: ${critVal}%${dodgeVal > 0 ? ` | Уворот: ${dodgeVal}%` : ''})`;
+                tagColor = "#55ff77";
+            } else if (p.type === 'AIR') {
+                tagText = "[КЛИНКИ ВЕТРА] (S: Воздушная атака | Удерживай Z: Прыжок выше)";
+                tagColor = "#fff066";
+            } else if (p.type === 'STAMINA') {
+                if (p.stance === 'PINK' || p.weaponMode === 'PINK') {
+                    tagText = `[ВИРУСНЫЙ МЕЧ | x2.5] (X+S: Ульта [${p.staminaUltAttempts !== undefined ? p.staminaUltAttempts : 2}] | S: Режим)`;
+                    tagColor = "#ff33aa";
+                } else {
+                    tagText = "[СИНИЕ КИНЖАЛЫ | СЕРИЯ] (S: Режим)";
+                    tagColor = "#33ffff";
+                }
+            } else if (p.type === 'FIRE') {
+                if (p.heatBladeTimer > 0) {
+                    tagText = `[НАГРЕВ КЛИНКА: ${(p.heatBladeTimer/60).toFixed(1)}с] (S: Выпад 2.5 | Shift: Взрыв)`;
+                    tagColor = "#ff4400";
+                } else {
+                    tagText = "[ШПАГА ОГНЯ] (Shift: Взрыв огня | S: Выпад | C+F: Бег)";
+                    tagColor = "#ffaa33";
+                }
+            } else if (p.type === 'FIRE_HALBERD') {
+                if (p.heatBladeTimer > 0) {
+                    tagText = `[ОГНЕННАЯ ВОЛНА: ${(p.heatBladeTimer/60).toFixed(1)}с] (+1.25 урон | S: Прыжок-шест)`;
+                    tagColor = "#ff3300";
+                } else {
+                    tagText = "[АЛЕБАРДА ОГНЯ] (S: Прыжок-шест с ударом 3.0 | F: Замах)";
+                    tagColor = "#ff7733";
+                }
+            } else if (p.type === 'WATER_ROPE') {
+                if (p.concentrateReady) {
+                    tagText = `[ФОКУС ГОТОВ!] (Отпусти X: Удар 2.5 | X+S: Гарпун [${p.ropeUltAttempts !== undefined ? p.ropeUltAttempts : 3}])`;
+                    tagColor = "#00ffff";
+                } else if (p.concentrateTimer > 0) {
+                    tagText = `[ФОКУС: ${Math.round((p.concentrateTimer/60)*100)}%]`;
+                    tagColor = "#38bdf8";
+                } else {
+                    tagText = `[МАЛЫШ ВОДЫ] (X+S: Гарпун-захват [${p.ropeUltAttempts !== undefined ? p.ropeUltAttempts : 3}] | Трос: Движение)`;
+                    tagColor = "#00e5ff";
+                }
             }
 
-            // Generator Badge: Charging Energy Animation on the next diamond in queue!
-            if (hasGen && j === genTargetIdx && j < maxSharedHeals) {
+            if (p.bananaSkin || Object.values(p.abilities).includes('banana_snack')) {
+                let uCount = p.bananaSnackUses !== undefined ? p.bananaSnackUses : 3;
                 ctx.save();
-                let gPulse = 0.35 + 0.35 * Math.sin(Date.now() / 130);
-                ctx.fillStyle = `rgba(50, 255, 120, ${gPulse * 0.75})`;
-                ctx.shadowColor = "#00ff66";
-                ctx.shadowBlur = 8;
-                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath();
-                ctx.fill();
-
-                // Spark streaming inwards towards diamond
-                let sparkAng = (Date.now() / 150) % (Math.PI * 2);
-                for (let s = 0; s < 3; s++) {
-                    let a = sparkAng + (s * Math.PI * 2 / 3);
-                    let dist = 8 + 3 * Math.sin(Date.now() / 90 + s);
-                    let sx = hx + Math.cos(a) * dist;
-                    let sy = hy + Math.sin(a) * dist;
-                    ctx.fillStyle = "#aaffcc";
-                    ctx.shadowBlur = 4;
-                    ctx.beginPath();
-                    ctx.arc(sx, sy, 1.4, 0, Math.PI * 2);
-                    ctx.fill();
+                ctx.font = "16px sans-serif";
+                for (let b = 0; b < 3; b++) {
+                    let bx = tagOffset + b * 22;
+                    let by = yOffset + 5;
+                    if (b < uCount) {
+                        ctx.globalAlpha = 1.0;
+                        ctx.shadowColor = "rgba(255, 215, 0, 0.8)";
+                        ctx.shadowBlur = 6;
+                    } else {
+                        ctx.globalAlpha = 0.22;
+                        ctx.shadowBlur = 0;
+                    }
+                    ctx.fillText("🍌", bx, by);
                 }
+                ctx.restore();
+                tagOffset += 76;
+            }
+
+            if (tagText) {
+                ctx.save();
+                ctx.font = "bold 12px Arial";
+                ctx.fillStyle = tagColor;
+                ctx.fillText(tagText, tagOffset, yOffset + 4);
+                ctx.restore();
+                tagOffset += 210;
+            }
+
+            let maxHallHits = (p.hasLightAmulet && !p.lightAmuletBroken) ? 4 : 3;
+            if (secretMode && (p.hallucinationHits || 0) >= maxHallHits && !(p.type === 'WATER' && p.stance === 'DEMON')) {
+                ctx.save();
+                ctx.font = "bold 11px Arial";
+                let hPulse = 0.6 + 0.4 * Math.sin(Date.now() / 120);
+                ctx.fillStyle = `rgba(220, 0, 255, ${hPulse})`;
+                ctx.fillText(`⚠ ИСКАЖЕНИЕ ПУСТОТЫ (${maxHallHits}/${maxHallHits})`, tagOffset, yOffset + 4);
+                ctx.restore();
+            } else if (secretMode && (p.hallucinationHits || 0) > 0 && !(p.type === 'WATER' && p.stance === 'DEMON')) {
+                ctx.save();
+                ctx.font = "11px Arial";
+                ctx.fillStyle = "rgba(180, 100, 220, 0.8)";
+                ctx.fillText(`Удары пустоты: ${p.hallucinationHits}/${maxHallHits}`, tagOffset, yOffset + 4);
                 ctx.restore();
             }
         }
-        
-        let reqHits = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
-        ctx.fillStyle = "cyan"; ctx.font = "14px Arial"; ctx.fillText(`Удары для хила: ${sharedHitCount}/${reqHits}`, 20, healY + 25);
+    }
+
+    // Healing HUD: completely hidden in Story Mode until unlocked later!
+    if (!window.isStoryMode) {
+        if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal) {
+            let healY = 25 + (players.length * 35) + 15;
+            ctx.fillStyle = "#ffaa00"; 
+            ctx.font = "bold 13px Arial"; 
+            ctx.fillText(`Ограниченный хил: ${sharedHealPoints}/12`, 20, healY);
+            
+            let barX = 20;
+            let barY = healY + 6;
+            let segW = 12;
+            let segH = 12;
+            let gap = 3;
+            for (let s = 0; s < 12; s++) {
+                let sx = barX + s * (segW + gap);
+                if (s < sharedHealPoints) {
+                    ctx.fillStyle = (s < 4) ? "#00ffff" : ((s < 8) ? "#4ade80" : "#ffcc00");
+                    ctx.fillRect(sx, barY, segW, segH);
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(sx, barY, segW, segH);
+                } else {
+                    ctx.fillStyle = "rgba(0,0,0,0.5)";
+                    ctx.fillRect(sx, barY, segW, segH);
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(sx, barY, segW, segH);
+                }
+            }
+            ctx.font = "11px Arial";
+            ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+            ctx.fillText("Хил: 8 | F: 4 | Огонь A+Вверх: 12", 20, barY + segH + 15);
+        } else {
+            let healY = 25 + (players.length * 35) + 15;
+            ctx.fillStyle = "lime"; ctx.font = "14px Arial"; ctx.fillText("Заряды исцеления:", 20, healY);
+            let hasGen = typeof players !== 'undefined' && players.some(p => p.badges && p.badges.includes('generator'));
+            
+            // Резерв хила (Синие деления в самом начале)
+            let reservePlayers = (typeof players !== 'undefined' && players) ? players.filter(p => p.badges && p.badges.includes('heal_reserve')) : [];
+            let startX = 155;
+            for (let r = 0; r < reservePlayers.length; r++) {
+                let rp = reservePlayers[r];
+                let rx = startX + r * 16;
+                let ry = healY - 5;
+                ctx.save();
+                ctx.beginPath(); ctx.moveTo(rx, ry - 6); ctx.lineTo(rx + 6, ry); ctx.lineTo(rx, ry + 6); ctx.lineTo(rx - 6, ry); ctx.closePath();
+                if (!rp.healReserveUsed) {
+                    ctx.fillStyle = "#00e5ff";
+                    ctx.shadowColor = "#00e5ff";
+                    ctx.shadowBlur = rp.healingWithReserve ? 14 : 7;
+                    ctx.fill();
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 1.2;
+                    ctx.stroke();
+                } else {
+                    ctx.strokeStyle = "rgba(0, 229, 255, 0.35)";
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+
+            let greenStartX = startX + reservePlayers.length * 16;
+            let genTargetIdx = Math.floor(sharedHeals);
+            for (let j = 0; j < maxSharedHeals; j++) {
+                let hx = greenStartX + j * 15; let hy = healY - 5;
+                if (j < Math.floor(sharedHeals)) { 
+                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
+                    ctx.fillStyle = "lime"; ctx.fill(); 
+                } else if (j < sharedHeals) { 
+                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
+                    ctx.fillStyle = "lime"; ctx.fill(); 
+                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
+                    ctx.strokeStyle = "rgba(0, 255, 0, 0.5)"; ctx.stroke(); 
+                } else { 
+                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
+                    ctx.strokeStyle = "rgba(0, 255, 0, 0.3)"; ctx.stroke(); 
+                }
+
+                // Generator Badge: Charging Energy Animation on the next diamond in queue!
+                if (hasGen && j === genTargetIdx && j < maxSharedHeals) {
+                    ctx.save();
+                    let gPulse = 0.35 + 0.35 * Math.sin(Date.now() / 130);
+                    ctx.fillStyle = `rgba(50, 255, 120, ${gPulse * 0.75})`;
+                    ctx.shadowColor = "#00ff66";
+                    ctx.shadowBlur = 8;
+                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath();
+                    ctx.fill();
+
+                    // Spark streaming inwards towards diamond
+                    let sparkAng = (Date.now() / 150) % (Math.PI * 2);
+                    for (let s = 0; s < 3; s++) {
+                        let a = sparkAng + (s * Math.PI * 2 / 3);
+                        let dist = 8 + 3 * Math.sin(Date.now() / 90 + s);
+                        let sx = hx + Math.cos(a) * dist;
+                        let sy = hy + Math.sin(a) * dist;
+                        ctx.fillStyle = "#aaffcc";
+                        ctx.shadowBlur = 4;
+                        ctx.beginPath();
+                        ctx.arc(sx, sy, 1.4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                }
+            }
+            
+            let reqHits = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
+            ctx.fillStyle = "cyan"; ctx.font = "14px Arial"; ctx.fillText(`Удары для хила: ${sharedHitCount}/${reqHits}`, 20, healY + 25);
+        }
     }
 }
 
 function draw() {
     if (!ctx) return;
+
+    // Story Mode: Campaign Prologue Renderer
+    if (window.isStoryMode && typeof drawStoryMode === 'function') {
+        drawStoryMode();
+        return;
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
 
@@ -4647,13 +4755,7 @@ function draw() {
             ctx.shadowBlur = 10;
             ctx.fillText("Обучение пройдено, теперь ты готов(-а) к настоящему бою", GAME_WIDTH/2, 185);
         } else {
-            if (window.isFireBossMode) {
-                ctx.font = "bold 22px Arial";
-                ctx.fillStyle = "#ff7733";
-                ctx.shadowColor = "rgba(0,0,0,0.9)";
-                ctx.shadowBlur = 8;
-                ctx.fillText("«Пламя угасло... Достойный поединок!»", GAME_WIDTH/2, 175);
-            } else if (!secretMode) {
+            if (!window.isFireBossMode && !secretMode) {
                 ctx.font = "bold 22px Arial";
                 ctx.fillStyle = "#ffdd44";
                 ctx.shadowColor = "rgba(0,0,0,0.9)";
@@ -4665,7 +4767,7 @@ function draw() {
             ctx.fillStyle = "#ffffff";
             ctx.shadowColor = "rgba(0,0,0,0.9)";
             ctx.shadowBlur = 8;
-            ctx.fillText("Нажмите 'R' для новой битвы", GAME_WIDTH/2, secretMode ? 185 : 215);
+            ctx.fillText("Нажмите 'R' для новой битвы", GAME_WIDTH/2, (secretMode || window.isFireBossMode) ? 180 : 215);
         }
 
         ctx.restore();
@@ -4698,7 +4800,7 @@ function draw() {
     // ============================================================
     if (gameState === "PLAYING") {
         drawMasks(); 
-        if (!activeCinematic && !isTutorial && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM" && !boss.state.startsWith("L_CLIMB") && boss.state !== "FIRE_INTRO") { 
+        if (!activeCinematic && !isTutorial && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM" && !boss.state.startsWith("L_CLIMB") && boss.state !== "FIRE_INTRO" && boss.state !== "FIRE_FINALE") { 
             ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(GAME_WIDTH/2 - 200, 375, 400, 10); 
             let maxTotal = (boss.totalMaxHp || (boss.maxHp + (phase2Hp || 0) + (phase3Hp || 0))) || 60;
             let currentTotal = Math.max(0, Math.ceil(getBossTotalHp()));
@@ -5177,19 +5279,27 @@ function loop(time) {
         if (freezeFrames > 0) {
             freezeFrames--; 
         } else {
-            if (slowMoTimer > 0) {
-                slowMoTimer--;
-                if (slowMoTimer % 2 === 0) {
+            try {
+                if (slowMoTimer > 0) {
+                    slowMoTimer--;
+                    if (slowMoTimer % 2 === 0) {
+                        update();
+                    }
+                } else {
                     update();
                 }
-            } else {
-                update();
+            } catch(e) {
+                console.error("Game update loop error:", e);
             }
         }
         accumulator -= FIXED_TIME_STEP;
     }
 
-    draw();
+    try {
+        draw();
+    } catch(e) {
+        console.error("Game draw loop error:", e);
+    }
     requestAnimationFrame(loop);
 }
 

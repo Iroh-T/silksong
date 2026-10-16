@@ -10,7 +10,7 @@ function isOnlineTester(user) {
     let u = user.trim().toLowerCase();
     return u === 'рыба' || u === 'admin' || 
            u === 'сarrots_44444' || u === 'carrots_44444' || u === 'ярослав' || 
-           u === 'dasha545' || u === 'даша' || 
+           u === 'dasha_545' || u === 'dasha545' || u === 'даша' || u.includes('dasha') || 
            u === 'gandalf';
 }
 window.isOnlineTester = isOnlineTester;

@@ -180,6 +180,9 @@ function triggerChaos(saCount) {
 
 function checkPhaseTransition() {
     if (typeof isTutorial !== 'undefined' && isTutorial) return;
+    if (typeof isFireBossMode !== 'undefined' && isFireBossMode) return;
+    if (typeof window !== 'undefined' && window.isFireBossMode) return;
+    if (boss && boss.state === "FIRE_FINALE") return;
     if (boss.hp <= 0 && boss.state !== "DEFEATED" && !boss.state.startsWith("CINEMATIC") && boss.state !== "FREE_ROAM") {
         boss.hp = 0;
         if (secretMode && boss.phase === 3) {
@@ -2867,7 +2870,7 @@ function drawBoss() {
 // --- FIRE BOSS (ФЕХТОВАЛЬЩИК ОГНЯ) IMPLEMENTATION ---
 
 function tryDamageFireBoss(dmg, sourcePlayer) {
-    if (boss.invuln > 0 || boss.state === "FIRE_INTRO" || boss.state === "DEFEATED" || boss.state === "FIRE_SILK_RUN") {
+    if (boss.invuln > 0 || boss.state === "FIRE_INTRO" || boss.state === "DEFEATED" || boss.state === "FIRE_SILK_RUN" || boss.state === "FIRE_FINALE") {
         return false;
     }
 
@@ -2983,30 +2986,44 @@ function tryDamageFireBoss(dmg, sourcePlayer) {
 
     if (boss.hp <= 0) {
         boss.hp = 0;
-        boss.state = "DEFEATED";
-        boss.stateTimer = 9999;
-        boss.vx = 0;
-        boss.vy = 0;
-        // Section 4: OUTRO - Majestic decrescendo with warm resolving chord decay
-        if (window.fireBossAudioEngine) {
-            window.fireBossAudioEngine.triggerOutro();
-        } else if (typeof stopFireBossMusic === 'function') {
-            stopFireBossMusic();
-        }
-        playSound('break');
-        triggerShake(16, 24);
-        triggerVibration('l_mode_final');
-        for (let i = 0; i < 35; i++) {
-            voidExplosions.push({
-                x: boss.x + boss.width / 2,
-                y: boss.y + boss.height / 2,
-                vx: (Math.random() - 0.5) * 16,
-                vy: (Math.random() - 0.5) * 16,
-                timer: 45,
-                isWhite: Math.random() > 0.4,
-                isOrange: true,
-                r: 25 + Math.random() * 20
-            });
+        if (boss.state !== "FIRE_FINALE" && boss.state !== "DEFEATED") {
+            boss.state = "FIRE_FINALE";
+            boss.finaleSubStep = "PROMPT_F";
+            boss.finaleTimer = 0;
+            boss.rapierShattered = false;
+            boss.rapierShards = [];
+            boss.droppedStick = null;
+            boss.domeDissolving = false;
+            boss.domeDissolveProgress = 0;
+            boss.invuln = 99999;
+            boss.vx = 0;
+            boss.vy = 0;
+            boss.y = FLOOR - boss.height;
+
+            let p = players[0];
+            if (p) {
+                let toRight = (p.x >= boss.x);
+                boss.facingRight = toRight;
+                p.facingRight = !toRight;
+                p.x = boss.x + (toRight ? 95 : -95);
+                p.y = boss.y - 32; // In front and slightly above
+                p.vx = 0;
+                p.vy = 0;
+                p.isAttacking = true;
+                p.attackTimer = 12; // Katana windup pose!
+                p.invuln = 99999;
+            }
+
+            boss.prevFPressed = true;
+            boss.prevXPressed = true;
+            freezeFrames = 12; // Crisp dramatic impact stop frame
+            playSound('parry');
+            playSound('clash');
+            triggerShake(10, 16);
+            if (typeof fadeFireBossVolume === 'function') {
+                fadeFireBossVolume(0.35, 400);
+            }
+            return true;
         }
     }
 
@@ -3014,7 +3031,625 @@ function tryDamageFireBoss(dmg, sourcePlayer) {
 }
 window.tryDamageFireBoss = tryDamageFireBoss;
 
+function updateRapierShards(b) {
+    if (!b.rapierShards || b.rapierShards.length === 0) return;
+    for (let i = b.rapierShards.length - 1; i >= 0; i--) {
+        let s = b.rapierShards[i];
+        s.vy += 0.35;
+        s.x += s.vx;
+        s.y += s.vy;
+        s.angle += s.vRot;
+        if (s.y >= FLOOR - 2) {
+            s.y = FLOOR - 2;
+            s.vx *= 0.5;
+            s.vy = -s.vy * 0.3;
+            s.vRot *= 0.5;
+        }
+        s.alpha -= 0.008;
+        if (s.alpha <= 0) {
+            b.rapierShards.splice(i, 1);
+        }
+    }
+}
+
+function drawRapierShards(shards) {
+    if (!shards || shards.length === 0) return;
+    ctx.save();
+    for (let s of shards) {
+        if (s.alpha <= 0) continue;
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.angle);
+        ctx.globalAlpha = s.alpha;
+        if (s.isFlame) {
+            ctx.strokeStyle = "#ff7700";
+            ctx.shadowColor = "#ff3300";
+            ctx.shadowBlur = 8;
+        } else {
+            ctx.strokeStyle = "#e2e8f0";
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 6;
+        }
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(-s.len / 2, 0);
+        ctx.lineTo(s.len / 2, 0);
+        ctx.stroke();
+        ctx.restore();
+    }
+    ctx.restore();
+}
+
+function updateDroppedStick(st) {
+    if (!st || st.onFloor) return;
+    st.vy += 0.38;
+    st.x += st.vx;
+    st.y += st.vy;
+    st.angle += st.vRot;
+    if (st.y >= FLOOR - 4) {
+        st.y = FLOOR - 4;
+        st.vy = -st.vy * 0.35;
+        st.vx *= 0.6;
+        st.vRot *= 0.5;
+        if (Math.abs(st.vy) < 1) {
+            st.onFloor = true;
+            st.vy = 0;
+            st.vx = 0;
+            st.vRot = 0;
+            st.angle = 0.2;
+        }
+    }
+}
+
+function drawDroppedStick(st) {
+    if (!st) return;
+    ctx.save();
+    ctx.translate(st.x, st.y);
+    ctx.rotate(st.angle);
+    ctx.strokeStyle = "#854d0e";
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-11, 0);
+    ctx.lineTo(11, 0);
+    ctx.stroke();
+    // Leather grip wraps
+    ctx.strokeStyle = "#d97706";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-5, -2); ctx.lineTo(-5, 2);
+    ctx.moveTo(3, -2); ctx.lineTo(3, 2);
+    ctx.stroke();
+    ctx.restore();
+}
+
+function drawFireBossKneeling(b, bodyColor, cloakColor, patternColor) {
+    ctx.save();
+    let facing = b.facingRight ? 1 : -1;
+    let bcx = b.x + b.width / 2;
+    let floorY = FLOOR || 520;
+    let breath = Math.sin(Date.now() / 350) * 1.5;
+
+    // Pelvis is low, resting near floor
+    let pelvisX = bcx;
+    let pelvisY = floorY - 18;
+
+    // Rear leg: knee resting right on the floor behind him
+    let kRearX = pelvisX - facing * 12;
+    let kRearY = floorY - 2;
+    let fRearX = pelvisX - facing * 22;
+    let fRearY = floorY - 1;
+
+    // Front leg: knee bent upright, foot planted firmly on floor
+    let kFrontX = pelvisX + facing * 14;
+    let kFrontY = floorY - 16;
+    let fFrontX = pelvisX + facing * 14;
+    let fFrontY = floorY - 1;
+
+    // Spine: leaning slightly forward in respect / exhaustion
+    let neckX = pelvisX + facing * 6;
+    let neckY = pelvisY - 16 + breath;
+    let shX = neckX;
+    let shY = neckY + 2;
+
+    // Head: slightly bowed forward
+    let headX = neckX + facing * 5;
+    let headY = neckY - 8;
+    let headR = 7;
+
+    // 1. Cloak draped over back and onto floor
+    ctx.save();
+    ctx.fillStyle = cloakColor;
+    ctx.beginPath();
+    ctx.moveTo(shX, shY);
+    ctx.quadraticCurveTo(pelvisX - facing * 14, floorY - 20, pelvisX - facing * 24, floorY - 2);
+    ctx.lineTo(pelvisX - facing * 4, floorY - 2);
+    ctx.lineTo(shX, shY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cloak gold embroidery pattern
+    ctx.strokeStyle = patternColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(shX, shY + 4);
+    ctx.quadraticCurveTo(pelvisX - facing * 12, floorY - 16, pelvisX - facing * 20, floorY - 3);
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Rear leg (drawn behind)
+    ctx.strokeStyle = bodyColor;
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(pelvisX, pelvisY);
+    ctx.lineTo(kRearX, kRearY);
+    ctx.lineTo(fRearX, fRearY);
+    ctx.stroke();
+
+    // 3. Front leg
+    ctx.beginPath();
+    ctx.moveTo(pelvisX, pelvisY);
+    ctx.lineTo(kFrontX, kFrontY);
+    ctx.lineTo(fFrontX, fFrontY);
+    ctx.stroke();
+
+    // 4. Spine
+    ctx.beginPath();
+    ctx.moveTo(neckX, neckY);
+    ctx.lineTo(pelvisX, pelvisY);
+    ctx.stroke();
+
+    // 5. Arms
+    // Front arm: resting forearm on front knee (honorable warrior resting pose)
+    ctx.beginPath();
+    ctx.moveTo(shX, shY);
+    ctx.lineTo(kFrontX - facing * 2, kFrontY - 2);
+    ctx.lineTo(kFrontX + facing * 4, kFrontY + 2);
+    ctx.stroke();
+
+    // Rear arm: resting down, hand touching or near the floor
+    ctx.beginPath();
+    ctx.moveTo(shX, shY);
+    ctx.lineTo(pelvisX - facing * 4, floorY - 10);
+    ctx.lineTo(pelvisX + facing * 2, floorY - 2);
+    ctx.stroke();
+
+    // 6. Head
+    ctx.fillStyle = bodyColor;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(headX, headY, headR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Visor glowing slit (dimmer, quiet ember)
+    ctx.strokeStyle = patternColor;
+    ctx.lineWidth = 1.8;
+    ctx.shadowColor = patternColor;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(headX, headY + 1);
+    ctx.lineTo(headX + facing * 5, headY + 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 7. Soft drifting embers from his back (alive!)
+    if (Math.random() < 0.25) {
+        voidExplosions.push({
+            x: neckX + (Math.random() - 0.5) * 12,
+            y: neckY - 2,
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: -1.2 - Math.random() * 1.5,
+            timer: 16,
+            isWhite: false,
+            isOrange: true,
+            r: 4
+        });
+    }
+
+    ctx.restore();
+}
+
+function drawFireFinalePrompt(p) {
+    if (!boss || boss.state !== "FIRE_FINALE" || !p) return;
+    if (boss.finaleSubStep !== "PROMPT_F" && boss.finaleSubStep !== "PROMPT_X") return;
+
+    let isF = (boss.finaleSubStep === "PROMPT_F");
+    let keyChar = isF ? "F" : "X";
+    let subText = isF ? "Спецатака (сюрикен)" : "Атака (раскол шпаги)";
+    let uiX = p.x + p.width / 2;
+    let uiY = p.y - 42;
+
+    ctx.save();
+    ctx.textAlign = "center";
+
+    // Pulsing glowing badge
+    let pulse = 0.8 + 0.2 * Math.sin(Date.now() / 70);
+    let boxW = 180;
+    let boxH = 44;
+
+    ctx.fillStyle = "rgba(10, 10, 18, 0.84)";
+    ctx.strokeStyle = isF ? `rgba(0, 240, 255, ${pulse})` : `rgba(255, 110, 40, ${pulse})`;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = isF ? "#00ffff" : "#ff5500";
+    ctx.shadowBlur = 14;
+
+    ctx.beginPath();
+    let rx = uiX - boxW / 2;
+    let ry = uiY - boxH / 2;
+    if (ctx.roundRect) {
+        ctx.roundRect(rx, ry, boxW, boxH, 8);
+    } else {
+        ctx.rect(rx, ry, boxW, boxH);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // Text: НАЖМИТЕ [ F ] or [ X ]
+    ctx.font = "bold 15px Arial";
+    ctx.fillStyle = "#ffffff";
+    ctx.shadowBlur = 0;
+    ctx.fillText("НАЖМИТЕ", uiX - 22, uiY - 3);
+
+    ctx.font = "bold 19px Arial";
+    ctx.fillStyle = isF ? "#00ffff" : "#ff7733";
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 10;
+    ctx.fillText(`[ ${keyChar} ]`, uiX + 44, uiY - 2);
+
+    // Subtext
+    ctx.font = "11px Arial";
+    ctx.fillStyle = "rgba(220, 235, 255, 0.9)";
+    ctx.shadowBlur = 0;
+    ctx.fillText(subText, uiX, uiY + 14);
+
+    ctx.restore();
+}
+
+function updateFireBossFinale(p) {
+    if (boss.finaleSubStep !== "BOSS_KNOCKBACK_AIR" && boss.finaleSubStep !== "BOSS_KNEEL") {
+        boss.vx = 0;
+        boss.vy = 0;
+    }
+    boss.invuln = 99999;
+    p.invuln = 99999;
+
+    let facing = boss.facingRight ? 1 : -1;
+    let hx = boss.facingRight ? boss.x + boss.width - 4 : boss.x + 4;
+    let hy = boss.y + 22;
+    let pMidX = p.x + p.width / 2;
+    let pMidY = p.y + p.height / 2;
+    let angToWater = Math.atan2(pMidY - hy, pMidX - hx);
+    let rTipX = hx + Math.cos(angToWater) * 44;
+    let rTipY = hy + Math.sin(angToWater) * 44;
+
+    boss.rapierTipX = rTipX;
+    boss.rapierTipY = rTipY;
+    boss.rapierAngle = angToWater;
+
+    // Detect F / Special button (no heal consumed)
+    let fPressed = isKeyPressed(['KeyF', 'f', 'F', 'а', 'А', 'ф', 'Ф']) || 
+                   (p.keys && isKeyPressed(p.keys.special)) ||
+                   (window.gamepads && window.gamepads[0] && (window.gamepads[0].buttons[4]?.pressed || window.gamepads[0].buttons[5]?.pressed)) ||
+                   (typeof touchInputs !== 'undefined' && touchInputs.spec);
+
+    // Detect X / Attack button
+    let xPressed = isKeyPressed(['KeyX', 'x', 'X', 'ч', 'Ч']) || 
+                   (p.keys && isKeyPressed(p.keys.attack)) ||
+                   (window.gamepads && window.gamepads[0] && (window.gamepads[0].buttons[2]?.pressed || window.gamepads[0].buttons[3]?.pressed)) ||
+                   (typeof touchInputs !== 'undefined' && touchInputs.atk);
+
+    if (boss.finaleSubStep === "PROMPT_F") {
+        p.vx = 0;
+        p.vy = 0;
+        p.attackTimer = 12; // Water frozen in katana windup pose
+        p.isAttacking = true;
+
+        if (fPressed && !boss.prevFPressed) {
+            playSound('throw');
+            triggerVibration('parry');
+            boss.finaleShuriken = {
+                startX: p.x + (p.facingRight ? p.width + 4 : -4),
+                startY: p.y + 14,
+                x: p.x + (p.facingRight ? p.width + 4 : -4),
+                y: p.y + 14,
+                targetX: rTipX - Math.cos(angToWater) * 5,
+                targetY: rTipY - Math.sin(angToWater) * 5,
+                t: 0,
+                angle: 0
+            };
+            boss.finaleSubStep = "SHURIKEN_FLY";
+        }
+    }
+    else if (boss.finaleSubStep === "SHURIKEN_FLY") {
+        p.vx = 0;
+        p.vy = 0;
+        p.attackTimer = 12;
+        p.isAttacking = true;
+
+        if (boss.finaleShuriken) {
+            boss.finaleShuriken.t += 0.034;
+            let t = Math.min(1, boss.finaleShuriken.t);
+            let easeT = Math.sin(t * Math.PI / 2);
+            boss.finaleShuriken.x = boss.finaleShuriken.startX + (boss.finaleShuriken.targetX - boss.finaleShuriken.startX) * easeT;
+            boss.finaleShuriken.y = boss.finaleShuriken.startY + (boss.finaleShuriken.targetY - boss.finaleShuriken.startY) * easeT;
+            boss.finaleShuriken.angle += 0.35;
+
+            if (Math.random() < 0.45) {
+                voidExplosions.push({
+                    x: boss.finaleShuriken.x,
+                    y: boss.finaleShuriken.y,
+                    vx: -Math.cos(angToWater) * 1.5,
+                    vy: -Math.sin(angToWater) * 1.5,
+                    timer: 14,
+                    isWhite: true,
+                    r: 6
+                });
+            }
+
+            if (boss.finaleShuriken.t >= 1) {
+                boss.finaleShuriken.t = 1;
+                playSound('lightChime');
+                boss.finaleSubStep = "PROMPT_X";
+                boss.prevXPressed = true;
+            }
+        }
+    }
+    else if (boss.finaleSubStep === "PROMPT_X") {
+        p.vx = 0;
+        p.vy = 0;
+        p.attackTimer = 12;
+        p.isAttacking = true;
+
+        if (boss.finaleShuriken) {
+            boss.finaleShuriken.angle += 0.12;
+        }
+
+        if (xPressed && !boss.prevXPressed) {
+            playSound('break');
+            playSound('parry');
+            playSound('slash');
+            triggerShake(16, 22);
+            triggerVibration('sa_hit');
+            freezeFrames = 6;
+
+            boss.rapierShattered = true;
+
+            // Water spray burst
+            if (boss.finaleShuriken) {
+                for (let i = 0; i < 20; i++) {
+                    voidExplosions.push({
+                        x: boss.finaleShuriken.x,
+                        y: boss.finaleShuriken.y,
+                        vx: (Math.random() - 0.5) * 12,
+                        vy: (Math.random() - 0.5) * 12,
+                        timer: 24,
+                        isWhite: true,
+                        r: 16
+                    });
+                }
+                boss.finaleShuriken = null;
+            }
+
+            // Shattered rapier shards
+            boss.rapierShards = [];
+            for (let i = 0; i < 16; i++) {
+                let sFrac = i / 16;
+                let sx = hx + Math.cos(angToWater) * (sFrac * 44);
+                let sy = hy + Math.sin(angToWater) * (sFrac * 44);
+                boss.rapierShards.push({
+                    x: sx,
+                    y: sy,
+                    vx: (Math.random() - 0.5) * 10 + Math.cos(angToWater) * 3,
+                    vy: -Math.random() * 7 - 2,
+                    angle: Math.random() * Math.PI * 2,
+                    vRot: (Math.random() - 0.5) * 0.4,
+                    len: 5 + Math.random() * 8,
+                    alpha: 1.0,
+                    isFlame: (Math.random() < 0.4)
+                });
+            }
+
+            boss.finaleSubStep = "WATER_SLASH";
+            boss.finaleTimer = 24;
+        }
+    }
+    else if (boss.finaleSubStep === "WATER_SLASH") {
+        boss.finaleTimer--;
+        let prog = 1 - (boss.finaleTimer / 24);
+        p.attackTimer = Math.max(0, Math.floor((1 - prog) * 12));
+        p.x += (p.facingRight ? 1 : -1) * 3.8;
+        p.y = p.y + (FLOOR - p.height - p.y) * 0.12;
+
+        updateRapierShards(boss);
+
+        // Frame of decisive impact on Fire Boss
+        if (boss.finaleTimer === 12) {
+            playSound('hitBoss');
+            playSound('slash');
+            triggerShake(15, 22);
+            triggerVibration('l_mode_final');
+
+            for (let i = 0; i < 28; i++) {
+                voidExplosions.push({
+                    x: boss.x + boss.width / 2,
+                    y: boss.y + 20,
+                    vx: (Math.random() - 0.5) * 16,
+                    vy: (Math.random() - 0.5) * 16,
+                    timer: 32,
+                    isWhite: Math.random() > 0.4,
+                    isOrange: true,
+                    r: 28
+                });
+            }
+
+            // Launch Fire Boss into air away from Water!
+            let kDir = (boss.x < p.x) ? -1 : 1;
+            boss.vx = kDir * 11.5;
+            boss.vy = -8.5;
+            boss.y -= 8; // Lift off the ground!
+            boss.facingRight = (kDir < 0);
+            boss.airborneTimer = 0;
+            boss.finaleSubStep = "BOSS_KNOCKBACK_AIR";
+            boss.finaleTimer = 0;
+        }
+    }
+    else if (boss.finaleSubStep === "BOSS_KNOCKBACK_AIR") {
+        boss.airborneTimer = (boss.airborneTimer || 0) + 1;
+
+        // Water finishes dash and returns to idle
+        p.vx = 0;
+        p.vy = 0;
+        p.attackTimer = 0;
+        p.isAttacking = false;
+        p.y = FLOOR - p.height;
+
+        // Fire Boss flying back through the air
+        boss.vy += 0.44;
+        boss.x += boss.vx;
+        boss.y += boss.vy;
+
+        // Arena boundaries
+        boss.x = Math.max(120, Math.min(ARENA_W - 120, boss.x));
+
+        updateRapierShards(boss);
+
+        // Trailing air embers
+        if (Math.random() < 0.6) {
+            voidExplosions.push({
+                x: boss.x + boss.width / 2,
+                y: boss.y + 20,
+                vx: -boss.vx * 0.25,
+                vy: (Math.random() - 0.5) * 2,
+                timer: 14,
+                isWhite: false,
+                isOrange: true,
+                r: 10
+            });
+        }
+
+        // Landing impact on arena floor: ONLY when falling downward and after minimum air time!
+        if (boss.airborneTimer > 12 && boss.vy > 0 && boss.y >= FLOOR - boss.height) {
+            boss.y = FLOOR - boss.height;
+            boss.vy = 0;
+            boss.vx = 0;
+
+            playSound('parry');
+            playSound('hitBoss');
+            triggerShake(8, 14);
+            triggerVibration('parry');
+
+            // Ground impact dust & spark puff
+            for (let i = 0; i < 16; i++) {
+                voidExplosions.push({
+                    x: boss.x + boss.width / 2 + (Math.random() - 0.5) * 24,
+                    y: FLOOR,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: -Math.random() * 4 - 0.5,
+                    timer: 18,
+                    isWhite: Math.random() > 0.4,
+                    isOrange: true,
+                    r: 9
+                });
+            }
+
+            // Wooden stick / hilt pops loose ONLY AFTER HE LANDS!
+            let stickDir = (boss.facingRight ? 1 : -1);
+            boss.droppedStick = {
+                x: (boss.facingRight ? boss.x + boss.width - 2 : boss.x + 2),
+                y: FLOOR - 14,
+                vx: stickDir * (3.8 + Math.random() * 2),
+                vy: -5.5,
+                angle: 0.1,
+                vRot: stickDir * 0.22,
+                onFloor: false
+            };
+
+            // DOME STARTS DISSOLVING NOW!
+            boss.domeDissolving = true;
+            boss.domeDissolveProgress = 0;
+
+            if (window.fireBossAudioEngine) {
+                window.fireBossAudioEngine.triggerOutro();
+            }
+            playSound('lightChime');
+
+            boss.finaleSubStep = "BOSS_KNEEL";
+            boss.finaleTimer = 190;
+        }
+    }
+    else if (boss.finaleSubStep === "BOSS_KNEEL") {
+        boss.finaleTimer--;
+        boss.vx *= 0.5;
+        updateRapierShards(boss);
+
+        if (boss.droppedStick) {
+            updateDroppedStick(boss.droppedStick);
+        }
+
+        // Dissolve dome smoothly
+        if (boss.domeDissolving) {
+            boss.domeDissolveProgress = Math.min(1, (boss.domeDissolveProgress || 0) + 0.010);
+            if (boss.domeDissolveProgress < 0.98 && Math.random() < 0.6) {
+                let domeCx = 750, domeFloor = FLOOR || 520, domeRx = 700, domeRy = 480;
+                let ang = Math.PI + Math.random() * Math.PI;
+                voidExplosions.push({
+                    x: domeCx + Math.cos(ang) * domeRx,
+                    y: domeFloor + Math.sin(ang) * domeRy,
+                    vx: (Math.random() - 0.5) * 3,
+                    vy: -2 - Math.random() * 3,
+                    timer: 20,
+                    isWhite: true,
+                    r: 10
+                });
+            }
+        }
+
+        if (boss.finaleTimer <= 0) {
+            boss.state = "DEFEATED";
+            boss.stateTimer = 9999;
+            p.invuln = 0;
+            p.isAttacking = false;
+            p.attackTimer = 0;
+            p.y = FLOOR - p.height;
+        }
+    }
+
+    boss.prevFPressed = fPressed;
+    boss.prevXPressed = xPressed;
+}
+
 function updateFireBoss() {
+    // Keep dropped stick animating even after victory
+    if (boss.droppedStick && !boss.droppedStick.onFloor) {
+        updateDroppedStick(boss.droppedStick);
+    }
+
+    // Keep dome dissolving smoothly until 100% complete even after victory
+    if (boss.domeDissolving && (boss.domeDissolveProgress || 0) < 1) {
+        boss.domeDissolveProgress = Math.min(1, (boss.domeDissolveProgress || 0) + 0.010);
+        if (boss.domeDissolveProgress < 0.98 && Math.random() < 0.6) {
+            let domeCx = 750, domeFloor = FLOOR || 520, domeRx = 700, domeRy = 480;
+            let ang = Math.PI + Math.random() * Math.PI;
+            voidExplosions.push({
+                x: domeCx + Math.cos(ang) * domeRx,
+                y: domeFloor + Math.sin(ang) * domeRy,
+                vx: (Math.random() - 0.5) * 3,
+                vy: -2 - Math.random() * 3,
+                timer: 20,
+                isWhite: true,
+                r: 10
+            });
+        }
+    }
+
+    if (boss.rapierShards && boss.rapierShards.length > 0) {
+        updateRapierShards(boss);
+    }
+
     if (boss.state === "DEFEATED") {
         boss.vx = 0;
         boss.vy = 0;
@@ -3023,6 +3658,11 @@ function updateFireBoss() {
 
     let p = players[0]; // Duel: strictly 1 on 1 against Water
     if (!p) return;
+
+    if (boss.state === "FIRE_FINALE") {
+        updateFireBossFinale(p);
+        return;
+    }
 
     if (boss.flamingRapierTimer > 0) boss.flamingRapierTimer--;
     if (boss.lastBlockTimer > 0) boss.lastBlockTimer--;
@@ -3395,33 +4035,57 @@ function updateFireBoss() {
                 });
             }
             if (boss.stateTimer <= 0) {
-                let healed = (Math.random() < 0.5) ? 2 : 3;
+                let healed = 3; // Guaranteed 100% 3 HP
                 boss.hp = Math.min(boss.maxHp, boss.hp + healed);
                 boss.fireHealCooldown = 600; // 10s cooldown
                 playSound('heatIgnite');
                 playSound('heal');
-                triggerShake(10, 16);
+                triggerShake(14, 22);
+                triggerVibration('sa_hit');
 
-                // Visible localized radial flame burst (radius 70px) instead of infinite pillar!
                 let bMidX = boss.x + boss.width / 2;
                 let bMidY = boss.y + boss.height / 2;
                 let pMidX = p.x + p.width / 2;
                 let pMidY = p.y + p.height / 2;
                 let distToHeal = Math.hypot(pMidX - bMidX, pMidY - bMidY);
-                if (distToHeal < 70 && p.invuln <= 0) {
+                if (distToHeal < 100 && p.invuln <= 0) {
                     takeDamage(p, 1);
                     if (typeof addPlayerBurnGauge === 'function') {
                         addPlayerBurnGauge(p, 1);
                     }
-                    p.vx = (pMidX < bMidX ? -1 : 1) * 8;
+                    p.vx = (pMidX < bMidX ? -1 : 1) * 9;
+                    p.vy = -4;
+                }
+
+                // Explosive outward radial flame blast:
+                for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+                    let spd = 6 + Math.random() * 8;
+                    voidExplosions.push({
+                        x: bMidX,
+                        y: bMidY,
+                        vx: Math.cos(a) * spd,
+                        vy: Math.sin(a) * spd,
+                        timer: 24,
+                        isWhite: Math.random() > 0.4,
+                        isOrange: true,
+                        r: 28
+                    });
                 }
                 voidExplosions.push({
                     x: bMidX,
                     y: bMidY,
-                    timer: 30,
+                    timer: 35,
+                    isWhite: true,
+                    isOrange: true,
+                    r: 90
+                });
+                voidExplosions.push({
+                    x: bMidX,
+                    y: bMidY,
+                    timer: 25,
                     isWhite: false,
                     isOrange: true,
-                    r: 75
+                    r: 130
                 });
 
                 boss.state = "FIRE_IDLE";
@@ -3492,94 +4156,113 @@ function drawFireBoss() {
     let isHeal = (boss.state === "FIRE_HEAL");
     let isSilk = (boss.state === "FIRE_SILK_RUN");
     let isDefeated = (boss.state === "DEFEATED");
+    let isFinale = (boss.state === "FIRE_FINALE");
+    let isKneeling = (isFinale && boss.finaleSubStep === "BOSS_KNEEL") || isDefeated;
+    let isAirKnockback = (isFinale && boss.finaleSubStep === "BOSS_KNOCKBACK_AIR");
 
     if (isSilk) {
         ctx.globalAlpha = 0.45;
     }
 
-    // 1. Flowing Cloth-Physics Cloak (identical to playable Fire character)
-    let cloakColor = "#bb1b00";
-    let patternColor = "#ff7700";
-    let bodyColor = isDefeated ? "#884422" : "#ff5500";
+    let cloakColor = isKneeling ? "#991b1b" : "#bb1b00";
+    let patternColor = isKneeling ? "#f97316" : "#ff7700";
+    let bodyColor = isKneeling ? "#ea580c" : "#ff5500";
 
-    ctx.save();
-    let trailDir = boss.facingRight ? -1 : 1;
-    let runSpeed = Math.abs(boss.vx);
-    let velLagX = -boss.vx * 3.5;
-    let velLagY = -boss.vy * 1.8;
-    let waveTime = Date.now() / 110 + 2.5;
+    if (isKneeling) {
+        // Honorable defeated kneeling posture (alive, breathing, resting on one knee!)
+        drawFireBossKneeling(boss, bodyColor, cloakColor, patternColor);
+    } else {
+        // 1. Flowing Cloth-Physics Cloak (identical to playable Fire character)
+        ctx.save();
+        let trailDir = boss.facingRight ? -1 : 1;
+        let runSpeed = Math.abs(boss.vx);
+        let velLagX = -boss.vx * 3.5;
+        let velLagY = -boss.vy * 1.8;
+        let waveTime = Date.now() / 110 + 2.5;
 
-    let flutter1 = Math.sin(waveTime) * (5 + runSpeed * 1.5);
-    let flutter2 = Math.cos(waveTime * 1.4) * (6 + runSpeed * 1.8);
-    let flap = Math.sin(waveTime * 1.8) * (4 + runSpeed);
+        let flutter1 = Math.sin(waveTime) * (5 + runSpeed * 1.5);
+        let flutter2 = Math.cos(waveTime * 1.4) * (6 + runSpeed * 1.8);
+        let flap = Math.sin(waveTime * 1.8) * (4 + runSpeed);
 
-    let anchorX = boss.facingRight ? boss.x + 8 : boss.x + boss.width - 8;
-    let shoulderX = anchorX;
-    let shoulderY = boss.y + 10;
+        let anchorX = boss.facingRight ? boss.x + 8 : boss.x + boss.width - 8;
+        let shoulderX = anchorX;
+        let shoulderY = boss.y + 10;
 
-    let tipX = anchorX + (trailDir * (24 + runSpeed * 4)) + (velLagX * 0.5) + flutter1;
-    let tipY = boss.y + boss.height + flutter2 * 0.8 + (velLagY * 0.4);
-    let midX = anchorX + (trailDir * (28 + runSpeed * 4.5)) + (velLagX * 0.6) + flutter2;
-    let midY = boss.y + 24 + flutter1 * 0.7;
-    let hemMidX = anchorX + (trailDir * (13 + runSpeed * 2)) + flap;
-    let hemMidY = boss.y + boss.height - 2 - flap * 0.5;
+        let tipX = anchorX + (trailDir * (24 + runSpeed * 4)) + (velLagX * 0.5) + flutter1;
+        let tipY = boss.y + boss.height + flutter2 * 0.8 + (velLagY * 0.4);
+        let midX = anchorX + (trailDir * (28 + runSpeed * 4.5)) + (velLagX * 0.6) + flutter2;
+        let midY = boss.y + 24 + flutter1 * 0.7;
+        let hemMidX = anchorX + (trailDir * (13 + runSpeed * 2)) + flap;
+        let hemMidY = boss.y + boss.height - 2 - flap * 0.5;
 
-    // Cloak shadow
-    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
-    ctx.beginPath();
-    ctx.moveTo(shoulderX, shoulderY + 2);
-    ctx.quadraticCurveTo(midX * 0.9, midY, tipX - trailDir * 4, tipY);
-    ctx.quadraticCurveTo(hemMidX, hemMidY + 2, anchorX, boss.y + boss.height);
-    ctx.closePath();
-    ctx.fill();
+        // Cloak shadow
+        ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+        ctx.beginPath();
+        ctx.moveTo(shoulderX, shoulderY + 2);
+        ctx.quadraticCurveTo(midX * 0.9, midY, tipX - trailDir * 4, tipY);
+        ctx.quadraticCurveTo(hemMidX, hemMidY + 2, anchorX, boss.y + boss.height);
+        ctx.closePath();
+        ctx.fill();
 
-    // Cloak main fabric
-    ctx.fillStyle = cloakColor;
-    ctx.beginPath();
-    ctx.moveTo(shoulderX, shoulderY);
-    ctx.quadraticCurveTo(shoulderX + (trailDir * (13 + runSpeed * 2)), shoulderY + 4 + flap, midX, midY);
-    ctx.quadraticCurveTo(midX + trailDir * 4, midY + (boss.height * 0.4), tipX, tipY);
-    ctx.quadraticCurveTo(hemMidX, hemMidY, anchorX, boss.y + boss.height - 4);
-    ctx.lineTo(shoulderX, shoulderY);
-    ctx.closePath();
-    ctx.fill();
+        // Cloak main fabric
+        ctx.fillStyle = cloakColor;
+        ctx.beginPath();
+        ctx.moveTo(shoulderX, shoulderY);
+        ctx.quadraticCurveTo(shoulderX + (trailDir * (13 + runSpeed * 2)), shoulderY + 4 + flap, midX, midY);
+        ctx.quadraticCurveTo(midX + trailDir * 4, midY + (boss.height * 0.4), tipX, tipY);
+        ctx.quadraticCurveTo(hemMidX, hemMidY, anchorX, boss.y + boss.height - 4);
+        ctx.lineTo(shoulderX, shoulderY);
+        ctx.closePath();
+        ctx.fill();
 
-    // Patterns on cloak
-    ctx.strokeStyle = patternColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(shoulderX + (trailDir * 4), shoulderY + 6);
-    ctx.quadraticCurveTo(midX - (trailDir * 4), midY + 4, tipX - (trailDir * 3), tipY - 4);
-    ctx.stroke();
+        // Patterns on cloak
+        ctx.strokeStyle = patternColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(shoulderX + (trailDir * 4), shoulderY + 6);
+        ctx.quadraticCurveTo(midX - (trailDir * 4), midY + 4, tipX - (trailDir * 3), tipY - 4);
+        ctx.stroke();
 
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(shoulderX + (trailDir * 7), shoulderY + 12);
-    ctx.quadraticCurveTo(midX - (trailDir * 8), midY + 12, hemMidX, hemMidY - 3);
-    ctx.stroke();
-    ctx.restore();
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(shoulderX + (trailDir * 7), shoulderY + 12);
+        ctx.quadraticCurveTo(midX - (trailDir * 8), midY + 12, hemMidX, hemMidY - 3);
+        ctx.stroke();
+        ctx.restore();
 
-    // 2. Articulated Stickman Body (Playable Character Model!)
-    let bossP = {
-        x: boss.x,
-        y: boss.y,
-        width: boss.width,
-        height: boss.height,
-        facingRight: boss.facingRight,
-        vx: boss.vx,
-        vy: boss.vy,
-        walkDist: boss.walkDist || 0,
-        isDashing: (boss.state === "FIRE_SILK_RUN" || boss.state === "FIRE_SHIFT_DASH"),
-        attackTimer: (boss.state === "FIRE_WALK_ATTACK" || boss.state === "FIRE_LUNGE" || boss.state === "FIRE_UPWARD_COUNTER") ? 8 : 0,
-        onGround: (boss.y >= FLOOR - boss.height - 2),
-        type: 'FIRE',
-        color: '#ff5500',
-        bananaSkin: false,
-        gnomeSkin: false
-    };
+        // 2. Articulated Stickman Body (Playable Character Model!)
+        let bossP = {
+            x: boss.x,
+            y: boss.y,
+            width: boss.width,
+            height: boss.height,
+            facingRight: boss.facingRight,
+            vx: boss.vx,
+            vy: boss.vy,
+            walkDist: boss.walkDist || 0,
+            isDashing: (boss.state === "FIRE_SILK_RUN" || boss.state === "FIRE_SHIFT_DASH"),
+            attackTimer: (boss.state === "FIRE_WALK_ATTACK" || boss.state === "FIRE_LUNGE" || boss.state === "FIRE_UPWARD_COUNTER") ? 8 : 0,
+            onGround: (boss.y >= FLOOR - boss.height - 2),
+            type: 'FIRE',
+            color: bodyColor,
+            bananaSkin: false,
+            gnomeSkin: false
+        };
 
-    if (typeof drawStickmanBody === 'function') {
-        drawStickmanBody(bossP, bodyColor, cloakColor, patternColor);
+        if (isAirKnockback) {
+            ctx.save();
+            ctx.translate(bcx, bcy);
+            ctx.rotate(facing * -0.28);
+            ctx.translate(-bcx, -bcy);
+        }
+
+        if (typeof drawStickmanBody === 'function') {
+            drawStickmanBody(bossP, bodyColor, cloakColor, patternColor);
+        }
+
+        if (isAirKnockback) {
+            ctx.restore();
+        }
     }
 
     // 3. Flaming Rapier Blade Effect
@@ -3595,7 +4278,43 @@ function drawFireBoss() {
         rTipY = boss.y + 6;
     }
 
-    if (isBuffed) {
+    // Interactive finale rapier pointing straight at Water
+    if (isFinale && !boss.rapierShattered) {
+        let p = players[0];
+        let pMidX = p ? (p.x + p.width / 2) : (hx + facing * 80);
+        let pMidY = p ? (p.y + p.height / 2) : (hy - 30);
+        let angToWater = Math.atan2(pMidY - hy, pMidX - hx);
+        rTipX = hx + Math.cos(angToWater) * 44;
+        rTipY = hy + Math.sin(angToWater) * 44;
+
+        ctx.save();
+        // Guard
+        ctx.strokeStyle = "#f59e0b";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 4, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Silver steel blade
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#ffffff";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(rTipX, rTipY);
+        ctx.stroke();
+
+        // Gleaming star at tip
+        let glint = 4 + Math.sin(Date.now() / 60) * 2;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(rTipX, rTipY, glint, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    if (isBuffed && !boss.rapierShattered && !isKneeling) {
         ctx.save();
         ctx.strokeStyle = "rgba(255, 120, 0, 0.9)";
         ctx.lineWidth = 5;
@@ -3819,6 +4538,45 @@ function drawFireBoss() {
             }
         }
         ctx.restore();
+    }
+
+    // 7. FINALE ARTIFACTS & PROMPTS
+    // Dropped wooden stick / hilt on arena floor (visible during and after finale!)
+    if (boss.droppedStick) {
+        drawDroppedStick(boss.droppedStick);
+    }
+
+    // Flying / scattered rapier shards
+    if (boss.rapierShards && boss.rapierShards.length > 0) {
+        drawRapierShards(boss.rapierShards);
+    }
+
+    // Cinematic Water Shuriken during QTE
+    if (isFinale && boss.finaleShuriken) {
+        let sh = boss.finaleShuriken;
+        ctx.save();
+        ctx.translate(sh.x, sh.y);
+        ctx.rotate(sh.angle || (Date.now() / 30));
+        ctx.fillStyle = "#00e5ff";
+        ctx.shadowColor = "#00ffff";
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        for (let i = 0; i < 4; i++) {
+            let a = (i * Math.PI) / 2;
+            ctx.lineTo(Math.cos(a) * 11, Math.sin(a) * 11);
+            ctx.lineTo(Math.cos(a + Math.PI / 4) * 3.5, Math.sin(a + Math.PI / 4) * 3.5);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Interactive QTE Prompt: НАЖМИТЕ [ F ] or [ X ]
+    if (isFinale) {
+        let p = players[0];
+        if (p) {
+            drawFireFinalePrompt(p);
+        }
     }
 
     ctx.restore();

@@ -809,6 +809,11 @@ function updatePlayers() {
         }
         if (p.hp <= 0) continue; 
 
+        // Fire Boss interactive cinematic finale: lock Water in cinematic state
+        if (window.isFireBossMode && typeof boss !== 'undefined' && boss && boss.state === "FIRE_FINALE") {
+            continue;
+        }
+
         let kLeft=false, kRight=false, kDown=false, kUp=false, kJump=false, kAttack=false, kHeal=false, kSpec=false, kDash=false, kLight=false, kStance=false, kUlt=false, kWaterDrop=false;
 
         if (p.inputType === 'AI' || p.isAi) {
@@ -878,7 +883,7 @@ function updatePlayers() {
                 else if (p.comboBufferSpecTimer > 0) p.comboBufferSpecTimer--;
 
                 let canDoComboQ = (p.type === 'WATER_ROPE') || (p.type === 'STAMINA' && p.weaponMode === 'PINK');
-                let canDoComboW = (p.type === 'WATER' && p.stance === 'LIGHT');
+                let canDoComboW = (p.type === 'WATER' && (p.stance === 'LIGHT' || window.isStoryMode));
 
                 let directQ = isKeyPressed(['KeyQ', 'KeyЙ']);
                 let directW = isKeyPressed(['KeyW', 'KeyЦ']);
@@ -929,14 +934,15 @@ function updatePlayers() {
 
         // Stance / Weapon mode switching & S-Abilities (Key S)
         if (kStance && !p.prevStanceKey && p.overheatTimer <= 0 && !boss.state.startsWith("CINEMATIC")) {
-            let cost = (p.type === 'FIRE') ? 2 : ((p.type === 'FIRE_HALBERD') ? 6 : ((p.type === 'AIR') ? 3 : 1));
+            let isStory = (typeof window !== 'undefined' && window.isStoryMode);
+            let cost = isStory ? 0 : ((p.type === 'FIRE') ? 2 : ((p.type === 'FIRE_HALBERD') ? 6 : ((p.type === 'AIR') ? 3 : 1)));
             let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
-            let canAfford = isLimited ? (sharedHealPoints >= cost) : ((sharedHeals * 8 + sharedHitCount) >= cost);
+            let canAfford = isStory ? true : (isLimited ? (sharedHealPoints >= cost) : ((sharedHeals * 8 + sharedHitCount) >= cost));
 
             if (canAfford) {
                 let actionTaken = false;
                 if (p.type === 'WATER') {
-                    let allowed = (numPlayers === 1) || (secretMode);
+                    let allowed = isStory ? (typeof storyState !== 'undefined' && storyState.stanceUnlocked) : ((numPlayers === 1) || (secretMode));
                     if (allowed) {
                         p.stance = (p.stance === 'DEMON') ? 'LIGHT' : 'DEMON';
                         if (p.stance === 'DEMON') {
@@ -1070,7 +1076,7 @@ function updatePlayers() {
                     }
                 }
 
-                if (actionTaken) {
+                if (actionTaken && !isStory) {
                     if (isLimited) {
                         sharedHealPoints -= cost;
                         sharedHitCount = sharedHealPoints % 8;
@@ -1216,6 +1222,7 @@ function updatePlayers() {
                 usingReserve = true;
             }
 
+            if (window.isStoryMode) kHeal = false;
             if (kHeal && !p.prevHealKey && !p.isHealing && !p.isParrying && canAffordHeal && p.overheatTimer<=0) {
                 let isAoE = (p.type === 'WATER' && p.stance !== 'DEMON' && numPlayers === 2 && kUp); 
                 let isFiery = (p.type === 'FIRE' && kUp);
@@ -1483,19 +1490,21 @@ function updatePlayers() {
             // Тело героя стоит на месте, игрок рулит полетом капли стрелками.
             // Двойная концентрация: Z или X заставляет тело реагировать, расходуя 1 очко хила.
             // Капля: босс -> 1.0 урона (без накопления хита шкалы хила); союзник -> +0.5 HP; пол/стена -> брызги.
-            if (p.type === 'WATER' && p.stance === 'LIGHT') {
+            if (p.type === 'WATER' && (p.stance === 'LIGHT' || window.isStoryMode)) {
                 if (kWaterDrop && !p.prevWaterDropKey && !p.waterDropActive && !p.isHealing && p.overheatTimer <= 0) {
-                    let cost = 3;
-                    let canAfford = isLimited ? (sharedHealPoints >= cost) : ((sharedHeals * 8 + sharedHitCount) >= cost);
+                    let cost = window.isStoryMode ? 0 : 3;
+                    let canAfford = window.isStoryMode ? true : (isLimited ? (sharedHealPoints >= cost) : ((sharedHeals * 8 + sharedHitCount) >= cost));
                     if (canAfford) {
-                        if (isLimited) {
-                            sharedHealPoints -= cost;
-                            sharedHitCount = sharedHealPoints % 8;
-                            sharedHeals = Math.floor(sharedHealPoints / 8);
-                        } else {
-                            let totalHits = sharedHeals * 8 + sharedHitCount - cost;
-                            sharedHitCount = totalHits % 8;
-                            sharedHeals = Math.floor(totalHits / 8);
+                        if (!window.isStoryMode) {
+                            if (isLimited) {
+                                sharedHealPoints -= cost;
+                                sharedHitCount = sharedHealPoints % 8;
+                                sharedHeals = Math.floor(sharedHealPoints / 8);
+                            } else {
+                                let totalHits = sharedHeals * 8 + sharedHitCount - cost;
+                                sharedHitCount = totalHits % 8;
+                                sharedHeals = Math.floor(totalHits / 8);
+                            }
                         }
                         p.waterDropActive = true;
                         p.waterDrop = {
@@ -1529,28 +1538,45 @@ function updatePlayers() {
 
                 let pressedBodyAction = (kJump && !p.prevJumpKey) || (kAttack && !p.prevAttackKey);
                 if (pressedBodyAction) {
-                    let pts = isLimited ? sharedHealPoints : (sharedHeals * 8 + sharedHitCount);
-                    if (pts >= 1) {
-                        if (isLimited) {
-                            sharedHealPoints -= 1;
-                            sharedHitCount = sharedHealPoints % 8;
-                            sharedHeals = Math.floor(sharedHealPoints / 8);
-                        } else {
-                            let totalHits = sharedHeals * 8 + sharedHitCount - 1;
-                            sharedHitCount = totalHits % 8;
-                            sharedHeals = Math.floor(totalHits / 8);
-                        }
-                        triggerShake(2, 4);
+                    if (window.isStoryMode) {
+                        // In Story mode, controlling the water drop and body action is free!
                     } else {
-                        kJump = false;
-                        kAttack = false;
+                        let pts = isLimited ? sharedHealPoints : (sharedHeals * 8 + sharedHitCount);
+                        if (pts >= 1) {
+                            if (isLimited) {
+                                sharedHealPoints -= 1;
+                                sharedHitCount = sharedHealPoints % 8;
+                                sharedHeals = Math.floor(sharedHealPoints / 8);
+                            } else {
+                                let totalHits = sharedHeals * 8 + sharedHitCount - 1;
+                                sharedHitCount = totalHits % 8;
+                                sharedHeals = Math.floor(totalHits / 8);
+                            }
+                            triggerShake(2, 4);
+                        } else {
+                            kJump = false;
+                            kAttack = false;
+                        }
                     }
                 } else {
                     p.vx = 0;
                 }
 
                 let dropHitBox = { x: p.waterDrop.x - 12, y: p.waterDrop.y - 12, width: 24, height: 24 };
-                if (rectIntersect(dropHitBox, boss) && boss.invuln <= 0) {
+                if (window.isStoryMode && typeof storyState !== 'undefined' && storyState.guardian) {
+                    let g = storyState.guardian;
+                    let gBox = { x: g.x - g.w/2, y: g.y, width: g.w, height: g.h };
+                    if (rectIntersect(dropHitBox, gBox)) {
+                        g.hp -= 2.5;
+                        g.hitFlash = 20;
+                        playSound('hitBoss');
+                        playSound('waterSplash');
+                        triggerShake(5, 8);
+                        voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 18, isWhite: false, isOrange: false, r: 35 });
+                        p.waterDropActive = false;
+                        p.waterDrop = null;
+                    }
+                } else if (rectIntersect(dropHitBox, boss) && boss.invuln <= 0) {
                     tryDamageBoss(1.0, null);
                     playSound('hitBoss');
                     playSound('waterSplash');

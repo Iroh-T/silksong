@@ -93,6 +93,13 @@ window.addEventListener("keydown", e => {
     setKeyStatus(e, true); 
     initAudio(); 
     tryEscapeTie(); 
+
+    if ((code === "Escape" || e.key === "Escape") && window.isStoryMode && gameState === "PLAYING") {
+        if (typeof returnFromStoryToMenu === 'function') {
+            returnFromStoryToMenu();
+            return;
+        }
+    } 
     
     // Secret mode (L): ONLY active on Mode Select or Input Select!
     if ((code === 'KeyL' || e.key === 'l' || e.key === 'L' || e.key === 'д' || e.key === 'Д') && gameState === "MENU") {
@@ -814,9 +821,18 @@ function openScreen(screenId, pushHistory = true) {
         pushHistory = false;
     }
 
+    if (screenId === 'play-type-select') {
+        let cur = getCurrentUser();
+        if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
+            screenId = 'mode-select';
+        }
+    }
+
     const allScreens = [
         'auth-screen',
         'root-menu',
+        'play-type-select',
+        'story-slots-screen',
         'mode-select',
         'p2-account-screen',
         'input-select',
@@ -871,7 +887,7 @@ function openScreen(screenId, pushHistory = true) {
         cancelSecretMode();
     } else if (secretMode) {
         document.body.style.backgroundColor = "#000000";
-    } else if (screenId === 'root-menu' || screenId === 'mode-select' || screenId === 'input-select' || screenId === 'settings-menu' || screenId === 'achievements-menu') {
+    } else if (screenId === 'root-menu' || screenId === 'play-type-select' || screenId === 'story-slots-screen' || screenId === 'mode-select' || screenId === 'input-select' || screenId === 'settings-menu' || screenId === 'achievements-menu') {
         document.body.style.backgroundColor = "#0a0a0a";
     }
 
@@ -906,6 +922,16 @@ function openScreen(screenId, pushHistory = true) {
 }
 window.openScreen = openScreen;
 
+function handlePlayButtonClick() {
+    let cur = getCurrentUser();
+    if (typeof isCreatorUser === 'function' && isCreatorUser(cur)) {
+        openScreen('play-type-select');
+    } else {
+        openScreen('mode-select');
+    }
+}
+window.handlePlayButtonClick = handlePlayButtonClick;
+
 function menuGoBack() {
     // If we are currently rebinding a key, cancel rebinding first
     if (window.rebindingActive) {
@@ -918,15 +944,23 @@ function menuGoBack() {
     }
     if (menuHistory.length > 0) {
         let prev = menuHistory.pop();
-        if (prev === 'root-menu' || prev === 'mode-select') {
+        if (prev === 'play-type-select') {
+            let cur = getCurrentUser();
+            if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
+                prev = 'root-menu';
+            }
+        }
+        if (prev === 'root-menu' || prev === 'play-type-select' || prev === 'mode-select') {
             window.isFireBossMode = false;
             isFireBossMode = false;
+            window.isStoryMode = false;
             if (typeof stopFireBossMusic === 'function') stopFireBossMusic();
         }
         openScreen(prev, false);
     } else {
         window.isFireBossMode = false;
         isFireBossMode = false;
+        window.isStoryMode = false;
         if (typeof stopFireBossMusic === 'function') stopFireBossMusic();
         openScreen('root-menu', false);
     }
@@ -1310,6 +1344,20 @@ function selectInput(in1, in2) {
         return;
     }
 
+    if (window.isStoryMode) {
+        if (in1 === 'TOUCH') {
+            let mobUi = document.getElementById("mobile-ui");
+            if (mobUi) mobUi.style.display = "flex";
+            let ctrlCont = document.getElementById("controls-container");
+            if (ctrlCont) ctrlCont.style.display = "none";
+        }
+        p1HeroSelection = 'WATER';
+        numPlayers = 1;
+        hasAiCompanion = false;
+        startStorySession(window.activeStorySlot || 1, window.isNewStoryGame);
+        return;
+    }
+
     openScreen('hero-select');
     
     let p1Status = document.getElementById('p1-status');
@@ -1337,6 +1385,222 @@ function selectInput(in1, in2) {
     }
 }
 window.selectInput = selectInput;
+
+// --- STORY MODE STATE & SLOTS UI ---
+window.isStoryMode = false;
+window.activeStorySlot = 1;
+window.isNewStoryGame = true;
+window.storySlotToDelete = null;
+
+async function openStorySlotsScreen() {
+    let cur = getCurrentUser();
+    if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
+        if (typeof showTutorialAlert === 'function') {
+            showTutorialAlert("🔒 Режим «Полная игра» пока находится в эксклюзивной разработке Создателя!");
+        }
+        openScreen('mode-select');
+        return;
+    }
+    openScreen('story-slots-screen');
+    await renderStorySlotsUI();
+}
+window.openStorySlotsScreen = openStorySlotsScreen;
+
+async function renderStorySlotsUI(forceCloudSync = false) {
+    let container = document.getElementById('story-slots-container');
+    if (!container) return;
+
+    let curUser = getCurrentUser();
+    if (!curUser) {
+        container.innerHTML = `<div style="color: #f87171; padding: 20px;">Пожалуйста, войдите в аккаунт для доступа к сохранениям.</div>`;
+        return;
+    }
+
+    if (forceCloudSync) {
+        container.innerHTML = `<div style="color: #94a3b8; font-size: 13px; padding: 20px;">🔄 Синхронизация с облаком...</div>`;
+    }
+
+    let saves = await fetchStorySaves(curUser);
+    let html = '';
+
+    for (let slotNum of [1, 2]) {
+        let slotData = saves ? saves[`slot${slotNum}`] : null;
+
+        if (slotData && slotData.location) {
+            let locName = slotData.location || "Лес";
+            let locSub = slotData.locationSub || "Пролог: пробуждение силы";
+            let heroName = slotData.hero === 'WATER' ? "Вода 💧" : (slotData.hero === 'EARTH' ? "Земля 🌿" : "Воздух 💨");
+            let hpText = `${slotData.currentHp || 5} / ${slotData.maxHp || 5} ❤️`;
+            let healText = (slotData.healsUnlocked) ? `${slotData.heals !== undefined ? slotData.heals : 3} 🧪` : "";
+            let dateStr = "";
+            if (slotData.updatedAt) {
+                let d = new Date(slotData.updatedAt);
+                dateStr = `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+            } else {
+                dateStr = "Ранее";
+            }
+            let stanceBadge = slotData.currentStance === 'DEMON' 
+                ? '<span style="color: #c084fc; font-weight: bold; font-size: 10px; background: rgba(192,132,252,0.18); border: 1px solid #c084fc; border-radius: 8px; padding: 1px 6px;">ДЕМОН [L]</span>' 
+                : '<span style="color: #38bdf8; font-weight: bold; font-size: 10px; background: rgba(56,189,248,0.18); border: 1px solid #38bdf8; border-radius: 8px; padding: 1px 6px;">СВЕТ</span>';
+
+            html += `
+            <div class="story-slot-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 900; font-size: 15px; color: #38bdf8; letter-spacing: 1px;">💾 СЛОТ ${slotNum}</span>
+                        ${stanceBadge}
+                    </div>
+                    <div style="font-size: 11px; color: #64748b;">📅 ${dateStr}</div>
+                </div>
+
+                <div class="story-location-banner">
+                    <div class="story-slot-icon-box">
+                        🌲
+                    </div>
+                    <div style="flex: 1; text-align: left; overflow: hidden;">
+                        <div style="font-size: 16px; font-weight: bold; color: #f0f9ff; margin-bottom: 2px; text-shadow: 0 0 10px rgba(56,189,248,0.3);">
+                            📍 ${locName}
+                        </div>
+                        <div style="font-size: 11.5px; color: #94a3b8; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${locSub}
+                        </div>
+                        <div style="display: flex; gap: 10px; font-size: 12px; align-items: center; flex-wrap: wrap;">
+                            <span style="color: #7dd3fc; font-weight: bold;">${heroName}</span>
+                            <span style="color: #f87171;">${hpText}</span>
+                            ${healText ? `<span style="color: #4ade80;">${healText}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="menu-btn" style="flex: 1; margin: 0; padding: 10px 14px; font-size: 14px; border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.12); box-shadow: 0 0 14px rgba(0,255,204,0.25);" onclick="loadStoryGame(${slotNum})">
+                        ▶ ПРОДОЛЖИТЬ
+                    </button>
+                    <button class="menu-btn" style="margin: 0; padding: 10px 14px; font-size: 14px; border-color: #ef4444; color: #f87171; background: rgba(239,68,68,0.12);" onclick="confirmDeleteStorySlot(${slotNum})" title="Удалить сохранение">
+                        🗑️
+                    </button>
+                </div>
+            </div>`;
+        } else {
+            html += `
+            <div class="story-slot-card empty">
+                <div style="font-size: 13px; font-weight: bold; color: #64748b; margin-bottom: 2px; letter-spacing: 1px;">💾 СЛОТ ${slotNum}</div>
+                <div style="font-size: 28px; margin: 6px 0; opacity: 0.8;">✨</div>
+                <div style="font-size: 15px; color: #e2e8f0; font-weight: bold; margin-bottom: 2px;">Слот свободен</div>
+                <div style="font-size: 11.5px; color: #94a3b8; margin-bottom: 12px;">Начни новое прохождение кампании с Пролога в Лесу</div>
+                <button class="menu-btn" style="margin: 0 auto; padding: 9px 18px; font-size: 13px; border-color: #38bdf8; color: #38bdf8; background: rgba(56,189,248,0.12); box-shadow: 0 0 12px rgba(56,189,248,0.2);" onclick="createNewStoryGame(${slotNum})">
+                    ➕ СОЗДАТЬ НОВУЮ ИГРУ
+                </button>
+            </div>`;
+        }
+    }
+
+    container.innerHTML = html;
+}
+window.renderStorySlotsUI = renderStorySlotsUI;
+
+function createNewStoryGame(slotNum) {
+    window.activeStorySlot = slotNum;
+    window.isStoryMode = true;
+    window.isNewStoryGame = true;
+    window.isFireBossMode = false;
+    isFireBossMode = false;
+    numPlayers = 1;
+    hasAiCompanion = false;
+    setP2User(null);
+    openScreen('input-select');
+    let in1 = document.getElementById("input-1p");
+    let in2 = document.getElementById("input-2p");
+    if (in1) in1.style.display = "block";
+    if (in2) in2.style.display = "none";
+}
+window.createNewStoryGame = createNewStoryGame;
+
+function loadStoryGame(slotNum) {
+    window.activeStorySlot = slotNum;
+    window.isStoryMode = true;
+    window.isNewStoryGame = false;
+    window.isFireBossMode = false;
+    isFireBossMode = false;
+    numPlayers = 1;
+    hasAiCompanion = false;
+    setP2User(null);
+    openScreen('input-select');
+    let in1 = document.getElementById("input-1p");
+    let in2 = document.getElementById("input-2p");
+    if (in1) in1.style.display = "block";
+    if (in2) in2.style.display = "none";
+}
+window.loadStoryGame = loadStoryGame;
+
+function confirmDeleteStorySlot(slotNum) {
+    window.storySlotToDelete = slotNum;
+    let titleEl = document.getElementById('story-delete-slot-title');
+    if (titleEl) titleEl.innerText = `Слоте ${slotNum}`;
+    let modal = document.getElementById('story-delete-modal');
+    if (modal) modal.style.display = 'flex';
+}
+window.confirmDeleteStorySlot = confirmDeleteStorySlot;
+
+function closeStoryDeleteModal() {
+    window.storySlotToDelete = null;
+    let modal = document.getElementById('story-delete-modal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeStoryDeleteModal = closeStoryDeleteModal;
+
+async function executeDeleteStorySlot() {
+    let slotNum = window.storySlotToDelete;
+    if (!slotNum) {
+        closeStoryDeleteModal();
+        return;
+    }
+    closeStoryDeleteModal();
+    let curUser = getCurrentUser();
+    await deleteStorySlot(slotNum, curUser);
+    await renderStorySlotsUI();
+}
+window.executeDeleteStorySlot = executeDeleteStorySlot;
+
+async function startStorySession(slotNum, isNew) {
+    let curUser = getCurrentUser();
+    let slotData = null;
+    if (isNew) {
+        slotData = {
+            slot: slotNum,
+            location: "Лес",
+            locationSub: "Ночь, шёпот ветра",
+            hero: "WATER",
+            maxHp: 5,
+            currentHp: 5,
+            heals: 3,
+            maxHeals: 3,
+            demonUnlocked: false,
+            stealthUnlocked: false,
+            currentStance: "WATER",
+            checkpointId: "forest_intro",
+            playtimeSeconds: 0,
+            updatedAt: Date.now(),
+            unlockedHeroes: ["WATER"],
+            discoveredRestPoints: [],
+            badges: [],
+            coins: 0,
+            version: GAME_VERSION
+        };
+        await saveStorySlot(slotNum, slotData, curUser);
+    } else {
+        let saves = await fetchStorySaves(curUser);
+        slotData = saves ? saves[`slot${slotNum}`] : null;
+        if (!slotData) {
+            return startStorySession(slotNum, true);
+        }
+    }
+    window.currentStorySession = slotData;
+    if (typeof launchStoryPrologue === 'function') {
+        launchStoryPrologue(slotData);
+    }
+}
+window.startStorySession = startStorySession;
 
 function promptRenamePlace(netId) {
     let targetNet = netId || currentNetworkId;
@@ -2712,9 +2976,32 @@ window.sendQuickReactionToCreator = sendQuickReactionToCreator;
 
 function initShelterApp() {
     try {
+        let vTag = (typeof GAME_VERSION !== 'undefined') ? GAME_VERSION : "v76.0";
+        document.querySelectorAll('.game-version-display').forEach(el => { el.innerText = vTag; });
+    } catch(e){}
+
+    try {
         localStorage.removeItem('shelter_fire_unlocked');
     } catch(e){}
     syncFireHeroState();
+
+    // Safety fail-safe: Ensure menu is never an empty black box
+    setTimeout(() => {
+        let allScreens = ['auth-screen', 'root-menu', 'play-type-select', 'story-slots-screen', 'mode-select', 'input-select', 'hero-select', 'badge-select', 'achievements-menu', 'admin-screen', 'settings-menu', 'keybind-editor-menu', 'online-hub-screen', 'online-host-wait-screen', 'online-join-screen', 'online-prep-screen'];
+        let hasVisible = allScreens.some(id => {
+            let el = document.getElementById(id);
+            return el && el.style.display && el.style.display !== 'none';
+        });
+        if (!hasVisible) {
+            let u = getCurrentUser();
+            let a = loadAccounts();
+            if (u && a[u.toLowerCase()]) {
+                openScreen('root-menu', false);
+            } else {
+                openScreen('auth-screen', false);
+            }
+        }
+    }, 120);
 
     // Detect network and visited places
     if (typeof detectCurrentNetwork === 'function') {
@@ -2931,7 +3218,7 @@ function renderFriendsModalList() {
             let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, fName) : [];
             let isCreator = (fName.toLowerCase() === 'рыба');
             let isBanana = (fName.toLowerCase() === 'сarrots_44444');
-            let isGnome = (fName.toLowerCase() === 'dasha545');
+            let isGnome = (fName.toLowerCase() === 'dasha_545' || fName.toLowerCase() === 'dasha545' || (typeof isDashaUser === 'function' && isDashaUser(fName)));
             let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
 
             html += `
@@ -3028,7 +3315,9 @@ function renderFriendsModalList() {
             let isIncomingReq = requests.some(r => (r || '').toLowerCase() === pName.toLowerCase());
             let isOutgoingReq = pAcc && pAcc.friendRequests && pAcc.friendRequests.some(r => (r || '').toLowerCase() === curUser.toLowerCase());
             let isCreator = (pName.toLowerCase() === 'рыба');
-            let avatarEmoji = isCreator ? '👑' : (pName.toLowerCase() === 'сarrots_44444' ? '🍌' : '👤');
+            let isBanana = (pName.toLowerCase() === 'сarrots_44444');
+            let isGnome = (pName.toLowerCase() === 'dasha_545' || pName.toLowerCase() === 'dasha545' || (typeof isDashaUser === 'function' && isDashaUser(pName)));
+            let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
 
             html += `
                 <div style="background: rgba(15, 23, 42, 0.7); border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.25);">
@@ -3131,7 +3420,9 @@ async function openFriendProfileModal(friendName) {
     let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, friendName) : [];
 
     let isCreator = (friendName.toLowerCase() === 'рыба');
-    let avatarEmoji = isCreator ? '👑' : (friendName.toLowerCase() === 'сarrots_44444' ? '🍌' : (friendName.toLowerCase() === 'dasha545' ? '🧙' : '👤'));
+    let isBanana = (friendName.toLowerCase() === 'сarrots_44444');
+    let isGnome = (friendName.toLowerCase() === 'dasha_545' || friendName.toLowerCase() === 'dasha545' || (typeof isDashaUser === 'function' && isDashaUser(friendName)));
+    let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
 
     let st = friendAcc.stats || { soloNormalWins: 0, soloNormalLosses: 0, soloSecretWins: 0, soloSecretLosses: 0, duoNormalWins: 0, duoNormalLosses: 0, duoSecretWins: 0, duoSecretLosses: 0 };
     let totalWins = (st.soloNormalWins || 0) + (st.soloSecretWins || 0) + (st.duoNormalWins || 0) + (st.duoSecretWins || 0);
