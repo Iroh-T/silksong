@@ -102,6 +102,7 @@ function initForestScenery() {
 
 // Start Prologue Session
 function initStoryPrologue(slotData) {
+    window.isStoryMode = true;
     storyState.active = true;
     storyState.slotNum = slotData ? (slotData.slot || 1) : 1;
     storyState.title1Alpha = 0.0;
@@ -120,10 +121,16 @@ function initStoryPrologue(slotData) {
     camY = 0;
     platforms = [];
 
+    // Reset game params BEFORE player creation so player position is never altered by battle resets
+    players = [];
+    resetGameParams();
+    sharedHeals = 0;
+    maxSharedHeals = 0;
+    sharedHealPoints = 0;
+
     // Setup Player (Water 💧)
     numPlayers = 1;
     p1HeroSelection = 'WATER';
-    players = [];
 
     function mapControlsToKeysObj(schemeObj) {
         let res = {};
@@ -141,17 +148,6 @@ function initStoryPrologue(slotData) {
     }
 
     let isSavedAtBench = slotData && (slotData.checkpointId === 'forest_bench_campfire' || slotData.checkpointId === 'bench_campfire');
-
-    resetGameParams();
-    sharedHeals = 0;
-    maxSharedHeals = 0;
-
-    // Boss of arena is deactivated during story
-    boss.hp = 0;
-    boss.maxHp = 10;
-    boss.x = -9999;
-    boss.y = -9999;
-    boss.state = "INACTIVE";
 
     if (isSavedAtBench) {
         // RESUME DIRECTLY AT CAMPFIRE BENCH!
@@ -174,6 +170,8 @@ function initStoryPrologue(slotData) {
         p1.abilities = { top: 'shuriken', mid: 'shuriken', bot: 'shuriken' };
         p1.x = STORY_CONFIG.BENCH_X - 10;
         p1.y = STORY_CONFIG.FLOOR - 24;
+        p1.lastSafeX = p1.x;
+        p1.lastSafeY = p1.y;
         p1.vx = 0;
         p1.vy = 0;
         applyBadgesToPlayer(p1, true);
@@ -181,7 +179,7 @@ function initStoryPrologue(slotData) {
 
         camX = Math.max(0, Math.min(STORY_CONFIG.ARENA_W - GAME_WIDTH, p1.x - GAME_WIDTH * 0.35));
     } else {
-        // FRESH PROLOGUE START (Lying down in the night forest at START_X = 120)
+        // FRESH PROLOGUE START (Lying down in the night forest at x = 120)
         storyState.step = 'DARK_FADE';
         storyState.stepTimer = 0;
         storyState.blackAlpha = 1.0;
@@ -201,6 +199,8 @@ function initStoryPrologue(slotData) {
         p1.abilities = { top: 'shuriken', mid: 'shuriken', bot: 'shuriken' };
         p1.x = STORY_CONFIG.START_X;
         p1.y = STORY_CONFIG.FLOOR - 14;
+        p1.lastSafeX = p1.x;
+        p1.lastSafeY = p1.y;
         p1.vx = 0;
         p1.vy = 0;
         applyBadgesToPlayer(p1, true);
@@ -208,6 +208,13 @@ function initStoryPrologue(slotData) {
 
         camX = 0;
     }
+
+    // Boss of arena is deactivated during story
+    boss.hp = 0;
+    boss.maxHp = 10;
+    boss.x = -9999;
+    boss.y = -9999;
+    boss.state = "INACTIVE";
 
     // Setup touch UI visibility
     updateStoryTouchUIVisibility();
@@ -232,7 +239,7 @@ function updateStoryTouchUIVisibility() {
     if (btnSpec) btnSpec.style.display = storyState.comboUnlocked ? "flex" : "none";
     if (btnStance) btnStance.style.display = storyState.stanceUnlocked ? "flex" : "none";
     if (btnDash) btnDash.style.display = "none";
-    if (btnHeal) btnHeal.style.display = "none"; // Hidden completely until unlocked later!
+    if (btnHeal) btnHeal.style.display = "none"; // Heal is disabled during prologue
 }
 
 // Get player-friendly control hint depending on selected layout
@@ -450,7 +457,7 @@ function updateStoryMode() {
                     screenShake.timer = 55;
                     screenShake.mag = 26;
                 }
-                if (typeof playSound === 'function') playSound('heal');
+                if (typeof playSound === 'function') playSound('parry');
             }
             break;
 
@@ -824,8 +831,9 @@ function restAtCampfire() {
     p.vy = 0;
     p.x = STORY_CONFIG.BENCH_X - 10;
     p.y = STORY_CONFIG.FLOOR - 24;
-    sharedHeals = 3;
-    maxSharedHeals = 3;
+    sharedHeals = 0;
+    maxSharedHeals = 0;
+    sharedHealPoints = 0;
     storyState.checkpoint = { x: STORY_CONFIG.BENCH_X - 10, stance: p.stance || 'LIGHT', hp: 5 };
 
     // Auto-save progress to Firebase and LocalStorage!
@@ -837,8 +845,6 @@ function restAtCampfire() {
         hero: "WATER",
         maxHp: 5,
         currentHp: 5,
-        heals: 3,
-        maxHeals: 3,
         demonUnlocked: true,
         stealthUnlocked: true,
         currentStance: p.stance || "LIGHT",
@@ -849,7 +855,7 @@ function restAtCampfire() {
     if (typeof saveStorySlot === 'function') {
         saveStorySlot(storyState.slotNum, slotData, curUser);
     }
-    if (typeof playSound === 'function') playSound('heal');
+    if (typeof playSound === 'function') playSound('lightChime');
 }
 window.restAtCampfire = restAtCampfire;
 
@@ -1468,7 +1474,9 @@ function drawStoryScreenHUD() {
             }
             break;
         case 'BENCH_REST':
-            promptText = "✦ Отдых у костра (Сохранено ✓) • [Любая клавиша] — Встать  |  [Esc] — Меню сохранений";
+            if (storyState.stepTimer < 240) {
+                promptText = "✦ Отдых у костра (Сохранено ✓) • [Любая клавиша] — Встать  |  [Esc] — Меню сохранений";
+            }
             break;
     }
 

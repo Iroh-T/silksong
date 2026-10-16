@@ -940,13 +940,11 @@ function resetGameParams() {
             players[0].hp = 8;
             players[0].burnGauge = 0;
             players[0].burnTimer = 0;
-        } else if (window.isStoryMode) {
-            // Story Mode manages player coordinates explicitly!
-        } else {
+        } else if (!window.isStoryMode) {
             players[0].x = ARENA_W/2 - 50;
         }
     }
-    if (players.length > 1 && players[1]) players[1].x = ARENA_W/2 + 50;
+    if (players.length > 1 && players[1] && !window.isStoryMode) players[1].x = ARENA_W/2 + 50;
     
     sharedHeals = maxSharedHeals; 
     sharedHitCount = 0; 
@@ -3648,115 +3646,112 @@ function drawMasks() {
         }
     }
 
-    // Healing HUD: completely hidden in Story Mode until unlocked later!
-    if (!window.isStoryMode) {
-        if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal) {
-            let healY = 25 + (players.length * 35) + 15;
-            ctx.fillStyle = "#ffaa00"; 
-            ctx.font = "bold 13px Arial"; 
-            ctx.fillText(`Ограниченный хил: ${sharedHealPoints}/12`, 20, healY);
-            
-            let barX = 20;
-            let barY = healY + 6;
-            let segW = 12;
-            let segH = 12;
-            let gap = 3;
-            for (let s = 0; s < 12; s++) {
-                let sx = barX + s * (segW + gap);
-                if (s < sharedHealPoints) {
-                    ctx.fillStyle = (s < 4) ? "#00ffff" : ((s < 8) ? "#4ade80" : "#ffcc00");
-                    ctx.fillRect(sx, barY, segW, segH);
-                    ctx.strokeStyle = "#ffffff";
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(sx, barY, segW, segH);
-                } else {
-                    ctx.fillStyle = "rgba(0,0,0,0.5)";
-                    ctx.fillRect(sx, barY, segW, segH);
-                    ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(sx, barY, segW, segH);
-                }
+    if (!window.isStoryMode && typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal) {
+        let healY = 25 + (players.length * 35) + 15;
+        ctx.fillStyle = "#ffaa00"; 
+        ctx.font = "bold 13px Arial"; 
+        ctx.fillText(`Ограниченный хил: ${sharedHealPoints}/12`, 20, healY);
+        
+        let barX = 20;
+        let barY = healY + 6;
+        let segW = 12;
+        let segH = 12;
+        let gap = 3;
+        for (let s = 0; s < 12; s++) {
+            let sx = barX + s * (segW + gap);
+            if (s < sharedHealPoints) {
+                ctx.fillStyle = (s < 4) ? "#00ffff" : ((s < 8) ? "#4ade80" : "#ffcc00");
+                ctx.fillRect(sx, barY, segW, segH);
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(sx, barY, segW, segH);
+            } else {
+                ctx.fillStyle = "rgba(0,0,0,0.5)";
+                ctx.fillRect(sx, barY, segW, segH);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(sx, barY, segW, segH);
             }
-            ctx.font = "11px Arial";
-            ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
-            ctx.fillText("Хил: 8 | F: 4 | Огонь A+Вверх: 12", 20, barY + segH + 15);
-        } else {
-            let healY = 25 + (players.length * 35) + 15;
-            ctx.fillStyle = "lime"; ctx.font = "14px Arial"; ctx.fillText("Заряды исцеления:", 20, healY);
-            let hasGen = typeof players !== 'undefined' && players.some(p => p.badges && p.badges.includes('generator'));
-            
-            // Резерв хила (Синие деления в самом начале)
-            let reservePlayers = (typeof players !== 'undefined' && players) ? players.filter(p => p.badges && p.badges.includes('heal_reserve')) : [];
-            let startX = 155;
-            for (let r = 0; r < reservePlayers.length; r++) {
-                let rp = reservePlayers[r];
-                let rx = startX + r * 16;
-                let ry = healY - 5;
+        }
+        ctx.font = "11px Arial";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+        ctx.fillText("Хил: 8 | F: 4 | Огонь A+Вверх: 12", 20, barY + segH + 15);
+    } else if (!window.isStoryMode) {
+        let healY = 25 + (players.length * 35) + 15;
+        ctx.fillStyle = "lime"; ctx.font = "14px Arial"; ctx.fillText("Заряды исцеления:", 20, healY);
+        let hasGen = typeof players !== 'undefined' && players.some(p => p.badges && p.badges.includes('generator'));
+        
+        // Резерв хила (Синие деления в самом начале)
+        let reservePlayers = (typeof players !== 'undefined' && players) ? players.filter(p => p.badges && p.badges.includes('heal_reserve')) : [];
+        let startX = 155;
+        for (let r = 0; r < reservePlayers.length; r++) {
+            let rp = reservePlayers[r];
+            let rx = startX + r * 16;
+            let ry = healY - 5;
+            ctx.save();
+            ctx.beginPath(); ctx.moveTo(rx, ry - 6); ctx.lineTo(rx + 6, ry); ctx.lineTo(rx, ry + 6); ctx.lineTo(rx - 6, ry); ctx.closePath();
+            if (!rp.healReserveUsed) {
+                ctx.fillStyle = "#00e5ff";
+                ctx.shadowColor = "#00e5ff";
+                ctx.shadowBlur = rp.healingWithReserve ? 14 : 7;
+                ctx.fill();
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 1.2;
+                ctx.stroke();
+            } else {
+                ctx.strokeStyle = "rgba(0, 229, 255, 0.35)";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        let greenStartX = startX + reservePlayers.length * 16;
+        let genTargetIdx = Math.floor(sharedHeals);
+        for (let j = 0; j < maxSharedHeals; j++) {
+            let hx = greenStartX + j * 15; let hy = healY - 5;
+            if (j < Math.floor(sharedHeals)) { 
+                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
+                ctx.fillStyle = "lime"; ctx.fill(); 
+            } else if (j < sharedHeals) { 
+                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
+                ctx.fillStyle = "lime"; ctx.fill(); 
+                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
+                ctx.strokeStyle = "rgba(0, 255, 0, 0.5)"; ctx.stroke(); 
+            } else { 
+                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
+                ctx.strokeStyle = "rgba(0, 255, 0, 0.3)"; ctx.stroke(); 
+            }
+
+            // Generator Badge: Charging Energy Animation on the next diamond in queue!
+            if (hasGen && j === genTargetIdx && j < maxSharedHeals) {
                 ctx.save();
-                ctx.beginPath(); ctx.moveTo(rx, ry - 6); ctx.lineTo(rx + 6, ry); ctx.lineTo(rx, ry + 6); ctx.lineTo(rx - 6, ry); ctx.closePath();
-                if (!rp.healReserveUsed) {
-                    ctx.fillStyle = "#00e5ff";
-                    ctx.shadowColor = "#00e5ff";
-                    ctx.shadowBlur = rp.healingWithReserve ? 14 : 7;
+                let gPulse = 0.35 + 0.35 * Math.sin(Date.now() / 130);
+                ctx.fillStyle = `rgba(50, 255, 120, ${gPulse * 0.75})`;
+                ctx.shadowColor = "#00ff66";
+                ctx.shadowBlur = 8;
+                ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath();
+                ctx.fill();
+
+                // Spark streaming inwards towards diamond
+                let sparkAng = (Date.now() / 150) % (Math.PI * 2);
+                for (let s = 0; s < 3; s++) {
+                    let a = sparkAng + (s * Math.PI * 2 / 3);
+                    let dist = 8 + 3 * Math.sin(Date.now() / 90 + s);
+                    let sx = hx + Math.cos(a) * dist;
+                    let sy = hy + Math.sin(a) * dist;
+                    ctx.fillStyle = "#aaffcc";
+                    ctx.shadowBlur = 4;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 1.4, 0, Math.PI * 2);
                     ctx.fill();
-                    ctx.strokeStyle = "#ffffff";
-                    ctx.lineWidth = 1.2;
-                    ctx.stroke();
-                } else {
-                    ctx.strokeStyle = "rgba(0, 229, 255, 0.35)";
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
                 }
                 ctx.restore();
             }
-
-            let greenStartX = startX + reservePlayers.length * 16;
-            let genTargetIdx = Math.floor(sharedHeals);
-            for (let j = 0; j < maxSharedHeals; j++) {
-                let hx = greenStartX + j * 15; let hy = healY - 5;
-                if (j < Math.floor(sharedHeals)) { 
-                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
-                    ctx.fillStyle = "lime"; ctx.fill(); 
-                } else if (j < sharedHeals) { 
-                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
-                    ctx.fillStyle = "lime"; ctx.fill(); 
-                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
-                    ctx.strokeStyle = "rgba(0, 255, 0, 0.5)"; ctx.stroke(); 
-                } else { 
-                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath(); 
-                    ctx.strokeStyle = "rgba(0, 255, 0, 0.3)"; ctx.stroke(); 
-                }
-
-                // Generator Badge: Charging Energy Animation on the next diamond in queue!
-                if (hasGen && j === genTargetIdx && j < maxSharedHeals) {
-                    ctx.save();
-                    let gPulse = 0.35 + 0.35 * Math.sin(Date.now() / 130);
-                    ctx.fillStyle = `rgba(50, 255, 120, ${gPulse * 0.75})`;
-                    ctx.shadowColor = "#00ff66";
-                    ctx.shadowBlur = 8;
-                    ctx.beginPath(); ctx.moveTo(hx, hy - 6); ctx.lineTo(hx + 6, hy); ctx.lineTo(hx, hy + 6); ctx.lineTo(hx - 6, hy); ctx.closePath();
-                    ctx.fill();
-
-                    // Spark streaming inwards towards diamond
-                    let sparkAng = (Date.now() / 150) % (Math.PI * 2);
-                    for (let s = 0; s < 3; s++) {
-                        let a = sparkAng + (s * Math.PI * 2 / 3);
-                        let dist = 8 + 3 * Math.sin(Date.now() / 90 + s);
-                        let sx = hx + Math.cos(a) * dist;
-                        let sy = hy + Math.sin(a) * dist;
-                        ctx.fillStyle = "#aaffcc";
-                        ctx.shadowBlur = 4;
-                        ctx.beginPath();
-                        ctx.arc(sx, sy, 1.4, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                    ctx.restore();
-                }
-            }
-            
-            let reqHits = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
-            ctx.fillStyle = "cyan"; ctx.font = "14px Arial"; ctx.fillText(`Удары для хила: ${sharedHitCount}/${reqHits}`, 20, healY + 25);
         }
+        
+        let reqHits = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
+        ctx.fillStyle = "cyan"; ctx.font = "14px Arial"; ctx.fillText(`Удары для хила: ${sharedHitCount}/${reqHits}`, 20, healY + 25);
     }
 }
 

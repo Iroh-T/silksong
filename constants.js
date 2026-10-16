@@ -2306,7 +2306,7 @@ try {
 function isDashaUser(name) {
     if (!name) return false;
     let n = name.toLowerCase().trim();
-    return n === 'dasha_545' || n === 'dasha545' || n.startsWith('dasha') || n.startsWith('даша');
+    return n === 'dasha545' || n.startsWith('dasha') || n.startsWith('даша');
 }
 window.isDashaUser = isDashaUser;
 

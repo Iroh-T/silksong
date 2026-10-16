@@ -850,6 +850,11 @@ function updatePlayers() {
             kStance = (p.keys && p.keys.stance) ? isKeyPressed(p.keys.stance) : isKeyPressed(['KeyS', 'KeyT', 'KeyV']);
         }
 
+        if (typeof window !== 'undefined' && window.isStoryMode) {
+            kHeal = false;
+            kDash = false;
+        }
+
         let rawAttack = kAttack;
         let rawStance = kStance;
         let rawSpec = kSpec;
@@ -1212,7 +1217,7 @@ function updatePlayers() {
             let hitsPerCharge = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
             let healCost = (p.type === 'FIRE' && kUp) ? 1.5 : (p.isAoEHealing ? 1 : 1);
             let pointCost = (p.type === 'FIRE' && kUp) ? Math.round(hitsPerCharge * 1.5) : hitsPerCharge;
-            let canAffordHeal = isLimited ? (sharedHealPoints >= pointCost) : (sharedHeals >= healCost);
+            let canAffordHeal = (typeof window !== 'undefined' && window.isStoryMode) ? false : (isLimited ? (sharedHealPoints >= pointCost) : (sharedHeals >= healCost));
 
             // Резерв хила: синее деление используется ИСКЛЮЧИТЕЛЬНО для хила (A),
             // только если нет заряда обычного зеленого хила, и только тем, кто экипировал знак!
@@ -1222,7 +1227,6 @@ function updatePlayers() {
                 usingReserve = true;
             }
 
-            if (window.isStoryMode) kHeal = false;
             if (kHeal && !p.prevHealKey && !p.isHealing && !p.isParrying && canAffordHeal && p.overheatTimer<=0) {
                 let isAoE = (p.type === 'WATER' && p.stance !== 'DEMON' && numPlayers === 2 && kUp); 
                 let isFiery = (p.type === 'FIRE' && kUp);

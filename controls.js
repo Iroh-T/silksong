@@ -821,13 +821,6 @@ function openScreen(screenId, pushHistory = true) {
         pushHistory = false;
     }
 
-    if (screenId === 'play-type-select') {
-        let cur = getCurrentUser();
-        if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
-            screenId = 'mode-select';
-        }
-    }
-
     const allScreens = [
         'auth-screen',
         'root-menu',
@@ -922,16 +915,6 @@ function openScreen(screenId, pushHistory = true) {
 }
 window.openScreen = openScreen;
 
-function handlePlayButtonClick() {
-    let cur = getCurrentUser();
-    if (typeof isCreatorUser === 'function' && isCreatorUser(cur)) {
-        openScreen('play-type-select');
-    } else {
-        openScreen('mode-select');
-    }
-}
-window.handlePlayButtonClick = handlePlayButtonClick;
-
 function menuGoBack() {
     // If we are currently rebinding a key, cancel rebinding first
     if (window.rebindingActive) {
@@ -944,12 +927,6 @@ function menuGoBack() {
     }
     if (menuHistory.length > 0) {
         let prev = menuHistory.pop();
-        if (prev === 'play-type-select') {
-            let cur = getCurrentUser();
-            if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
-                prev = 'root-menu';
-            }
-        }
         if (prev === 'root-menu' || prev === 'play-type-select' || prev === 'mode-select') {
             window.isFireBossMode = false;
             isFireBossMode = false;
@@ -1393,14 +1370,6 @@ window.isNewStoryGame = true;
 window.storySlotToDelete = null;
 
 async function openStorySlotsScreen() {
-    let cur = getCurrentUser();
-    if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
-        if (typeof showTutorialAlert === 'function') {
-            showTutorialAlert("🔒 Режим «Полная игра» пока находится в эксклюзивной разработке Создателя!");
-        }
-        openScreen('mode-select');
-        return;
-    }
     openScreen('story-slots-screen');
     await renderStorySlotsUI();
 }
@@ -1431,7 +1400,6 @@ async function renderStorySlotsUI(forceCloudSync = false) {
             let locSub = slotData.locationSub || "Пролог: пробуждение силы";
             let heroName = slotData.hero === 'WATER' ? "Вода 💧" : (slotData.hero === 'EARTH' ? "Земля 🌿" : "Воздух 💨");
             let hpText = `${slotData.currentHp || 5} / ${slotData.maxHp || 5} ❤️`;
-            let healText = (slotData.healsUnlocked) ? `${slotData.heals !== undefined ? slotData.heals : 3} 🧪` : "";
             let dateStr = "";
             if (slotData.updatedAt) {
                 let d = new Date(slotData.updatedAt);
@@ -1467,7 +1435,6 @@ async function renderStorySlotsUI(forceCloudSync = false) {
                         <div style="display: flex; gap: 10px; font-size: 12px; align-items: center; flex-wrap: wrap;">
                             <span style="color: #7dd3fc; font-weight: bold;">${heroName}</span>
                             <span style="color: #f87171;">${hpText}</span>
-                            ${healText ? `<span style="color: #4ade80;">${healText}</span>` : ''}
                         </div>
                     </div>
                 </div>
@@ -2976,32 +2943,9 @@ window.sendQuickReactionToCreator = sendQuickReactionToCreator;
 
 function initShelterApp() {
     try {
-        let vTag = (typeof GAME_VERSION !== 'undefined') ? GAME_VERSION : "v76.0";
-        document.querySelectorAll('.game-version-display').forEach(el => { el.innerText = vTag; });
-    } catch(e){}
-
-    try {
         localStorage.removeItem('shelter_fire_unlocked');
     } catch(e){}
     syncFireHeroState();
-
-    // Safety fail-safe: Ensure menu is never an empty black box
-    setTimeout(() => {
-        let allScreens = ['auth-screen', 'root-menu', 'play-type-select', 'story-slots-screen', 'mode-select', 'input-select', 'hero-select', 'badge-select', 'achievements-menu', 'admin-screen', 'settings-menu', 'keybind-editor-menu', 'online-hub-screen', 'online-host-wait-screen', 'online-join-screen', 'online-prep-screen'];
-        let hasVisible = allScreens.some(id => {
-            let el = document.getElementById(id);
-            return el && el.style.display && el.style.display !== 'none';
-        });
-        if (!hasVisible) {
-            let u = getCurrentUser();
-            let a = loadAccounts();
-            if (u && a[u.toLowerCase()]) {
-                openScreen('root-menu', false);
-            } else {
-                openScreen('auth-screen', false);
-            }
-        }
-    }, 120);
 
     // Detect network and visited places
     if (typeof detectCurrentNetwork === 'function') {
@@ -3218,7 +3162,7 @@ function renderFriendsModalList() {
             let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, fName) : [];
             let isCreator = (fName.toLowerCase() === 'рыба');
             let isBanana = (fName.toLowerCase() === 'сarrots_44444');
-            let isGnome = (fName.toLowerCase() === 'dasha_545' || fName.toLowerCase() === 'dasha545' || (typeof isDashaUser === 'function' && isDashaUser(fName)));
+            let isGnome = (fName.toLowerCase() === 'dasha545');
             let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
 
             html += `
@@ -3315,9 +3259,7 @@ function renderFriendsModalList() {
             let isIncomingReq = requests.some(r => (r || '').toLowerCase() === pName.toLowerCase());
             let isOutgoingReq = pAcc && pAcc.friendRequests && pAcc.friendRequests.some(r => (r || '').toLowerCase() === curUser.toLowerCase());
             let isCreator = (pName.toLowerCase() === 'рыба');
-            let isBanana = (pName.toLowerCase() === 'сarrots_44444');
-            let isGnome = (pName.toLowerCase() === 'dasha_545' || pName.toLowerCase() === 'dasha545' || (typeof isDashaUser === 'function' && isDashaUser(pName)));
-            let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
+            let avatarEmoji = isCreator ? '👑' : (pName.toLowerCase() === 'сarrots_44444' ? '🍌' : '👤');
 
             html += `
                 <div style="background: rgba(15, 23, 42, 0.7); border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.25);">
@@ -3420,9 +3362,7 @@ async function openFriendProfileModal(friendName) {
     let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, friendName) : [];
 
     let isCreator = (friendName.toLowerCase() === 'рыба');
-    let isBanana = (friendName.toLowerCase() === 'сarrots_44444');
-    let isGnome = (friendName.toLowerCase() === 'dasha_545' || friendName.toLowerCase() === 'dasha545' || (typeof isDashaUser === 'function' && isDashaUser(friendName)));
-    let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
+    let avatarEmoji = isCreator ? '👑' : (friendName.toLowerCase() === 'сarrots_44444' ? '🍌' : (friendName.toLowerCase() === 'dasha545' ? '🧙' : '👤'));
 
     let st = friendAcc.stats || { soloNormalWins: 0, soloNormalLosses: 0, soloSecretWins: 0, soloSecretLosses: 0, duoNormalWins: 0, duoNormalLosses: 0, duoSecretWins: 0, duoSecretLosses: 0 };
     let totalWins = (st.soloNormalWins || 0) + (st.soloSecretWins || 0) + (st.duoNormalWins || 0) + (st.duoSecretWins || 0);
