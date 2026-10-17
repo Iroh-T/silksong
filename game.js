@@ -5335,6 +5335,7 @@ function openHeroCodexModal(initialHeroId = 'WATER') {
     }
     
     modal.style.display = 'flex';
+    if (typeof updateBananaMenuPeelsUI === 'function') updateBananaMenuPeelsUI();
     selectCodexHero(initialHeroId);
     if (typeof playSound === 'function') playSound('select');
 }
@@ -5390,6 +5391,20 @@ function renderCodexHeroContent(heroId) {
         return;
     }
 
+    let isBananaAllowed = (typeof isBananaSkinAllowed === 'function' && isBananaSkinAllowed());
+    let bananaCardHtml = isBananaAllowed ? `
+        <div style="position: relative; background: linear-gradient(135deg, rgba(250, 204, 21, 0.16), rgba(15, 23, 42, 0.9)); border: 2px solid #facc15; border-radius: 12px; padding: 14px 18px; box-shadow: 0 0 25px rgba(250, 204, 21, 0.25);">
+            <span style="position: absolute; top: 8px; right: 12px; font-size: 20px; filter: drop-shadow(0 0 6px rgba(250,204,21,0.6));">🍌🍌</span>
+            <div style="font-size: 14px; font-weight: 900; color: #fde047; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                <span>🍌</span> ЭКСКЛЮЗИВНЫЙ БАНАНОВЫЙ АРСЕНАЛ (РЫБа &amp; Сarrots_44444)
+            </div>
+            <div style="font-size: 12px; color: #fef9c3; line-height: 1.55;">
+                • <b>🍌 Скин Банана:</b> Превращает героя <b>${h.name}</b> в боевой золотой банан с фирменным банановым оружием и золотым свечением.<br>
+                • <b>🍌 Вкусный банан (<code>banana_snack</code> на клавишу F):</b> Мгновенный перекус за <b>15 кадров</b> без долгого каста! Восстанавливает <b>+1.0 HP</b>, <b>НЕ тратит общую шкалу хила</b> (доступно <b>3 банана</b> на бой) и оставляет банановую кожуру на полу арены!
+            </div>
+        </div>
+    ` : '';
+
     let passivesHtml = (h.passives || []).map(p => `<li style="margin-bottom: 5px;">${p}</li>`).join('');
     let keyXDetailsHtml = (h.keyX && h.keyX.details || []).map(d => `<li style="margin-bottom: 6px;">${d}</li>`).join('');
     let keySDetailsHtml = (h.keyS && h.keyS.details || []).map(d => `<li style="margin-bottom: 6px;">${d}</li>`).join('');
@@ -5425,7 +5440,7 @@ function renderCodexHeroContent(heroId) {
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span style="font-size: 34px; filter: drop-shadow(0 0 10px ${h.color});">${h.icon}</span>
                     <div>
-                        <div style="font-size: 22px; font-weight: 900; color: ${h.color}; letter-spacing: 1px;">${h.name}</div>
+                        <div style="font-size: 22px; font-weight: 900; color: ${h.color}; letter-spacing: 1px;">${h.name} ${isBananaAllowed ? '<span title="Банановый Арсенал открыт">🍌</span>' : ''}</div>
                         <div style="font-size: 12px; color: #94a3b8;">${h.tagline}</div>
                     </div>
                 </div>
@@ -5444,6 +5459,8 @@ function renderCodexHeroContent(heroId) {
                     </div>
                 </div>
             </div>
+
+            ${bananaCardHtml}
 
             <!-- Stats & Equipment Specs -->
             <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px 16px; font-size: 12.5px;">

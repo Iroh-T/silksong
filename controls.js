@@ -892,8 +892,8 @@ function openScreen(screenId, pushHistory = true) {
     }
 
     // Dynamic renders when opening specific screens
+    updateBananaMenuPeelsUI();
     if (screenId === 'root-menu') {
-        updateBananaMenuPeelsUI();
         checkYaroslavGiftPrompt();
         checkDashaGiftPrompt();
     }
