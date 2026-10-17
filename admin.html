@@ -422,8 +422,18 @@
         const TG_ADMIN_CHAT_ID = '6465929018';
 
         let currentAccounts = {};
+        let currentPocketAccounts = {};
         let currentPresence = {};
         let currentGlobalNetworks = {};
+        const DEFAULT_POCKET_KEYS = ['dasha', 'dasha545', 'dasha_54', 'даша'];
+
+        function isAdminPocketed(key, acc) {
+            if (acc && acc.inPocket) return true;
+            let lk = String(key || '').trim().toLowerCase();
+            if (currentPocketAccounts && currentPocketAccounts[lk]) return true;
+            if (Object.keys(currentPocketAccounts || {}).length === 0 && DEFAULT_POCKET_KEYS.includes(lk)) return true;
+            return false;
+        }
 
         if (window.Telegram && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
@@ -459,7 +469,9 @@
         }
 
         function updateTopStats() {
-            let accList = Object.values(currentAccounts);
+            let accList = Object.entries(currentAccounts)
+                .filter(([k, a]) => k !== 'error' && a && typeof a === 'object' && a.name && !isAdminPocketed(k, a))
+                .map(([, a]) => a);
             let onlineList = getActiveOnlineDevices();
 
             let totalWins = 0;
@@ -499,14 +511,42 @@
             }
 
             try {
-                let [accRes, presRes, gNetRes] = await Promise.all([
+                let [accRes, pocketRes, presRes, gNetRes] = await Promise.all([
                     fetch(`${FIREBASE_URL}/accounts.json`),
+                    fetch(`${FIREBASE_URL}/pocket_accounts.json`).catch(() => null),
                     fetch(`${FIREBASE_URL}/presence.json`),
                     fetch(`${FIREBASE_URL}/globalNetworks.json`)
                 ]);
-                currentAccounts = await accRes.json() || {};
-                currentPresence = await presRes.json() || {};
-                currentGlobalNetworks = await gNetRes.json() || {};
+                let rawAcc = await accRes.json() || {};
+                let rawPocket = (pocketRes && pocketRes.ok) ? (await pocketRes.json() || {}) : {};
+                let rawPres = await presRes.json() || {};
+                let rawGNet = await gNetRes.json() || {};
+
+                currentPocketAccounts = (!rawPocket || rawPocket.error) ? {} : rawPocket;
+
+                let localAccs = {};
+                try {
+                    localAccs = JSON.parse(localStorage.getItem('shelter_accounts') || '{}') || {};
+                    for (let k in localAccs) {
+                        if (k === 'error' || !localAccs[k] || typeof localAccs[k] !== 'object' || !localAccs[k].name || isAdminPocketed(k, localAccs[k])) {
+                            delete localAccs[k];
+                        }
+                    }
+                } catch(e) {}
+
+                if (!accRes.ok || rawAcc.error) {
+                    currentAccounts = localAccs;
+                } else {
+                    currentAccounts = { ...localAccs, ...rawAcc };
+                    delete currentAccounts.error;
+                    for (let k in currentAccounts) {
+                        if (isAdminPocketed(k, currentAccounts[k])) {
+                            delete currentAccounts[k];
+                        }
+                    }
+                }
+                currentPresence = (!presRes.ok || rawPres.error) ? {} : rawPres;
+                currentGlobalNetworks = (!gNetRes.ok || rawGNet.error) ? {} : rawGNet;
 
                 updateTopStats();
                 renderCards(currentAccounts);
@@ -520,9 +560,59 @@
             }
         }
 
+        async function moveToPocketAdmin(rawKey) {
+            let lowerKey = decodeURIComponent(rawKey).trim().toLowerCase();
+            if (lowerKey === 'рыба' || lowerKey === 'admin') return;
+            if (!confirm(`Убрать аккаунт «${lowerKey}» в карман Создателя?\nПока он в кармане, на него нельзя зайти и он не показывается в таблицах.`)) return;
+            let accData = currentAccounts[lowerKey];
+            if (!accData) return;
+            accData.inPocket = true;
+            accData.pocketedAt = Date.now();
+            accData.originalKey = lowerKey;
+            try {
+                await fetch(`${FIREBASE_URL}/pocket_accounts/${encodeURIComponent(lowerKey)}.json`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(accData)
+                });
+                await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+                    method: 'DELETE'
+                });
+                showToast(`🎒 Аккаунт «${accData.name || lowerKey}» убран в карман!`);
+                loadFirebaseData();
+            } catch(e) {
+                showToast("Ошибка: " + e.message);
+            }
+        }
+
+        async function restoreFromPocketAdmin(rawKey) {
+            let lowerKey = decodeURIComponent(rawKey).trim().toLowerCase();
+            if (!confirm(`Достать аккаунт «${lowerKey}» из кармана обратно в базу?`)) return;
+            let accData = currentPocketAccounts[lowerKey];
+            if (!accData) return;
+            delete accData.inPocket;
+            delete accData.pocketedAt;
+            try {
+                await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(accData)
+                });
+                await fetch(`${FIREBASE_URL}/pocket_accounts/${encodeURIComponent(lowerKey)}.json`, {
+                    method: 'DELETE'
+                });
+                showToast(`📤 Аккаунт «${accData.name || lowerKey}» возвращён из кармана!`);
+                loadFirebaseData();
+            } catch(e) {
+                showToast("Ошибка: " + e.message);
+            }
+        }
+
         function renderCards(accounts) {
             let container = document.getElementById('cards-container');
-            let list = Object.values(accounts);
+            let list = Object.entries(accounts)
+                .filter(([k, a]) => k !== 'error' && a && typeof a === 'object' && a.name && !isAdminPocketed(k, a))
+                .map(([k, a]) => ({ _key: k, ...a }));
 
             if (list.length === 0) {
                 container.innerHTML = '<div class="loading">В базе пока нет игроков. Зарегистрируйтесь в игре!</div>';
@@ -536,6 +626,35 @@
             list.sort((a, b) => b._totalWins - a._totalWins);
 
             let onlineList = getActiveOnlineDevices();
+
+            let pocketEntries = Object.entries(currentPocketAccounts || {}).filter(([k, a]) => k !== 'error' && a && typeof a === 'object');
+            let pocketHtml = '';
+            if (pocketEntries.length > 0) {
+                pocketHtml = `
+                    <details style="margin-top: 14px; background: rgba(30, 20, 45, 0.75); border: 1px dashed #a855f7; border-radius: 10px; padding: 10px 14px;">
+                        <summary style="cursor: pointer; color: #d8b4fe; font-weight: bold; font-size: 13px; outline: none;">
+                            🎒 Карман Создателя (${pocketEntries.length} скрытых акк. — вход и таблицы закрыты)
+                        </summary>
+                        <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                            ${pocketEntries.map(([pKey, pAcc]) => {
+                                let st = pAcc.stats || {};
+                                let w = (st.soloNormalWins || 0) + (st.soloSecretWins || 0) + (st.duoNormalWins || 0) + (st.duoSecretWins || 0);
+                                return `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.45); padding: 8px 12px; border-radius: 8px; border-left: 3px solid #a855f7;">
+                                        <div>
+                                            <div style="font-size: 13px; font-weight: bold; color: #fff;">👤 ${pAcc.name || pKey} <span style="font-size: 11px; color: #94a3b8; font-weight: normal;">(ключ: <code>${pKey}</code>)</span></div>
+                                            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">🔑 Пароль: <code>${pAcc.password || '—'}</code> • 🏆 Побед: ${w}</div>
+                                        </div>
+                                        <button class="btn" style="flex: none; padding: 5px 10px; font-size: 11px; border-color: #22c55e; color: #4ade80;" onclick="restoreFromPocketAdmin('${encodeURIComponent(pKey)}')">
+                                            📤 Достать
+                                        </button>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </details>
+                `;
+            }
 
             container.innerHTML = list.map(acc => {
                 let isOwner = (acc.name && acc.name.toLowerCase() === 'рыба');
@@ -565,6 +684,7 @@
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 ${onlineBadge}
                                 <div class="stats-badge">🏆 ${acc._totalWins}</div>
+                                ${!isOwner ? `<button class="btn" style="flex: none; padding: 3px 8px; font-size: 10px; border-color: #a855f7; color: #d8b4fe;" onclick="moveToPocketAdmin('${encodeURIComponent(acc._key || acc.name)}')" title="Убрать в карман">🎒 В карман</button>` : ''}
                             </div>
                         </div>
                         <div class="card-row">
@@ -610,7 +730,7 @@
                         </div>
                     </div>
                 `;
-            }).join('');
+            }).join('') + pocketHtml;
         }
 
         function renderDevicesView() {

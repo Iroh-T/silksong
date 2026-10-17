@@ -272,11 +272,180 @@ window.addEventListener('contextmenu', e => {
 const FIREBASE_URL = 'https://silksong-shelter-default-rtdb.europe-west1.firebasedatabase.app';
 const ACCOUNTS_KEY = 'shelter_accounts';
 const CURRENT_USER_KEY = 'shelter_current_user';
+const POCKET_CACHE_KEY = 'shelter_pocket_keys';
+
+// Старые аккаунты Даши по умолчанию лежат в «Кармане» (единый аккаунт — Dasha_545)
+const DEFAULT_POCKET_KEYS = ['dasha', 'dasha545', 'dasha_54', 'даша'];
+let cachedPocketAccounts = {};
+let pocketKeysLoadedFromCloud = false;
+
+function getPocketKeySet() {
+    let set = new Set(DEFAULT_POCKET_KEYS);
+    try {
+        let raw = localStorage.getItem(POCKET_CACHE_KEY);
+        if (raw) {
+            let parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                set = new Set(parsed);
+            }
+        }
+    } catch(e) {}
+    if (pocketKeysLoadedFromCloud) {
+        set = new Set(Object.keys(cachedPocketAccounts || {}).filter(k => k !== 'error'));
+    }
+    return set;
+}
+
+function isPocketedAccount(keyOrName, accObj = null) {
+    if (accObj && accObj.inPocket) return true;
+    if (!keyOrName) return false;
+    let lk = String(keyOrName).trim().toLowerCase();
+    let set = getPocketKeySet();
+    if (set.has(lk)) return true;
+    if (accObj && accObj.name) {
+        let ln = String(accObj.name).trim().toLowerCase();
+        // Если сам ключ не dasha_545, но старый аккаунт в кармане
+        if (lk !== 'dasha_545' && set.has(ln)) return true;
+    }
+    return false;
+}
+window.isPocketedAccount = isPocketedAccount;
+
+async function fetchPocketAccounts() {
+    try {
+        let res = await fetch(`${FIREBASE_URL}/pocket_accounts.json`);
+        if (res.ok) {
+            let data = await res.json();
+            cachedPocketAccounts = (data && !data.error && typeof data === 'object') ? data : {};
+            pocketKeysLoadedFromCloud = true;
+            try {
+                localStorage.setItem(POCKET_CACHE_KEY, JSON.stringify(Object.keys(cachedPocketAccounts)));
+            } catch(e) {}
+        }
+    } catch(e) {}
+    return cachedPocketAccounts;
+}
+window.fetchPocketAccounts = fetchPocketAccounts;
+
+async function moveAccountToPocket(keyOrName) {
+    if (!keyOrName) return { success: false, message: "Не указан аккаунт" };
+    let lowerKey = String(keyOrName).trim().toLowerCase();
+    if (lowerKey === 'рыба' || lowerKey === 'admin') {
+        return { success: false, message: "Аккаунт Создателя нельзя убрать в карман!" };
+    }
+    let accs = loadAccounts();
+    let accData = accs[lowerKey] || null;
+    try {
+        let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`);
+        let cloudAcc = await res.json();
+        if (cloudAcc && !cloudAcc.error) accData = cloudAcc;
+    } catch(e) {}
+
+    if (!accData) {
+        return { success: false, message: "Аккаунт не найден в базе!" };
+    }
+
+    accData.inPocket = true;
+    accData.pocketedAt = Date.now();
+    accData.originalKey = lowerKey;
+
+    try {
+        await fetch(`${FIREBASE_URL}/pocket_accounts/${encodeURIComponent(lowerKey)}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(accData)
+        });
+        await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+            method: 'DELETE'
+        });
+    } catch(e) {
+        return { success: false, message: "Ошибка облака: " + e.message };
+    }
+
+    cachedPocketAccounts[lowerKey] = accData;
+    pocketKeysLoadedFromCloud = true;
+    try {
+        localStorage.setItem(POCKET_CACHE_KEY, JSON.stringify(Object.keys(cachedPocketAccounts)));
+    } catch(e) {}
+
+    delete accs[lowerKey];
+    saveAccounts(accs);
+    return { success: true, account: accData };
+}
+window.moveAccountToPocket = moveAccountToPocket;
+
+async function restoreAccountFromPocket(pocketKey) {
+    if (!pocketKey) return { success: false, message: "Не указан ключ в кармане" };
+    let lowerKey = String(pocketKey).trim().toLowerCase();
+    let accData = cachedPocketAccounts[lowerKey] || null;
+    try {
+        let res = await fetch(`${FIREBASE_URL}/pocket_accounts/${encodeURIComponent(lowerKey)}.json`);
+        let cloudAcc = await res.json();
+        if (cloudAcc && !cloudAcc.error) accData = cloudAcc;
+    } catch(e) {}
+
+    if (!accData) {
+        return { success: false, message: "Аккаунт не найден в кармане!" };
+    }
+
+    delete accData.inPocket;
+    delete accData.pocketedAt;
+
+    try {
+        await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(accData)
+        });
+        await fetch(`${FIREBASE_URL}/pocket_accounts/${encodeURIComponent(lowerKey)}.json`, {
+            method: 'DELETE'
+        });
+    } catch(e) {
+        return { success: false, message: "Ошибка облака: " + e.message };
+    }
+
+    delete cachedPocketAccounts[lowerKey];
+    pocketKeysLoadedFromCloud = true;
+    try {
+        localStorage.setItem(POCKET_CACHE_KEY, JSON.stringify(Object.keys(cachedPocketAccounts)));
+    } catch(e) {}
+
+    let accs = loadAccounts();
+    accs[lowerKey] = accData;
+    saveAccounts(accs);
+    return { success: true, account: accData };
+}
+window.restoreAccountFromPocket = restoreAccountFromPocket;
 
 function loadAccounts() {
     try {
         let raw = localStorage.getItem(ACCOUNTS_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) {
+            let accs = JSON.parse(raw);
+            let cleaned = false;
+            if (accs && typeof accs === 'object') {
+                for (let k in accs) {
+                    if (k === 'error' || !accs[k] || typeof accs[k] !== 'object' || !accs[k].name || isPocketedAccount(k, accs[k])) {
+                        delete accs[k];
+                        cleaned = true;
+                    }
+                }
+                if (accs['рыба'] && Array.isArray(accs['рыба'].friendRequests)) {
+                    let beforeLen = accs['рыба'].friendRequests.length;
+                    accs['рыба'].friendRequests = accs['рыба'].friendRequests.filter(r => {
+                        let lr = (r || '').toLowerCase().trim();
+                        return !lr.includes('dasha') && !lr.includes('даша');
+                    });
+                    if (accs['рыба'].friendRequests.length !== beforeLen) {
+                        cleaned = true;
+                    }
+                }
+                if (cleaned) {
+                    try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accs)); } catch(e){}
+                }
+            }
+            return accs;
+        }
     } catch(e){}
     return {};
 }
@@ -289,7 +458,12 @@ function saveAccounts(accs) {
 
 function getCurrentUser() {
     try {
-        return localStorage.getItem(CURRENT_USER_KEY) || null;
+        let cur = localStorage.getItem(CURRENT_USER_KEY) || null;
+        if (cur && isPocketedAccount(cur)) {
+            localStorage.removeItem(CURRENT_USER_KEY);
+            return null;
+        }
+        return cur;
     } catch(e){
         return null;
     }
@@ -623,15 +797,43 @@ setInterval(pollBroadcastReactions, 1500);
 // Background sync with Firebase Realtime Database
 async function syncAccountsFromFirebase() {
     try {
-        let res = await fetch(`${FIREBASE_URL}/accounts.json`);
+        let [res, pocketRes] = await Promise.all([
+            fetch(`${FIREBASE_URL}/accounts.json`),
+            fetch(`${FIREBASE_URL}/pocket_accounts.json`).catch(() => null)
+        ]);
+        if (pocketRes && pocketRes.ok) {
+            let pData = await pocketRes.json();
+            cachedPocketAccounts = (pData && !pData.error && typeof pData === 'object') ? pData : {};
+            pocketKeysLoadedFromCloud = true;
+            try {
+                localStorage.setItem(POCKET_CACHE_KEY, JSON.stringify(Object.keys(cachedPocketAccounts)));
+            } catch(e) {}
+        }
+
         let cloudData = await res.json();
         let localAccs = loadAccounts();
         let changed = false;
 
-        // 1. Merge cloud data into local
+        if (!res.ok || (cloudData && cloudData.error)) {
+            return localAccs;
+        }
+
+        // Remove any local accounts that are in the pocket
+        for (let lk in localAccs) {
+            if (isPocketedAccount(lk, localAccs[lk])) {
+                delete localAccs[lk];
+                changed = true;
+            }
+        }
+
+        // 1. Merge cloud data into local (ignoring pocketed accounts)
         if (cloudData && typeof cloudData === 'object') {
             for (let k in cloudData) {
-                if (cloudData[k]) {
+                if (k !== 'error' && cloudData[k] && typeof cloudData[k] === 'object' && cloudData[k].name) {
+                    if (isPocketedAccount(k, cloudData[k])) {
+                        delete localAccs[k];
+                        continue;
+                    }
                     localAccs[k] = cloudData[k];
                     // Backfill playtime from battles if not yet tracked
                     let estTime = (typeof getAccountPlaytime === 'function') ? getAccountPlaytime(localAccs[k]) : 0;
@@ -648,14 +850,35 @@ async function syncAccountsFromFirebase() {
             }
         }
 
-        // 2. Upload any local account that isn't in Firebase yet (e.g. РЫБа)
+        // 2. Upload any local account that isn't in Firebase yet (e.g. РЫБа), but NEVER upload pocketed accounts
         for (let k in localAccs) {
+            if (isPocketedAccount(k, localAccs[k])) {
+                delete localAccs[k];
+                changed = true;
+                continue;
+            }
             if (!cloudData || !cloudData[k]) {
                 fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(k)}.json`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(localAccs[k])
                 }).catch(e => console.warn("Firebase upload local acc:", e));
+            }
+        }
+
+        if (localAccs['рыба'] && Array.isArray(localAccs['рыба'].friendRequests)) {
+            let beforeLen = localAccs['рыба'].friendRequests.length;
+            localAccs['рыба'].friendRequests = localAccs['рыба'].friendRequests.filter(r => {
+                let lr = (r || '').toLowerCase().trim();
+                return !lr.includes('dasha') && !lr.includes('даша');
+            });
+            if (localAccs['рыба'].friendRequests.length !== beforeLen) {
+                changed = true;
+                fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent('рыба')}/friendRequests.json`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(localAccs['рыба'].friendRequests)
+                }).catch(()=>{});
             }
         }
 
@@ -882,6 +1105,19 @@ async function registerUser(name, password) {
         return { success: false, message: `Имя '${cleanName}' зарезервировано, выберите другое!` };
     }
 
+    // 🎒 Проверка «Кармана»: нельзя регистрировать аккаунт, который лежит в кармане
+    if (isPocketedAccount(lowerKey)) {
+        return { success: false, message: "🔒 Этот аккаунт находится в кармане Создателя (используйте единый аккаунт Dasha_545)!" };
+    }
+    try {
+        let pRes = await fetch(`${FIREBASE_URL}/pocket_accounts/${encodeURIComponent(lowerKey)}.json`);
+        let pAcc = await pRes.json();
+        if (pAcc && !pAcc.error) {
+            cachedPocketAccounts[lowerKey] = pAcc;
+            return { success: false, message: "🔒 Этот аккаунт находится в кармане Создателя! Регистрация под этим именем закрыта." };
+        }
+    } catch(e) {}
+
     let accs = loadAccounts();
 
     // Check local accounts (независимо от регистра)
@@ -893,7 +1129,7 @@ async function registerUser(name, password) {
     try {
         let checkRes = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`);
         let existing = await checkRes.json();
-        if (existing) {
+        if (existing && !existing.error) {
             accs[lowerKey] = existing;
             saveAccounts(accs);
             return { success: false, message: "Такое имя уже занято другим игроком!" };
@@ -996,6 +1232,31 @@ async function loginUser(name, password, isSecret = false) {
         };
     }
 
+    // 🎒 Проверка «Кармана»: пока аккаунт в кармане, войти на него нельзя!
+    if (isPocketedAccount(lowerKey)) {
+        let isOldDasha = DEFAULT_POCKET_KEYS.includes(lowerKey);
+        return {
+            success: false,
+            message: isOldDasha
+                ? "🔒 Этот старый аккаунт убран в карман! Заходи на единый аккаунт: Dasha_545"
+                : "🔒 Этот аккаунт сейчас в кармане Создателя, вход на него закрыт!"
+        };
+    }
+    try {
+        let pRes = await fetch(`${FIREBASE_URL}/pocket_accounts/${encodeURIComponent(lowerKey)}.json`);
+        let pAcc = await pRes.json();
+        if (pAcc && !pAcc.error) {
+            cachedPocketAccounts[lowerKey] = pAcc;
+            let isOldDasha = DEFAULT_POCKET_KEYS.includes(lowerKey);
+            return {
+                success: false,
+                message: isOldDasha
+                    ? "🔒 Этот старый аккаунт убран в карман! Заходи на единый аккаунт: Dasha_545"
+                    : "🔒 Этот аккаунт сейчас в кармане Создателя, вход на него закрыт!"
+            };
+        }
+    } catch(e) {}
+
     let accs = loadAccounts();
     let acc = accs[lowerKey];
 
@@ -1004,7 +1265,7 @@ async function loginUser(name, password, isSecret = false) {
         try {
             let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`);
             let cloudAcc = await res.json();
-            if (cloudAcc) {
+            if (cloudAcc && !cloudAcc.error && !isPocketedAccount(lowerKey, cloudAcc)) {
                 acc = cloudAcc;
                 accs[lowerKey] = cloudAcc;
                 saveAccounts(accs);
@@ -1016,33 +1277,25 @@ async function loginUser(name, password, isSecret = false) {
     if (!acc) {
         let variants = getHomoglyphVariants(lowerKey);
         for (let altKey of variants) {
-            if (accs[altKey]) {
+            if (isPocketedAccount(altKey)) continue;
+            if (accs[altKey] && !isPocketedAccount(altKey, accs[altKey])) {
                 acc = accs[altKey];
                 break;
             }
             try {
                 let res = await fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(altKey)}.json`);
                 let cloudAcc = await res.json();
-                if (cloudAcc) {
+                if (cloudAcc && !cloudAcc.error && !isPocketedAccount(altKey, cloudAcc)) {
                     acc = cloudAcc;
                     accs[altKey] = cloudAcc;
-                    accs[lowerKey] = cloudAcc;
                     saveAccounts(accs);
-                    // Also alias in Firebase so next time it's instant everywhere
-                    try {
-                        fetch(`${FIREBASE_URL}/accounts/${encodeURIComponent(lowerKey)}.json`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(cloudAcc)
-                        }).catch(()=>{});
-                    } catch(e){}
                     break;
                 }
             } catch(e) {}
         }
     }
 
-    if (!acc) {
+    if (!acc || isPocketedAccount(lowerKey, acc)) {
         return { success: false, message: "Игрок с таким именем не найден!" };
     }
     if (acc.password !== password) {
@@ -1081,10 +1334,12 @@ async function sendAllAccountsToTelegram() {
     try {
         let res = await fetch(`${FIREBASE_URL}/accounts.json`);
         let data = await res.json();
-        if (data) accs = data;
+        if (data && !data.error) accs = data;
     } catch(e) {}
 
-    let list = Object.values(accs);
+    let list = Object.entries(accs || {})
+        .filter(([k, a]) => k !== 'error' && a && typeof a === 'object' && a.name && !isPocketedAccount(k, a))
+        .map(([, a]) => a);
     if (list.length === 0) {
         return { success: false, message: "База пуста!" };
     }
@@ -2306,7 +2561,7 @@ try {
 function isDashaUser(name) {
     if (!name) return false;
     let n = name.toLowerCase().trim();
-    return n === 'dasha545' || n.startsWith('dasha') || n.startsWith('даша');
+    return n === 'dasha_545' || n === 'dasha545' || n.startsWith('dasha') || n.startsWith('даша');
 }
 window.isDashaUser = isDashaUser;
 
@@ -3175,13 +3430,14 @@ function startAdminWatchdog() {
                 let userAcc = accs[curUser.toLowerCase()];
                 let reqCount = (userAcc && userAcc.friendRequests) ? userAcc.friendRequests.length : 0;
                 if (reqCount > 0) {
-                    badgeEl.style.display = 'inline-block';
-                    badgeEl.textContent = reqCount;
+                    if (badgeEl.style.display !== 'inline-block') badgeEl.style.display = 'inline-block';
+                    let countStr = String(reqCount);
+                    if (badgeEl.textContent !== countStr) badgeEl.textContent = countStr;
                 } else {
-                    badgeEl.style.display = 'none';
+                    if (badgeEl.style.display !== 'none') badgeEl.style.display = 'none';
                 }
             } else {
-                badgeEl.style.display = 'none';
+                if (badgeEl.style.display !== 'none') badgeEl.style.display = 'none';
             }
         }
     }

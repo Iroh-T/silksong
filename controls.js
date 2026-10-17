@@ -821,6 +821,13 @@ function openScreen(screenId, pushHistory = true) {
         pushHistory = false;
     }
 
+    if (screenId === 'play-type-select') {
+        let cur = getCurrentUser();
+        if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
+            screenId = 'mode-select';
+        }
+    }
+
     const allScreens = [
         'auth-screen',
         'root-menu',
@@ -915,6 +922,16 @@ function openScreen(screenId, pushHistory = true) {
 }
 window.openScreen = openScreen;
 
+function handlePlayButtonClick() {
+    let cur = getCurrentUser();
+    if (typeof isCreatorUser === 'function' && isCreatorUser(cur)) {
+        openScreen('play-type-select');
+    } else {
+        openScreen('mode-select');
+    }
+}
+window.handlePlayButtonClick = handlePlayButtonClick;
+
 function menuGoBack() {
     // If we are currently rebinding a key, cancel rebinding first
     if (window.rebindingActive) {
@@ -927,6 +944,12 @@ function menuGoBack() {
     }
     if (menuHistory.length > 0) {
         let prev = menuHistory.pop();
+        if (prev === 'play-type-select') {
+            let cur = getCurrentUser();
+            if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
+                prev = 'root-menu';
+            }
+        }
         if (prev === 'root-menu' || prev === 'play-type-select' || prev === 'mode-select') {
             window.isFireBossMode = false;
             isFireBossMode = false;
@@ -1370,6 +1393,14 @@ window.isNewStoryGame = true;
 window.storySlotToDelete = null;
 
 async function openStorySlotsScreen() {
+    let cur = getCurrentUser();
+    if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
+        if (typeof showTutorialAlert === 'function') {
+            showTutorialAlert("🔒 Режим «Полная игра» пока находится в эксклюзивной разработке Создателя!");
+        }
+        openScreen('mode-select');
+        return;
+    }
     openScreen('story-slots-screen');
     await renderStorySlotsUI();
 }
@@ -1709,8 +1740,10 @@ function renderAchievements() {
         `;
     }
 
-    // 3. Leaderboard across all accounts
-    let accList = Object.values(accs);
+    // 3. Leaderboard across all accounts (excluding pocketed accounts)
+    let accList = Object.entries(accs)
+        .filter(([k, a]) => k !== 'error' && a && typeof a === 'object' && a.name && !(typeof isPocketedAccount === 'function' && isPocketedAccount(k, a)))
+        .map(([, a]) => a);
     accList.sort((a, b) => {
         let aW = (a.stats ? a.stats.soloNormalWins + a.stats.soloSecretWins + a.stats.duoNormalWins + a.stats.duoSecretWins : 0);
         let bW = (b.stats ? b.stats.soloNormalWins + b.stats.soloSecretWins + b.stats.duoNormalWins + b.stats.duoSecretWins : 0);
@@ -1725,7 +1758,7 @@ function renderAchievements() {
                 ${accList.map((acc, idx) => {
                     let st = acc.stats || { soloNormalWins: 0, soloSecretWins: 0, duoNormalWins: 0, duoSecretWins: 0 };
                     let w = st.soloNormalWins + st.soloSecretWins + st.duoNormalWins + st.duoSecretWins;
-                    let isMe = curUser && acc.name.toLowerCase() === curUser.toLowerCase();
+                    let isMe = curUser && (acc.name || '').toLowerCase() === curUser.toLowerCase();
                     let medal = idx === 0 ? "🥇" : (idx === 1 ? "🥈" : (idx === 2 ? "🥉" : `${idx + 1}.`));
                     let titleTag = acc.customTitle ? `<span style="background: rgba(255, 215, 0, 0.2); border: 1px solid #ffd700; color: #ffd700; font-size: 10px; padding: 1px 5px; border-radius: 3px; margin-right: 5px; font-weight: bold;">${acc.customTitle}</span>` : '';
                     return `
@@ -1805,7 +1838,9 @@ function renderAchievements() {
         window._achieveSyncing = true;
         syncAccountsFromFirebase().then(freshAccs => {
             window._achieveSyncing = false;
-            let freshList = Object.values(freshAccs || {});
+            let freshList = Object.entries(freshAccs || {})
+                .filter(([k, a]) => k !== 'error' && a && typeof a === 'object' && a.name && !(typeof isPocketedAccount === 'function' && isPocketedAccount(k, a)))
+                .map(([, a]) => a);
             if (freshList.length !== accList.length) {
                 renderAchievements();
             }
@@ -1821,7 +1856,10 @@ async function renderAdminScreen() {
     listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 25px;">Загрузка данных из облака Firebase...</div>';
 
     let accs = await syncAccountsFromFirebase();
-    let list = Object.values(accs || {});
+    let pocketMap = (typeof fetchPocketAccounts === 'function') ? await fetchPocketAccounts() : {};
+    let list = Object.entries(accs || {})
+        .filter(([k, a]) => k !== 'error' && a && typeof a === 'object' && a.name && !(typeof isPocketedAccount === 'function' && isPocketedAccount(k, a)))
+        .map(([k, a]) => ({ _key: k, ...a }));
 
     if (list.length === 0) {
         listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 25px;">В базе пока нет зарегистрированных игроков.</div>';
@@ -1833,6 +1871,35 @@ async function renderAdminScreen() {
         a._totalWins = (st.soloNormalWins || 0) + (st.soloSecretWins || 0) + (st.duoNormalWins || 0) + (st.duoSecretWins || 0);
     });
     list.sort((a, b) => b._totalWins - a._totalWins);
+
+    let pocketEntries = Object.entries(pocketMap || {}).filter(([k, a]) => k !== 'error' && a && typeof a === 'object');
+    let pocketHtml = '';
+    if (pocketEntries.length > 0) {
+        pocketHtml = `
+            <details style="margin-top: 14px; background: rgba(30, 20, 45, 0.7); border: 1px dashed #a855f7; border-radius: 8px; padding: 8px 12px;">
+                <summary style="cursor: pointer; color: #d8b4fe; font-weight: bold; font-size: 12px; outline: none;">
+                    🎒 Карман Создателя (${pocketEntries.length} скрытых акк. — вход и таблицы закрыты)
+                </summary>
+                <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+                    ${pocketEntries.map(([pKey, pAcc]) => {
+                        let st = pAcc.stats || {};
+                        let w = (st.soloNormalWins || 0) + (st.soloSecretWins || 0) + (st.duoNormalWins || 0) + (st.duoSecretWins || 0);
+                        return `
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.4); padding: 6px 10px; border-radius: 6px; border-left: 3px solid #a855f7;">
+                                <div style="font-size: 11px; color: #e2e8f0;">
+                                    <b>${pAcc.name || pKey}</b> <span style="color:#94a3b8;">(ключ: <code>${pKey}</code>)</span>
+                                    <div style="color: #94a3b8; font-size: 10px;">Пароль: <code>${pAcc.password || '—'}</code> | Побед: ${w}</div>
+                                </div>
+                                <button class="menu-btn" style="margin: 0; padding: 3px 8px; font-size: 10px; border-color: #22c55e; color: #4ade80;" onclick="adminRestoreFromPocket('${encodeURIComponent(pKey)}')">
+                                    📤 Достать
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </details>
+        `;
+    }
 
     listEl.innerHTML = list.map((acc, idx) => {
         let isOwner = (acc.name && (acc.name.toLowerCase() === 'рыба' || acc.name.toLowerCase() === 'admin'));
@@ -1896,7 +1963,10 @@ async function renderAdminScreen() {
                     <span style="font-weight: bold; color: ${isOwner ? '#ffd700' : '#ffffff'};">
                         ${medal} <b>${acc.name}</b> ${isOwner ? '<span style="color:#ffd700; font-size:11px;">👑 (Создатель)</span>' : ''}
                     </span>
-                    <span style="color: #4ade80; font-weight: bold;">🏆 ${acc._totalWins} побед</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="color: #4ade80; font-weight: bold;">🏆 ${acc._totalWins} побед</span>
+                        ${!isOwner ? `<button class="menu-btn" style="margin: 0; padding: 2px 6px; font-size: 10px; border-color: #a855f7; color: #d8b4fe;" onclick="adminMoveToPocket('${encodeURIComponent(acc._key || acc.name)}')" title="Убрать аккаунт в карман">🎒 В карман</button>` : ''}
+                    </div>
                 </div>
                 <div class="admin-card-row">
                     <span style="color: #94a3b8; font-size: 12px;">Пароль:</span>
@@ -1909,9 +1979,39 @@ async function renderAdminScreen() {
                 ${netsHtml}
             </div>
         `;
-    }).join('');
+    }).join('') + pocketHtml;
 }
 window.renderAdminScreen = renderAdminScreen;
+
+async function adminMoveToPocket(rawKey) {
+    let key = decodeURIComponent(rawKey);
+    if (!confirm(`Убрать аккаунт «${key}» в карман Создателя?\nПока он в кармане, на него нельзя зайти и он не отображается в таблицах.`)) return;
+    if (typeof moveAccountToPocket === 'function') {
+        let res = await moveAccountToPocket(key);
+        if (res && res.success) {
+            if (typeof showTutorialAlert === 'function') showTutorialAlert(`🎒 Аккаунт «${key}» убран в карман!`);
+            renderAdminScreen();
+        } else {
+            alert(res ? res.message : "Ошибка перемещения в карман");
+        }
+    }
+}
+window.adminMoveToPocket = adminMoveToPocket;
+
+async function adminRestoreFromPocket(rawKey) {
+    let key = decodeURIComponent(rawKey);
+    if (!confirm(`Достать аккаунт «${key}» из кармана обратно в общую базу?`)) return;
+    if (typeof restoreAccountFromPocket === 'function') {
+        let res = await restoreAccountFromPocket(key);
+        if (res && res.success) {
+            if (typeof showTutorialAlert === 'function') showTutorialAlert(`📤 Аккаунт «${key}» возвращён из кармана!`);
+            renderAdminScreen();
+        } else {
+            alert(res ? res.message : "Ошибка восстановления из кармана");
+        }
+    }
+}
+window.adminRestoreFromPocket = adminRestoreFromPocket;
 
 async function adminDeleteDevice(rawName, rawDevId) {
     let accName = decodeURIComponent(rawName);
@@ -2943,9 +3043,32 @@ window.sendQuickReactionToCreator = sendQuickReactionToCreator;
 
 function initShelterApp() {
     try {
+        let vTag = (typeof GAME_VERSION !== 'undefined') ? GAME_VERSION : "v76.0";
+        document.querySelectorAll('.game-version-display').forEach(el => { el.innerText = vTag; });
+    } catch(e){}
+
+    try {
         localStorage.removeItem('shelter_fire_unlocked');
     } catch(e){}
     syncFireHeroState();
+
+    // Safety fail-safe: Ensure menu is never an empty black box
+    setTimeout(() => {
+        let allScreens = ['auth-screen', 'root-menu', 'play-type-select', 'story-slots-screen', 'mode-select', 'input-select', 'hero-select', 'badge-select', 'achievements-menu', 'admin-screen', 'settings-menu', 'keybind-editor-menu', 'online-hub-screen', 'online-host-wait-screen', 'online-join-screen', 'online-prep-screen'];
+        let hasVisible = allScreens.some(id => {
+            let el = document.getElementById(id);
+            return el && el.style.display && el.style.display !== 'none';
+        });
+        if (!hasVisible) {
+            let u = getCurrentUser();
+            let a = loadAccounts();
+            if (u && a[u.toLowerCase()]) {
+                openScreen('root-menu', false);
+            } else {
+                openScreen('auth-screen', false);
+            }
+        }
+    }, 120);
 
     // Detect network and visited places
     if (typeof detectCurrentNetwork === 'function') {
@@ -3109,11 +3232,12 @@ function renderFriendsModalList() {
     let accs = (typeof loadAccounts === 'function') ? loadAccounts() : {};
     let curAcc = accs[curUser.toLowerCase()] || {};
 
-    let friends = curAcc.friends || [];
-    let requests = curAcc.friendRequests || [];
+    let friends = (curAcc.friends || []).filter(f => !(typeof isPocketedAccount === 'function' && isPocketedAccount(f)));
+    let requests = (curAcc.friendRequests || []).filter(r => !(typeof isPocketedAccount === 'function' && isPocketedAccount(r)));
 
-    // All registered players (excluding Guest and current user)
+    // All registered players (excluding Guest, current user, and pocketed accounts)
     let allPlayers = Object.keys(accs)
+        .filter(k => k !== 'error' && accs[k] && !(typeof isPocketedAccount === 'function' && isPocketedAccount(k, accs[k])))
         .map(k => accs[k].name)
         .filter(n => n && n.toLowerCase() !== 'гость' && n.toLowerCase() !== 'noname' && n.toLowerCase() !== 'игрок' && n.toLowerCase() !== curUser.toLowerCase());
 
@@ -3162,7 +3286,7 @@ function renderFriendsModalList() {
             let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, fName) : [];
             let isCreator = (fName.toLowerCase() === 'рыба');
             let isBanana = (fName.toLowerCase() === 'сarrots_44444');
-            let isGnome = (fName.toLowerCase() === 'dasha545');
+            let isGnome = (fName.toLowerCase() === 'dasha_545' || fName.toLowerCase() === 'dasha545' || (typeof isDashaUser === 'function' && isDashaUser(fName)));
             let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
 
             html += `
@@ -3223,7 +3347,7 @@ function renderFriendsModalList() {
                         <div>
                             <div style="font-weight: bold; font-size: 15px; color: #fff;">${rName}</div>
                             <div style="font-size: 11.5px; color: #94a3b8; margin-top: 2px;">
-                                <span>🤝 Общих друзей: <b style="color: #c084fc;">${mutual.length}</b></span>
+                                <span>🤝 Общие друзей: <b style="color: #c084fc;">${mutual.length}</b></span>
                             </div>
                         </div>
                     </div>
@@ -3259,7 +3383,9 @@ function renderFriendsModalList() {
             let isIncomingReq = requests.some(r => (r || '').toLowerCase() === pName.toLowerCase());
             let isOutgoingReq = pAcc && pAcc.friendRequests && pAcc.friendRequests.some(r => (r || '').toLowerCase() === curUser.toLowerCase());
             let isCreator = (pName.toLowerCase() === 'рыба');
-            let avatarEmoji = isCreator ? '👑' : (pName.toLowerCase() === 'сarrots_44444' ? '🍌' : '👤');
+            let isBanana = (pName.toLowerCase() === 'сarrots_44444');
+            let isGnome = (pName.toLowerCase() === 'dasha_545' || pName.toLowerCase() === 'dasha545' || (typeof isDashaUser === 'function' && isDashaUser(pName)));
+            let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
 
             html += `
                 <div style="background: rgba(15, 23, 42, 0.7); border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.25);">
@@ -3362,7 +3488,9 @@ async function openFriendProfileModal(friendName) {
     let mutual = typeof getMutualFriends === 'function' ? getMutualFriends(curUser, friendName) : [];
 
     let isCreator = (friendName.toLowerCase() === 'рыба');
-    let avatarEmoji = isCreator ? '👑' : (friendName.toLowerCase() === 'сarrots_44444' ? '🍌' : (friendName.toLowerCase() === 'dasha545' ? '🧙' : '👤'));
+    let isBanana = (friendName.toLowerCase() === 'сarrots_44444');
+    let isGnome = (friendName.toLowerCase() === 'dasha_545' || friendName.toLowerCase() === 'dasha545' || (typeof isDashaUser === 'function' && isDashaUser(friendName)));
+    let avatarEmoji = isCreator ? '👑' : (isBanana ? '🍌' : (isGnome ? '🧙' : '👤'));
 
     let st = friendAcc.stats || { soloNormalWins: 0, soloNormalLosses: 0, soloSecretWins: 0, soloSecretLosses: 0, duoNormalWins: 0, duoNormalLosses: 0, duoSecretWins: 0, duoSecretLosses: 0 };
     let totalWins = (st.soloNormalWins || 0) + (st.soloSecretWins || 0) + (st.duoNormalWins || 0) + (st.duoSecretWins || 0);
