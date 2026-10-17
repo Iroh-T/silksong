@@ -68,6 +68,9 @@ let storyState = {
     inTrials: false,
     trialsStage: 0,
     trialsWarnings: 0,
+    trialsWeaponGranted: false,
+    trialsGateY: 420,
+    trialsGateOpen: false,
     checkpoint: { x: 120, y: 350, stance: 'WATER', hp: 5, benchId: 0 },
     leaves: [],
     grassBlades: [],
@@ -102,8 +105,17 @@ function setupStoryPlatforms() {
 
         // 5. Lower Underground Tier (Floor 3: X = -480..3200, Y = 850)
         { x: -480, y: STORY_CONFIG.LOWER_FLOOR, w: 3680, h: 65, solid: true, tier: 3 },
-        // Closed Gates of the Trials at X = 1880 (before Trials begin in the next update)
-        { x: 1880, y: 420, w: 48, h: 430, solid: true, isWall: true, isTrialsGate: true }
+        // Gates of the Trials at X = 1880 (rises when heroes approach with Air & Earth)
+        { x: 1880, y: (storyState.trialsGateY !== undefined ? storyState.trialsGateY : 420), w: 48, h: 430, solid: true, isWall: true, isTrialsGate: true },
+        // Right Boundary Wall of Trials Arena at X = 3100
+        { x: 3100, y: 420, w: 48, h: 430, solid: true, isWall: true, isTrialsExitGate: true },
+        // Elevated Combat Ledges in Arena
+        { x: 2180, y: 720, w: 140, h: 18, solid: true, isArenaLedge: true },
+        { x: 2630, y: 720, w: 140, h: 18, solid: true, isArenaLedge: true },
+        // Overhead Maze Base Platforms & Breakable Wall (Stage 2)
+        { x: 2360, y: 720, w: 105, h: 16, solid: true, isMazeBase: true },
+        { x: 2505, y: 720, w: 105, h: 16, solid: true, isMazeBase: true },
+        { x: 2360, y: 530, w: 250, h: 16, solid: true, isMazeRoof: true }
     ];
 }
 
@@ -834,6 +846,32 @@ function updateStoryMode() {
                     }
                 }
             }
+
+            // 5. Check Gate of the Trials at X = 1880, Y = 850
+            if (storyState.airMet && storyState.earthMet && !storyState.inTrials) {
+                let nearGate = players.some(pl => pl && pl.y > 650 && pl.x >= 1680 && pl.x <= 1890);
+                if (nearGate) {
+                    storyState.trialsGateY = Math.max(220, (storyState.trialsGateY || 420) - 5);
+                    storyState.trialsGateOpen = (storyState.trialsGateY <= 240);
+                } else if (!storyState.trialsGateOpen && storyState.trialsGateY < 420) {
+                    storyState.trialsGateY = Math.min(420, storyState.trialsGateY + 4);
+                }
+                let gatePlat = platforms.find(p => p.isTrialsGate);
+                if (gatePlat) {
+                    gatePlat.y = storyState.trialsGateY;
+                }
+
+                // Crossing into the Trials Arena (X >= 1930)
+                let enteredArena = players.some(pl => pl && pl.y > 650 && pl.x >= 1930);
+                if (enteredArena) {
+                    startStoryTrials();
+                }
+            }
+
+            // 6. Update Trials engine if active
+            if (typeof storyTrials !== 'undefined' && storyTrials.active) {
+                updateStoryTrials();
+            }
             break;
         }
 
@@ -972,11 +1010,17 @@ function updateStoryMode() {
         focusY = p1.y * 0.65 + players[1].y * 0.35;
     }
     let minCamX = (focusX < 40 || focusY > 420) ? -480 : 0;
-    let targetCamX = Math.max(minCamX, Math.min(STORY_CONFIG.ARENA_W - GAME_WIDTH, focusX - GAME_WIDTH * 0.38));
+    if (typeof storyTrials !== 'undefined' && storyTrials.active) {
+        minCamX = 1860;
+    }
+    let maxCamX = (typeof storyTrials !== 'undefined' && storyTrials.active) ? (3100 - GAME_WIDTH) : (STORY_CONFIG.ARENA_W - GAME_WIDTH);
+    let targetCamX = Math.max(minCamX, Math.min(maxCamX, focusX - GAME_WIDTH * 0.38));
     camX += (targetCamX - camX) * 0.1;
 
     let targetCamY = 0;
-    if (focusY < 160) {
+    if (typeof storyTrials !== 'undefined' && storyTrials.active) {
+        targetCamY = 540;
+    } else if (focusY < 160) {
         // Upper Tier / Mossy Parkour climb
         targetCamY = Math.max(-280, focusY - 220);
     } else if (focusY > 410) {
@@ -1629,6 +1673,9 @@ function drawStoryMode() {
     }
     ctx.restore();
 
+    // 6b. Rich Environment Assets (Animated Blue Flowers, Swaying Plants 1..3, Comp Plants, Boulders, Slimes)
+    drawStoryEnvironmentAssets();
+
     // 7. Ancient Altar with Violet Light (at x = 2000, y = 350)
     drawStoryAltar(STORY_CONFIG.ALTAR_X);
 
@@ -1646,6 +1693,9 @@ function drawStoryMode() {
     if (storyState.guardian) {
         drawStoryGuardianObj(storyState.guardian);
     }
+
+    // 9b. The 4-Stage Trials Arena (Overseer, Logic Maze, Mannequins, Targets, Demon Boss)
+    drawStoryTrials();
 
     // 10. Players & Party Members
     let p = players[0];
@@ -1850,20 +1900,26 @@ function drawStoryAirAndEarthNPCs() {
     if (!storyState.airMet) {
         let ax = STORY_CONFIG.AIR_NPC_X;
         let ay = STORY_CONFIG.AIR_NPC_Y;
-        ctx.fillStyle = "#e2e8f0";
-        ctx.shadowColor = "#38bdf8";
-        ctx.shadowBlur = 12;
-        ctx.beginPath();
-        ctx.roundRect(ax - 12, ay - 46 + bob, 24, 46, 8);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(ax, ay - 54 + bob, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        if (!window.storyAirNpcDummy) {
+            window.storyAirNpcDummy = createPlayer(-91, 'AIR', {}, 'AI', ax);
+            window.storyAirNpcDummy.facingRight = false;
+            window.storyAirNpcDummy.stance = 'LIGHT';
+            window.storyAirNpcDummy.hp = 5;
+            window.storyAirNpcDummy.maxHp = 5;
+        }
+        window.storyAirNpcDummy.x = ax - 15;
+        window.storyAirNpcDummy.y = ay - 50;
+        window.storyAirNpcDummy.onGround = true;
+        window.storyAirNpcDummy.vx = Math.sin(Date.now() * 0.002) * 0.15;
+        drawPlayer(window.storyAirNpcDummy);
+
         ctx.fillStyle = "#7dd3fc";
         ctx.font = "bold 12px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("💨 Воздух", ax, ay - 72 + bob);
+        ctx.shadowColor = "#38bdf8";
+        ctx.shadowBlur = 8;
+        ctx.fillText("💨 Воздух", ax, ay - 68 + bob);
+        ctx.shadowBlur = 0;
     }
 
     // Air Dialogue Bubble ("Хей, дружище, пошли вместе!")
@@ -1888,20 +1944,25 @@ function drawStoryAirAndEarthNPCs() {
     if (!storyState.earthMet) {
         let ex = STORY_CONFIG.EARTH_NPC_X;
         let ey = STORY_CONFIG.EARTH_NPC_Y;
-        ctx.fillStyle = "#22c55e";
-        ctx.shadowColor = "#4ade80";
-        ctx.shadowBlur = 12;
-        ctx.beginPath();
-        ctx.roundRect(ex - 13, ey - 48 + bob, 26, 48, 8);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(ex, ey - 56 + bob, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        if (!window.storyEarthNpcDummy) {
+            window.storyEarthNpcDummy = createPlayer(-92, 'EARTH', {}, 'AI', ex);
+            window.storyEarthNpcDummy.facingRight = true;
+            window.storyEarthNpcDummy.stance = 'LIGHT';
+            window.storyEarthNpcDummy.hp = 5;
+            window.storyEarthNpcDummy.maxHp = 5;
+        }
+        window.storyEarthNpcDummy.x = ex - 15;
+        window.storyEarthNpcDummy.y = ey - 50;
+        window.storyEarthNpcDummy.onGround = true;
+        drawPlayer(window.storyEarthNpcDummy);
+
         ctx.fillStyle = "#86efac";
         ctx.font = "bold 12px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("🌿 Земля", ex, ey - 74 + bob);
+        ctx.shadowColor = "#4ade80";
+        ctx.shadowBlur = 8;
+        ctx.fillText("🌿 Земля", ex, ey - 68 + bob);
+        ctx.shadowBlur = 0;
     }
 
     // Earth Dialogue Bubble ("Вы чего так долго? Я вас уже заждалась!")
@@ -1928,22 +1989,53 @@ function drawStoryAirAndEarthNPCs() {
 // Draw Ancient Gates of the Trials at X = 1850, Y = 850
 function drawStoryTrialsGate(gx, floorY) {
     ctx.save();
+    let gateY = (typeof storyState !== 'undefined' && storyState.trialsGateY !== undefined) ? storyState.trialsGateY : 420;
+
+    // 1. Sliding Heavy Stone Portcullis / Gate Door
+    ctx.fillStyle = "#0f172a";
+    ctx.strokeStyle = "#334155";
+    ctx.lineWidth = 2.5;
+    ctx.fillRect(gx + 4, gateY, 48, floorY - 420);
+    ctx.strokeRect(gx + 4, gateY, 48, floorY - 420);
+
+    // Iron reinforcement bands and spikes
+    ctx.strokeStyle = "#475569";
+    ctx.lineWidth = 2;
+    for (let sy = gateY + 30; sy < floorY; sy += 45) {
+        ctx.beginPath();
+        ctx.moveTo(gx + 4, sy);
+        ctx.lineTo(gx + 52, sy);
+        ctx.stroke();
+    }
+
+    // 2. Majestic Stone Gate Arch & Pillars
     ctx.fillStyle = "#1e293b";
     ctx.strokeStyle = "#f59e0b";
     ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.roundRect(gx, floorY - 190, 56, 190, [14, 14, 0, 0]);
-    ctx.fill();
-    ctx.stroke();
+    // Left Pillar
+    ctx.fillRect(gx - 18, floorY - 260, 22, 260);
+    ctx.strokeRect(gx - 18, floorY - 260, 22, 260);
+    // Right Pillar
+    ctx.fillRect(gx + 52, floorY - 260, 22, 260);
+    ctx.strokeRect(gx + 52, floorY - 260, 22, 260);
+    // Top Arch Lintel
+    ctx.fillRect(gx - 22, floorY - 280, 100, 26);
+    ctx.strokeRect(gx - 22, floorY - 280, 100, 26);
 
     // Glowing Trial Runes
-    ctx.fillStyle = "#fbbf24";
-    ctx.font = "bold 12px sans-serif";
+    let runesActive = (storyState.airMet && storyState.earthMet);
+    ctx.fillStyle = runesActive ? "#fbbf24" : "#64748b";
+    ctx.shadowColor = runesActive ? "#f59e0b" : "transparent";
+    ctx.shadowBlur = runesActive ? 12 : 0;
+    ctx.font = "bold 12.5px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("⛩️ ВРАТА ИСПЫТАНИЙ", gx + 28, floorY - 202);
-    ctx.font = "11px sans-serif";
-    ctx.fillStyle = "#94a3b8";
-    ctx.fillText("(Отдохните на скамейке перед началом)", gx + 28, floorY - 218);
+    ctx.fillText("⛩️ ВРАТА ИСПЫТАНИЙ", gx + 28, floorY - 295);
+
+    if (!storyState.inTrials && (!storyTrials || !storyTrials.trialsCleared)) {
+        ctx.font = "11px sans-serif";
+        ctx.fillStyle = runesActive ? "#86efac" : "#94a3b8";
+        ctx.fillText(runesActive ? "«Врата открыты — сделайте шаг вперед!»" : "(Соберите команду на скамейке)", gx + 28, floorY - 312);
+    }
     ctx.restore();
 }
 
@@ -2193,22 +2285,28 @@ function drawStoryGuardianObj(g) {
     let gx = g.x;
     let gy = g.y;
 
-    if (g.hitFlash > 0) {
-        ctx.fillStyle = "#ffffff";
-    } else {
-        ctx.fillStyle = "#0284c7";
+    if (!window.storyGuardianDummy) {
+        window.storyGuardianDummy = createPlayer(-93, 'WATER', {}, 'AI', gx);
+        window.storyGuardianDummy.stance = 'LIGHT';
     }
+    window.storyGuardianDummy.x = gx - 15;
+    window.storyGuardianDummy.y = gy;
+    window.storyGuardianDummy.hp = g.hp;
+    window.storyGuardianDummy.maxHp = g.maxHp;
+    window.storyGuardianDummy.facingRight = (players[0] && players[0].x > gx);
+    if (g.state === 'SLASH_WARN' || g.state === 'SLASH') {
+        window.storyGuardianDummy.attackTimer = 16;
+    } else {
+        window.storyGuardianDummy.attackTimer = 0;
+    }
+    drawPlayer(window.storyGuardianDummy);
 
-    ctx.shadowColor = "#38bdf8";
-    ctx.shadowBlur = 14;
-    ctx.beginPath();
-    ctx.roundRect(gx - g.w / 2, gy, g.w, g.h, 8);
-    ctx.fill();
-
-    ctx.fillStyle = "#38bdf8";
-    ctx.beginPath();
-    ctx.arc(gx, gy - 8, 12, 0, Math.PI * 2);
-    ctx.fill();
+    if (g.hitFlash > 0) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+        ctx.beginPath();
+        ctx.arc(gx, gy + 20, 24, 0, Math.PI * 2);
+        ctx.fill();
+    }
 
     if (g.state === 'SLASH_WARN') {
         ctx.strokeStyle = "#38bdf8";
@@ -2481,4 +2579,1423 @@ if (typeof window !== 'undefined') {
         }
     });
 }
+
+// ============================================================================
+// --- RICH ENVIRONMENT ASSETS (FLOWERS, PLANTS, BOULDERS, SLIMES) ---
+// ============================================================================
+function drawStoryEnvironmentAssets() {
+    if (!ctx) return;
+    let now = Date.now();
+
+    // 1. Blue Flowers along Floor 1 (Y = 350) and over pond platforms
+    let flFrames = (typeof externalGameAssets !== 'undefined' && externalGameAssets.blueFlowers) ? externalGameAssets.blueFlowers : [];
+    if (flFrames.length > 0) {
+        let flowerCoords = [
+            { x: 180, y: STORY_CONFIG.FLOOR - 32 },
+            { x: 480, y: STORY_CONFIG.FLOOR - 32 },
+            { x: 880, y: STORY_CONFIG.FLOOR - 32 },
+            { x: 1320, y: STORY_CONFIG.FLOOR - 32 },
+            { x: 1750, y: STORY_CONFIG.FLOOR - 32 },
+            { x: 2280, y: STORY_CONFIG.FLOOR - 32 },
+            { x: 2750, y: STORY_CONFIG.FLOOR - 32 },
+            { x: 3350, y: STORY_CONFIG.FLOOR - 32 },
+            { x: 3680, y: STORY_CONFIG.FLOOR - 32 },
+            { x: 3980, y: 265 - 32 },
+            { x: 4230, y: 165 - 32 },
+            { x: 3970, y: 65 - 32 }
+        ];
+        flowerCoords.forEach((fc, idx) => {
+            if (fc.x + 36 < camX || fc.x > camX + GAME_WIDTH) return;
+            let fIdx = Math.floor(now / 120 + idx * 2) % flFrames.length;
+            let img = flFrames[fIdx];
+            if (img && img.complete && img.naturalWidth > 0) {
+                ctx.drawImage(img, fc.x, fc.y, 34, 34);
+            }
+        });
+    }
+
+    // 2. Animated Plants (Plant 1, 2, 3) along Roof / Upper Tier (Floor 2: Y = -25) and Floor 1
+    let p1 = (typeof externalGameAssets !== 'undefined' && externalGameAssets.plants1) ? externalGameAssets.plants1 : [];
+    let p2 = (typeof externalGameAssets !== 'undefined' && externalGameAssets.plants2) ? externalGameAssets.plants2 : [];
+    let p3 = (typeof externalGameAssets !== 'undefined' && externalGameAssets.plants3) ? externalGameAssets.plants3 : [];
+    let plantSpecs = [
+        { frames: p1, x: 220, y: STORY_CONFIG.UPPER_FLOOR - 48, w: 46, h: 48, spd: 140 },
+        { frames: p2, x: 740, y: STORY_CONFIG.UPPER_FLOOR - 50, w: 48, h: 50, spd: 130 },
+        { frames: p3, x: 1380, y: STORY_CONFIG.UPPER_FLOOR - 46, w: 44, h: 46, spd: 150 },
+        { frames: p1, x: 2150, y: STORY_CONFIG.UPPER_FLOOR - 48, w: 46, h: 48, spd: 140 },
+        { frames: p2, x: 2890, y: STORY_CONFIG.UPPER_FLOOR - 50, w: 48, h: 50, spd: 130 },
+        { frames: p3, x: 3450, y: STORY_CONFIG.UPPER_FLOOR - 46, w: 44, h: 46, spd: 150 },
+        { frames: p1, x: 620, y: STORY_CONFIG.FLOOR - 44, w: 42, h: 44, spd: 130 },
+        { frames: p2, x: 1560, y: STORY_CONFIG.FLOOR - 46, w: 44, h: 46, spd: 145 },
+        { frames: p3, x: 3120, y: STORY_CONFIG.FLOOR - 44, w: 42, h: 44, spd: 135 }
+    ];
+    plantSpecs.forEach((ps, idx) => {
+        if (ps.x + ps.w < camX || ps.x > camX + GAME_WIDTH) return;
+        if (ps.frames && ps.frames.length > 0) {
+            let fIdx = Math.floor(now / ps.spd + idx * 3) % ps.frames.length;
+            let img = ps.frames[fIdx];
+            if (img && img.complete && img.naturalWidth > 0) {
+                ctx.drawImage(img, ps.x, ps.y, ps.w, ps.h);
+            }
+        }
+    });
+
+    // 3. Animated Comp Plants in Underground Cavern & Trials Hall
+    let compFrames = (typeof externalGameAssets !== 'undefined' && externalGameAssets.compPlants) ? externalGameAssets.compPlants : [];
+    if (compFrames.length > 0) {
+        let compCoords = [
+            { x: 380, y: STORY_CONFIG.LOWER_FLOOR - 52, w: 50, h: 52 },
+            { x: 890, y: STORY_CONFIG.LOWER_FLOOR - 52, w: 50, h: 52 },
+            { x: 1380, y: STORY_CONFIG.LOWER_FLOOR - 52, w: 50, h: 52 },
+            { x: 1680, y: STORY_CONFIG.LOWER_FLOOR - 52, w: 50, h: 52 },
+            { x: 2040, y: STORY_CONFIG.LOWER_FLOOR - 52, w: 50, h: 52 },
+            { x: 2950, y: STORY_CONFIG.LOWER_FLOOR - 52, w: 50, h: 52 }
+        ];
+        compCoords.forEach((cp, idx) => {
+            if (cp.x + cp.w < camX || cp.x > camX + GAME_WIDTH) return;
+            let fIdx = Math.floor(now / 110 + idx * 2) % compFrames.length;
+            let img = compFrames[fIdx];
+            if (img && img.complete && img.naturalWidth > 0) {
+                ctx.drawImage(img, cp.x, cp.y, cp.w, cp.h);
+            }
+        });
+    }
+
+    // 4. Cave Boulders (Floor 3 and cliff base)
+    let bldrs = (typeof externalGameAssets !== 'undefined' && externalGameAssets.boulders) ? externalGameAssets.boulders : [];
+    if (bldrs.length > 0) {
+        let boulderCoords = [
+            { imgIdx: 0, x: -440, y: STORY_CONFIG.LOWER_FLOOR - 44, w: 60, h: 44 },
+            { imgIdx: 1, x: -210, y: STORY_CONFIG.LOWER_FLOOR - 40, w: 55, h: 40 },
+            { imgIdx: 2, x: 240, y: STORY_CONFIG.LOWER_FLOOR - 48, w: 64, h: 48 },
+            { imgIdx: 0, x: 760, y: STORY_CONFIG.LOWER_FLOOR - 42, w: 58, h: 42 },
+            { imgIdx: 1, x: 1280, y: STORY_CONFIG.LOWER_FLOOR - 44, w: 60, h: 44 },
+            { imgIdx: 2, x: 1720, y: STORY_CONFIG.LOWER_FLOOR - 46, w: 62, h: 46 },
+            { imgIdx: 0, x: 2110, y: STORY_CONFIG.LOWER_FLOOR - 44, w: 60, h: 44 },
+            { imgIdx: 1, x: 2980, y: STORY_CONFIG.LOWER_FLOOR - 44, w: 60, h: 44 }
+        ];
+        boulderCoords.forEach(b => {
+            if (b.x + b.w < camX || b.x > camX + GAME_WIDTH) return;
+            let img = bldrs[b.imgIdx];
+            if (img && img.complete && img.naturalWidth > 0) {
+                ctx.drawImage(img, b.x, b.y, b.w, b.h);
+            }
+        });
+    }
+
+    // 5. Animated Slimes in Cavern & Pond
+    let slimes = (typeof externalGameAssets !== 'undefined' && externalGameAssets.slimes) ? externalGameAssets.slimes : [];
+    if (slimes.length > 0) {
+        let slimeCoords = [
+            { x: -90, y: STORY_CONFIG.LOWER_FLOOR - 28, w: 32, h: 28 },
+            { x: 520, y: STORY_CONFIG.LOWER_FLOOR - 28, w: 32, h: 28 },
+            { x: 4360, y: 445 - 28, w: 32, h: 28 }
+        ];
+        slimeCoords.forEach((sl, idx) => {
+            if (sl.x + sl.w < camX || sl.x > camX + GAME_WIDTH) return;
+            let fIdx = Math.floor(now / 120 + idx * 3) % slimes.length;
+            let img = slimes[fIdx];
+            if (img && img.complete && img.naturalWidth > 0) {
+                ctx.drawImage(img, sl.x, sl.y, sl.w, sl.h);
+            }
+        });
+    }
+}
+
+// ============================================================================
+// --- 4-STAGE TRIALS SYSTEM (ЗАЛ ИСПЫТАНИЙ) ---
+// ============================================================================
+let storyTrials = {
+    active: false,
+    stage: 0, // 0 = not started, 1 = mannequins, 2 = maze, 3 = targets, 4 = demon boss, 5 = cleared
+    warnings: 0, // 0..3
+    stageTimer: 0,
+    announcement: "",
+    announcementTimer: 0,
+    announcementColor: "#38bdf8",
+    noticeText: "",
+    noticeTimer: 0,
+    warningRestarting: false,
+    stageStartHp: {},
+    overseerText: "",
+    overseerTimer: 0,
+    // Stage 1 & 2
+    mannequins: [],
+    // Stage 2
+    mazeWallBroken: false,
+    mazeTargetHit: false,
+    mazeDropGuide: null,
+    // Stage 3
+    targets: [],
+    targetTimer: 600,
+    // Stage 4
+    demon: null,
+    trialsCleared: false,
+    particles: []
+};
+
+function showStoryTrialNotice(text) {
+    storyTrials.noticeText = text;
+    storyTrials.noticeTimer = 110;
+}
+
+function startStoryTrials() {
+    if (storyTrials.active) return;
+    storyState.inTrials = true;
+    storyTrials.active = true;
+    storyTrials.warnings = 0;
+    storyTrials.trialsCleared = false;
+    storyState.trialsWeaponGranted = true;
+
+    // Slam gate shut behind party
+    storyState.trialsGateY = 420;
+    let gp = platforms.find(p => p.isTrialsGate);
+    if (gp) gp.y = 420;
+
+    playSound('parry');
+    playSound('lightChime');
+    triggerShake(8, 14);
+
+    storyTrials.overseerText = "Распорядитель: «Приветствую вас в Зале Испытаний! Оружие даровано. Испытание 1 начинается!»";
+    storyTrials.overseerTimer = 260;
+
+    startStoryTrialsStage(1, false);
+}
+
+function startStoryTrialsStage(stageNum, isRestart) {
+    storyTrials.stage = stageNum;
+    storyTrials.stageTimer = 0;
+    storyTrials.warningRestarting = false;
+
+    if (!isRestart) {
+        for (let pl of players) {
+            if (pl) storyTrials.stageStartHp[pl.id] = pl.hp;
+        }
+    }
+
+    if (stageNum === 1) {
+        storyTrials.announcement = "ЭТАП 1: ТРЕНИРОВОЧНЫЕ МАНЕКЕНЫ";
+        storyTrials.announcementColor = "#38bdf8";
+        storyTrials.announcementTimer = 180;
+        storyTrials.mannequins = [
+            { id: 1, x: 2100, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: true, state: 'WALK', strikeTimer: 0, strikeCooldown: 40, hitFlash: 0 },
+            { id: 2, x: 2880, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: false, state: 'WALK', strikeTimer: 0, strikeCooldown: 60, hitFlash: 0 }
+        ];
+    } else if (stageNum === 2) {
+        storyTrials.announcement = "ЭТАП 2: ЛАБИРИНТ И МИШЕНЬ";
+        storyTrials.announcementColor = "#38bdf8";
+        storyTrials.announcementTimer = 180;
+        storyTrials.overseerText = "Распорядитель: «Разбейте серую стену снизу и направьте каплю Воды (X+F) в мишень! И держите оборону!»";
+        storyTrials.overseerTimer = 260;
+        storyTrials.mazeWallBroken = false;
+        storyTrials.mazeTargetHit = false;
+        storyTrials.mazeDropGuide = null;
+        storyTrials.mannequins = [
+            { id: 3, x: 2780, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: false, state: 'WALK', strikeTimer: 0, strikeCooldown: 50, hitFlash: 0 }
+        ];
+    } else if (stageNum === 3) {
+        storyTrials.announcement = "ЭТАП 3: СКОРОСТНЫЕ МИШЕНИ (10 СЕКУНД)";
+        storyTrials.announcementColor = "#f59e0b";
+        storyTrials.announcementTimer = 180;
+        storyTrials.overseerText = "Распорядитель: «Уничтожьте все 5 мишеней за 10 секунд! Не успеете — получите предупреждение!»";
+        storyTrials.overseerTimer = 240;
+        storyTrials.targetTimer = 600; // 10 sec @ 60 FPS
+        storyTrials.targets = [
+            { id: 1, x: 2060, y: 815, r: 16, hp: 1 },
+            { id: 2, x: 2245, y: 690, r: 16, hp: 1 },
+            { id: 3, x: 2480, y: 495, r: 16, hp: 1 },
+            { id: 4, x: 2700, y: 690, r: 16, hp: 1 },
+            { id: 5, x: 2920, y: 815, r: 16, hp: 1 }
+        ];
+    } else if (stageNum === 4) {
+        storyTrials.announcement = "ЭТАП 4: ИСПЫТАТЕЛЬНЫЙ ДЕМОН";
+        storyTrials.announcementColor = "#c084fc";
+        storyTrials.announcementTimer = 200;
+        storyTrials.overseerText = "Распорядитель: «Финальное испытание! Одолейте Испытательного Демона! Берегитесь напрыгивания!»";
+        storyTrials.overseerTimer = 280;
+        storyTrials.demon = {
+            x: 2720,
+            y: 850 - 80,
+            vx: 0,
+            vy: 0,
+            width: 50,
+            height: 80,
+            hp: 20,
+            maxHp: 20,
+            facingRight: false,
+            state: 'WALK', // WALK, WINDUP_LEAP, LEAP, SLAM, WINDUP_POWER, POWER_WAVE
+            stateTimer: 60,
+            attackCooldown: 80,
+            hitFlash: 0,
+            shockwaves: [],
+            powerWaves: []
+        };
+    }
+}
+
+function triggerStoryTrialWarning(reason) {
+    if (storyTrials.warningRestarting) return;
+    storyTrials.warningRestarting = true;
+    storyTrials.warnings++;
+    playSound('damage');
+    triggerShake(10, 16);
+
+    if (storyTrials.warnings >= 3) {
+        storyTrials.announcement = "💀 ПРОВАЛ ИСПЫТАНИЙ (3/3 предупреждений)!";
+        storyTrials.announcementColor = "#ef4444";
+        storyTrials.announcementTimer = 220;
+        setTimeout(() => {
+            storyTrials.warnings = 0;
+            storyTrials.active = false;
+            storyState.inTrials = false;
+            storyState.trialsStage = 0;
+            storyState.trialsGateY = 220;
+            let gp = platforms.find(p => p.isTrialsGate);
+            if (gp) gp.y = 220;
+            respawnPlayerAtStoryCheckpoint();
+            storyTrials.warningRestarting = false;
+        }, 2200);
+    } else {
+        storyTrials.announcement = `⚠️ ПРЕДУПРЕЖДЕНИЕ (${storyTrials.warnings}/3)! ${reason} Перезапуск этапа...`;
+        storyTrials.announcementColor = "#f59e0b";
+        storyTrials.announcementTimer = 180;
+        setTimeout(() => {
+            for (let pl of players) {
+                if (pl) {
+                    let saved = storyTrials.stageStartHp[pl.id] || 3;
+                    pl.hp = Math.max(2.5, saved);
+                    pl.isDowned = false;
+                    pl.invuln = 60;
+                }
+            }
+            startStoryTrialsStage(storyTrials.stage, true);
+        }, 1800);
+    }
+}
+
+function completeStoryTrialsStage() {
+    playSound('heal');
+    playSound('lightChime');
+    triggerShake(5, 10);
+
+    // Timur: "зато после каждого выполеного этапа им востонавливают по одному хп каждому"
+    for (let pl of players) {
+        if (pl) pl.hp = Math.min(pl.maxHp, pl.hp + 1.0);
+    }
+
+    let st = storyTrials.stage;
+    storyTrials.announcement = `✨ ЭТАП ${st} ПРОЙДЕН! +1 HP ВСЕМ ГЕРОЯМ 💚`;
+    storyTrials.announcementColor = "#4ade80";
+    storyTrials.announcementTimer = 180;
+
+    if (st < 4) {
+        setTimeout(() => {
+            if (storyTrials.active) {
+                startStoryTrialsStage(st + 1, false);
+            }
+        }, 2200);
+    } else {
+        storyTrials.stage = 5;
+        storyTrials.trialsCleared = true;
+        storyTrials.overseerText = "Распорядитель: «Невероятно! Вы прошли все четыре ступени Испытаний! Ваша сила и слаженность доказаны!»";
+        storyTrials.overseerTimer = 360;
+        storyTrials.announcement = "🏆 ВСЕ ИСПЫТАНИЯ ПРОЙДЕНЫ! ПОБЕДА!";
+        storyTrials.announcementColor = "#fde047";
+        storyTrials.announcementTimer = 320;
+        playSound('bladeSpin');
+        playSound('lightChime');
+        // Open the exit gate at X = 3100
+        let exitGate = platforms.find(p => p.isTrialsExitGate);
+        if (exitGate) exitGate.y = 220;
+    }
+}
+
+function updateStoryTrials() {
+    if (!storyTrials.active) return;
+    storyTrials.stageTimer++;
+
+    if (storyTrials.announcementTimer > 0) storyTrials.announcementTimer--;
+    if (storyTrials.noticeTimer > 0) storyTrials.noticeTimer--;
+    if (storyTrials.overseerTimer > 0) storyTrials.overseerTimer--;
+
+    // 1. Check Warning Rule: "если хп опустится до 1 у кого то то этот этап испытания придется переходить заново"
+    if (!storyTrials.warningRestarting && storyTrials.stage >= 1 && storyTrials.stage <= 4) {
+        for (let pl of players) {
+            if (pl && pl.hp <= 1.0) {
+                triggerStoryTrialWarning(`Герой ${pl.type} при смерти (HP <= 1)!`);
+                return;
+            }
+        }
+    }
+
+    // 2. Update Particles (debris, sparks)
+    for (let i = storyTrials.particles.length - 1; i >= 0; i--) {
+        let pt = storyTrials.particles[i];
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.vy += 0.35;
+        pt.timer--;
+        if (pt.timer <= 0) storyTrials.particles.splice(i, 1);
+    }
+
+    // 3. Update Mannequins (Stage 1 & Stage 2)
+    for (let i = storyTrials.mannequins.length - 1; i >= 0; i--) {
+        let m = storyTrials.mannequins[i];
+        if (m.hitFlash > 0) m.hitFlash--;
+
+        // Find nearest living player
+        let nearestPl = null;
+        let minDist = 999999;
+        for (let pl of players) {
+            if (pl && pl.hp > 0 && !pl.isDowned) {
+                let d = Math.hypot(pl.x - m.x, pl.y - (m.y - 25));
+                if (d < minDist) { minDist = d; nearestPl = pl; }
+            }
+        }
+
+        if (nearestPl) {
+            m.facingRight = (nearestPl.x > m.x);
+        }
+
+        if (m.state === 'WALK') {
+            if (nearestPl) {
+                m.vx = m.facingRight ? 1.6 : -1.6;
+                m.x += m.vx;
+                // Keep mannequin on floor
+                m.x = Math.max(1940, Math.min(3060, m.x));
+
+                if (m.strikeCooldown > 0) m.strikeCooldown--;
+                if (minDist <= 65 && m.strikeCooldown <= 0) {
+                    m.state = 'WINDUP';
+                    m.strikeTimer = 28;
+                    m.vx = 0;
+                }
+            }
+
+            // Contact Damage (входной урон: 1)
+            for (let pl of players) {
+                if (pl && pl.hp > 0 && pl.invuln <= 0) {
+                    let mBox = { x: m.x - 15, y: m.y - 50, width: 30, height: 50 };
+                    let plBox = { x: pl.x, y: pl.y, width: pl.width, height: pl.height };
+                    if (rectIntersect(mBox, plBox)) {
+                        takeDamage(pl, 1.0, true, true);
+                        pl.invuln = 45;
+                        pl.vx = m.facingRight ? 6 : -6;
+                        pl.vy = -3;
+                        triggerVibration('damage');
+                    }
+                }
+            }
+        } else if (m.state === 'WINDUP') {
+            m.strikeTimer--;
+            if (m.strikeTimer <= 0) {
+                m.state = 'STRIKE';
+                m.strikeTimer = 16;
+                playSound('slash');
+                triggerShake(3, 6);
+
+                // Demonic strike forward hitbox (1 damage)
+                let slashBox = {
+                    x: m.facingRight ? m.x : m.x - 70,
+                    y: m.y - 45,
+                    width: 70,
+                    height: 45
+                };
+                for (let pl of players) {
+                    if (pl && pl.hp > 0 && pl.invuln <= 0) {
+                        let plBox = { x: pl.x, y: pl.y, width: pl.width, height: pl.height };
+                        if (rectIntersect(slashBox, plBox)) {
+                            takeDamage(pl, 1.0, true, true);
+                            pl.invuln = 45;
+                            pl.vx = m.facingRight ? 9 : -9;
+                            pl.vy = -4;
+                            triggerVibration('damage');
+                        }
+                    }
+                }
+            }
+        } else if (m.state === 'STRIKE') {
+            m.strikeTimer--;
+            if (m.strikeTimer <= 0) {
+                m.state = 'WALK';
+                m.strikeCooldown = 70;
+            }
+        }
+
+        if (m.hp <= 0) {
+            playSound('bladeSpin');
+            triggerShake(6, 10);
+            for (let k = 0; k < 12; k++) {
+                storyTrials.particles.push({
+                    x: m.x,
+                    y: m.y - 25,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: -Math.random() * 8,
+                    color: Math.random() < 0.5 ? "#78350f" : "#6b21a8",
+                    size: 4 + Math.random() * 4,
+                    timer: 35
+                });
+            }
+            storyTrials.mannequins.splice(i, 1);
+        }
+    }
+
+    // Check Stage 1 Clear
+    if (storyTrials.stage === 1 && storyTrials.mannequins.length === 0 && !storyTrials.warningRestarting) {
+        completeStoryTrialsStage();
+    }
+
+    // 4. Update Stage 2 (Maze + Droplet Guide + Mannequin)
+    if (storyTrials.stage === 2) {
+        // Guided water droplet through maze channel
+        if (storyTrials.mazeDropGuide) {
+            let dg = storyTrials.mazeDropGuide;
+            let currentPt = dg.points[dg.idx];
+            if (currentPt && dg.drop) {
+                let dx = currentPt.x - dg.drop.x;
+                let dy = currentPt.y - dg.drop.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist < 6) {
+                    dg.idx++;
+                    if (dg.idx >= dg.points.length) {
+                        // Reached Target!
+                        storyTrials.mazeTargetHit = true;
+                        playSound('lightChime');
+                        playSound('bladeSpin');
+                        triggerShake(8, 14);
+                        for (let k = 0; k < 16; k++) {
+                            storyTrials.particles.push({
+                                x: 2480,
+                                y: 565,
+                                vx: (Math.random() - 0.5) * 8,
+                                vy: (Math.random() - 0.5) * 8,
+                                color: Math.random() < 0.5 ? "#fde047" : "#38bdf8",
+                                size: 4 + Math.random() * 4,
+                                timer: 45
+                            });
+                        }
+                        if (dg.owner) {
+                            dg.owner.waterDropActive = false;
+                            dg.owner.waterDrop = null;
+                        }
+                        storyTrials.mazeDropGuide = null;
+                    }
+                } else {
+                    dg.drop.x += (dx / dist) * 7.5;
+                    dg.drop.y += (dy / dist) * 7.5;
+                }
+            }
+        }
+
+        // Check Stage 2 Clear
+        if (storyTrials.mazeTargetHit && storyTrials.mannequins.length === 0 && !storyTrials.warningRestarting) {
+            completeStoryTrialsStage();
+        }
+    }
+
+    // 5. Update Stage 3 (Targets with 10s Timer)
+    if (storyTrials.stage === 3 && !storyTrials.warningRestarting) {
+        storyTrials.targetTimer--;
+        if (storyTrials.targetTimer === 180 || storyTrials.targetTimer === 120 || storyTrials.targetTimer === 60) {
+            playSound('step');
+        }
+
+        if (storyTrials.targets.length === 0) {
+            completeStoryTrialsStage();
+        } else if (storyTrials.targetTimer <= 0) {
+            triggerStoryTrialWarning("Время вышло! Не успели уничтожить 5 мишеней!");
+        }
+    }
+
+    // 6. Update Stage 4 (Trials Demon Boss)
+    if (storyTrials.stage === 4 && storyTrials.demon && !storyTrials.warningRestarting) {
+        let d = storyTrials.demon;
+        if (d.hitFlash > 0) d.hitFlash--;
+
+        let nearestPl = null;
+        let minDist = 999999;
+        for (let pl of players) {
+            if (pl && pl.hp > 0 && !pl.isDowned) {
+                let dist = Math.hypot(pl.x - d.x, pl.y - (d.y - 40));
+                if (dist < minDist) { minDist = dist; nearestPl = pl; }
+            }
+        }
+
+        if (nearestPl) {
+            d.facingRight = (nearestPl.x > d.x);
+        }
+
+        // Boss Contact Damage (входной урон: 1.5)
+        for (let pl of players) {
+            if (pl && pl.hp > 0 && pl.invuln <= 0) {
+                let dBox = { x: d.x - 25, y: d.y - 75, width: 50, height: 75 };
+                let plBox = { x: pl.x, y: pl.y, width: pl.width, height: pl.height };
+                if (rectIntersect(dBox, plBox)) {
+                    takeDamage(pl, 1.5, true, true);
+                    pl.invuln = 45;
+                    pl.vx = d.facingRight ? 9 : -9;
+                    pl.vy = -4;
+                    triggerVibration('damage');
+                }
+            }
+        }
+
+        // Boss Shockwaves (Attack 1 ground slam shockwave: 2.0 damage)
+        for (let i = d.shockwaves.length - 1; i >= 0; i--) {
+            let sw = d.shockwaves[i];
+            sw.x += sw.vx;
+            sw.timer--;
+            let swBox = { x: sw.x - 25, y: 850 - 40, width: 50, height: 40 };
+            for (let pl of players) {
+                if (pl && pl.hp > 0 && pl.invuln <= 0 && rectIntersect(swBox, pl)) {
+                    takeDamage(pl, 2.0, true, true);
+                    pl.invuln = 45;
+                    pl.vy = -8;
+                    triggerVibration('damage');
+                }
+            }
+            if (sw.timer <= 0 || sw.x < 1920 || sw.x > 3080) {
+                d.shockwaves.splice(i, 1);
+            }
+        }
+
+        // Boss Power Waves (Attack 2 demonic power wave: 1.5 damage)
+        for (let i = d.powerWaves.length - 1; i >= 0; i--) {
+            let pw = d.powerWaves[i];
+            pw.x += pw.vx;
+            pw.y += pw.vy;
+            pw.timer--;
+            let pwBox = { x: pw.x - 18, y: pw.y - 18, width: 36, height: 36 };
+            for (let pl of players) {
+                if (pl && pl.hp > 0 && pl.invuln <= 0 && rectIntersect(pwBox, pl)) {
+                    takeDamage(pl, 1.5, true, true);
+                    pl.invuln = 45;
+                    triggerVibration('damage');
+                }
+            }
+            if (pw.timer <= 0 || pw.x < 1920 || pw.x > 3080) {
+                d.powerWaves.splice(i, 1);
+            }
+        }
+
+        if (d.attackCooldown > 0) d.attackCooldown--;
+
+        if (d.state === 'WALK') {
+            if (nearestPl) {
+                d.vx = d.facingRight ? 1.8 : -1.8;
+                d.x += d.vx;
+                d.x = Math.max(1960, Math.min(3040, d.x));
+            }
+            if (d.attackCooldown <= 0 && nearestPl) {
+                d.attackCooldown = 110;
+                // Alternate between Leap Attack and Demon Power Wave
+                if (Math.random() < 0.5) {
+                    d.state = 'WINDUP_LEAP';
+                    d.stateTimer = 32;
+                    d.vx = 0;
+                } else {
+                    d.state = 'WINDUP_POWER';
+                    d.stateTimer = 36;
+                    d.vx = 0;
+                }
+            }
+        } else if (d.state === 'WINDUP_LEAP') {
+            d.stateTimer--;
+            if (d.stateTimer <= 0) {
+                d.state = 'LEAP';
+                d.vy = -16;
+                let dir = (nearestPl && nearestPl.x > d.x) ? 1 : -1;
+                d.vx = dir * 6.5;
+                playSound('jump');
+            }
+        } else if (d.state === 'LEAP') {
+            d.x += d.vx;
+            d.y += d.vy;
+            d.vy += 0.85;
+            if (d.vy > 2) d.vy += 0.4; // Fast fall slam
+
+            if (d.y >= 850 - 80) {
+                d.y = 850 - 80;
+                d.vy = 0;
+                d.vx = 0;
+                d.state = 'SLAM';
+                d.stateTimer = 25;
+                playSound('breakStone');
+                playSound('slash');
+                triggerShake(9, 15);
+
+                // 2.0 damage slam under boss
+                let slamBox = { x: d.x - 40, y: 850 - 50, width: 80, height: 50 };
+                for (let pl of players) {
+                    if (pl && pl.hp > 0 && pl.invuln <= 0 && rectIntersect(slamBox, pl)) {
+                        takeDamage(pl, 2.0, true, true);
+                        pl.invuln = 45;
+                        pl.vy = -7;
+                    }
+                }
+
+                // Shockwaves racing left and right
+                d.shockwaves.push({ x: d.x - 20, vx: -7.5, timer: 65 });
+                d.shockwaves.push({ x: d.x + 20, vx: 7.5, timer: 65 });
+            }
+        } else if (d.state === 'SLAM') {
+            d.stateTimer--;
+            if (d.stateTimer <= 0) {
+                d.state = 'WALK';
+            }
+        } else if (d.state === 'WINDUP_POWER') {
+            d.stateTimer--;
+            if (d.stateTimer <= 0) {
+                d.state = 'POWER_WAVE';
+                d.stateTimer = 25;
+                playSound('heatIgnite');
+                triggerShake(6, 12);
+                let pDir = d.facingRight ? 1 : -1;
+                d.powerWaves.push({ x: d.x + pDir * 30, y: 850 - 45, vx: pDir * 8.5, vy: 0, timer: 75 });
+                d.powerWaves.push({ x: d.x + pDir * 30, y: 850 - 75, vx: pDir * 7.5, vy: -0.8, timer: 75 });
+            }
+        } else if (d.state === 'POWER_WAVE') {
+            d.stateTimer--;
+            if (d.stateTimer <= 0) {
+                d.state = 'WALK';
+            }
+        }
+
+        if (d.hp <= 0) {
+            completeStoryTrialsStage();
+            storyTrials.demon = null;
+        }
+    }
+}
+
+// Melee attack hitbox against trial entities
+function checkStoryTrialHitbox(swordHitbox, attacker) {
+    if (!storyTrials.active) return;
+
+    // Timur: "вода - 0.75, воздух - 0.75, земля - 0.5"
+    let dmg = 0.75;
+    if (attacker.type === 'EARTH') {
+        dmg = (attacker.attackType === 'EARTH_SPRINT_STRIKE') ? 0.75 : 0.5;
+    } else if (attacker.type === 'AIR') {
+        dmg = 0.75;
+    } else if (attacker.type === 'WATER') {
+        dmg = 0.75;
+    }
+
+    // 1. Mannequins
+    for (let m of storyTrials.mannequins) {
+        let mBox = { x: m.x - 18, y: m.y - 50, width: 36, height: 50 };
+        if (rectIntersect(swordHitbox, mBox)) {
+            m.hp -= dmg;
+            m.hitFlash = 16;
+            m.vx = (attacker.x < m.x ? 5 : -5);
+            playSound('hitBoss');
+            triggerShake(3, 6);
+            if (attacker.attackType === 'DOWN') {
+                attacker.vy = -14;
+                attacker.jumps = 1;
+            }
+        }
+    }
+
+    // 2. Stage 2: Breakable Wall below maze entrance
+    if (storyTrials.stage === 2 && !storyTrials.mazeWallBroken) {
+        let wallBox = { x: 2460, y: 712, width: 45, height: 24 };
+        if (rectIntersect(swordHitbox, wallBox)) {
+            storyTrials.mazeWallBroken = true;
+            playSound('breakStone');
+            triggerShake(6, 10);
+            for (let k = 0; k < 18; k++) {
+                storyTrials.particles.push({
+                    x: 2480,
+                    y: 720,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: -Math.random() * 7,
+                    color: Math.random() < 0.5 ? "#64748b" : "#94a3b8",
+                    size: 4 + Math.random() * 4,
+                    timer: 35
+                });
+            }
+        }
+    }
+
+    // 3. Stage 3: Targets
+    if (storyTrials.stage === 3) {
+        for (let i = storyTrials.targets.length - 1; i >= 0; i--) {
+            let trg = storyTrials.targets[i];
+            let tBox = { x: trg.x - trg.r, y: trg.y - trg.r, width: trg.r * 2, height: trg.r * 2 };
+            if (rectIntersect(swordHitbox, tBox)) {
+                playSound('bladeSpin');
+                playSound('parry');
+                triggerShake(4, 7);
+                for (let k = 0; k < 12; k++) {
+                    storyTrials.particles.push({
+                        x: trg.x,
+                        y: trg.y,
+                        vx: (Math.random() - 0.5) * 8,
+                        vy: (Math.random() - 0.5) * 8,
+                        color: Math.random() < 0.5 ? "#ef4444" : "#ffffff",
+                        size: 3 + Math.random() * 3,
+                        timer: 25
+                    });
+                }
+                storyTrials.targets.splice(i, 1);
+            }
+        }
+    }
+
+    // 4. Stage 4: Trials Demon Boss
+    if (storyTrials.stage === 4 && storyTrials.demon) {
+        let d = storyTrials.demon;
+        let dBox = { x: d.x - 25, y: d.y - 75, width: 50, height: 75 };
+        if (rectIntersect(swordHitbox, dBox)) {
+            d.hp -= dmg;
+            d.hitFlash = 16;
+            playSound('hitBoss');
+            triggerShake(4, 8);
+            if (attacker.attackType === 'DOWN') {
+                attacker.vy = -14;
+                attacker.jumps = 1;
+            }
+        }
+    }
+}
+
+// Water droplet collision with trial elements
+function checkStoryTrialWaterDropHit(drop, p, hitBox) {
+    if (!storyTrials.active) return false;
+
+    // Stage 2: Breakable wall hit by water drop
+    if (storyTrials.stage === 2 && !storyTrials.mazeWallBroken) {
+        let wallBox = { x: 2460, y: 712, width: 45, height: 24 };
+        if (rectIntersect(hitBox, wallBox)) {
+            storyTrials.mazeWallBroken = true;
+            playSound('breakStone');
+            playSound('waterSplash');
+            triggerShake(6, 10);
+            return true;
+        }
+    }
+
+    // Stage 2: Entrance to the maze channel (only after wall broken)
+    if (storyTrials.stage === 2 && storyTrials.mazeWallBroken && !storyTrials.mazeTargetHit) {
+        if (drop.x >= 2450 && drop.x <= 2515 && drop.y >= 700 && drop.y <= 745) {
+            storyTrials.mazeDropGuide = {
+                drop: drop,
+                owner: p,
+                idx: 0,
+                points: [
+                    { x: 2480, y: 715 },
+                    { x: 2480, y: 685 },
+                    { x: 2390, y: 685 },
+                    { x: 2390, y: 620 },
+                    { x: 2570, y: 620 },
+                    { x: 2570, y: 565 },
+                    { x: 2480, y: 565 }
+                ]
+            };
+            playSound('waterSplash');
+            return false; // keep drop alive as it follows guided channel
+        }
+    }
+
+    // Mannequins
+    for (let m of storyTrials.mannequins) {
+        let mBox = { x: m.x - 18, y: m.y - 50, width: 36, height: 50 };
+        if (rectIntersect(hitBox, mBox)) {
+            m.hp -= 0.75;
+            m.hitFlash = 16;
+            playSound('hitBoss');
+            playSound('waterSplash');
+            return true;
+        }
+    }
+
+    // Stage 3: Targets
+    if (storyTrials.stage === 3) {
+        for (let i = storyTrials.targets.length - 1; i >= 0; i--) {
+            let trg = storyTrials.targets[i];
+            let tBox = { x: trg.x - trg.r, y: trg.y - trg.r, width: trg.r * 2, height: trg.r * 2 };
+            if (rectIntersect(hitBox, tBox)) {
+                playSound('bladeSpin');
+                storyTrials.targets.splice(i, 1);
+                return true;
+            }
+        }
+    }
+
+    // Stage 4: Trials Demon Boss
+    if (storyTrials.stage === 4 && storyTrials.demon) {
+        let d = storyTrials.demon;
+        let dBox = { x: d.x - 25, y: d.y - 75, width: 50, height: 75 };
+        if (rectIntersect(hitBox, dBox)) {
+            d.hp -= 0.75;
+            d.hitFlash = 16;
+            playSound('hitBoss');
+            playSound('waterSplash');
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Air trap / projectile collision with trial elements
+function checkStoryTrialProjectileHit(proj, type) {
+    if (!storyTrials.active) return false;
+    let pBox = { x: proj.x - 8, y: proj.y - 8, width: 16, height: 16 };
+
+    for (let m of storyTrials.mannequins) {
+        let mBox = { x: m.x - 18, y: m.y - 50, width: 36, height: 50 };
+        if (rectIntersect(pBox, mBox)) {
+            m.hp -= 0.75;
+            m.hitFlash = 16;
+            playSound('hitBoss');
+            return true;
+        }
+    }
+
+    if (storyTrials.stage === 3) {
+        for (let i = storyTrials.targets.length - 1; i >= 0; i--) {
+            let trg = storyTrials.targets[i];
+            let tBox = { x: trg.x - trg.r, y: trg.y - trg.r, width: trg.r * 2, height: trg.r * 2 };
+            if (rectIntersect(pBox, tBox)) {
+                playSound('bladeSpin');
+                storyTrials.targets.splice(i, 1);
+                return true;
+            }
+        }
+    }
+
+    if (storyTrials.stage === 4 && storyTrials.demon) {
+        let d = storyTrials.demon;
+        let dBox = { x: d.x - 25, y: d.y - 75, width: 50, height: 75 };
+        if (rectIntersect(pBox, dBox)) {
+            d.hp -= 0.75;
+            d.hitFlash = 16;
+            playSound('hitBoss');
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Find closest trial enemy or target for companion targeting
+function getNearestStoryTrialTarget(p) {
+    if (!storyTrials.active) return null;
+
+    if (storyTrials.stage === 1) {
+        let closest = null, minD = 999999;
+        for (let m of storyTrials.mannequins) {
+            let d = Math.hypot(m.x - p.x, (m.y - 25) - p.y);
+            if (d < minD) { minD = d; closest = { x: m.x, y: m.y - 25 }; }
+        }
+        return closest;
+    }
+
+    if (storyTrials.stage === 2) {
+        if (p.type === 'EARTH' && !storyTrials.mazeWallBroken) {
+            return { x: 2480, y: 720 };
+        }
+        if (storyTrials.mannequins.length > 0) {
+            let m = storyTrials.mannequins[0];
+            return { x: m.x, y: m.y - 25 };
+        }
+        return { x: 2480, y: 565 };
+    }
+
+    if (storyTrials.stage === 3) {
+        let closest = null, minD = 999999;
+        for (let trg of storyTrials.targets) {
+            let d = Math.hypot(trg.x - p.x, trg.y - p.y);
+            if (d < minD) { minD = d; closest = trg; }
+        }
+        return closest;
+    }
+
+    if (storyTrials.stage === 4 && storyTrials.demon) {
+        return { x: storyTrials.demon.x, y: storyTrials.demon.y - 35 };
+    }
+
+    return null;
+}
+
+// Companion AI during Trials
+function runStoryTrialsCompanionAI(p, inp, requestJump) {
+    if (!storyTrials.active) return;
+
+    // 1. Revive downed ally if possible
+    let downedAlly = players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0);
+    if (downedAlly && p.hp > 1.0) {
+        let dx = downedAlly.x - p.x;
+        if (Math.abs(dx) > 20) {
+            if (dx > 0) inp.right = true; else inp.left = true;
+        } else {
+            inp.heal = true;
+        }
+        return;
+    }
+
+    // 2. Stage 2: Earth Companion breaks the bottom maze wall!
+    if (storyTrials.stage === 2 && p.type === 'EARTH' && !storyTrials.mazeWallBroken) {
+        let targetX = 2480;
+        let dx = targetX - p.x;
+        if (Math.abs(dx) > 18) {
+            if (dx > 0) inp.right = true; else inp.left = true;
+        } else {
+            // Under entrance: jump up and attack upwards!
+            requestJump(14);
+            inp.up = true;
+            inp.attack = true;
+        }
+        return;
+    }
+
+    // 3. Stage 4: Dodge Demon Boss Leap / Shockwaves
+    if (storyTrials.stage === 4 && storyTrials.demon) {
+        let d = storyTrials.demon;
+        // If demon is about to slam or shockwaves are near: jump or dash away!
+        if (d.state === 'LEAP' && Math.abs(d.x - p.x) < 140) {
+            inp.dash = true;
+            if (p.x < d.x) inp.left = true; else inp.right = true;
+            return;
+        }
+        for (let sw of d.shockwaves) {
+            if (Math.abs(sw.x - p.x) < 70) {
+                requestJump(12);
+                break;
+            }
+        }
+    }
+
+    // 4. Default: Hunt nearest trial target
+    let tgt = getNearestStoryTrialTarget(p);
+    if (tgt) {
+        let dx = tgt.x - p.x;
+        let dy = tgt.y - p.y;
+        let dist = Math.hypot(dx, dy);
+
+        if (dy < -40 && Math.abs(dx) < 120) {
+            requestJump(12);
+        }
+
+        if (p.type === 'AIR') {
+            // Air prefers medium range to shoot traps
+            if (dist > 150) {
+                if (dx > 0) inp.right = true; else inp.left = true;
+            } else if (dist < 60) {
+                if (dx > 0) inp.left = true; else inp.right = true;
+            }
+            if (dist <= 260 && Math.random() < 0.25) {
+                inp.attack = true;
+            }
+        } else {
+            // Earth or Water close combat
+            if (Math.abs(dx) > 35) {
+                if (dx > 0) inp.right = true; else inp.left = true;
+            }
+            if (dist <= 65) {
+                inp.attack = true;
+            }
+        }
+    }
+}
+
+// Draw the entire Trials Arena, Overseer, Maze, Mannequins, Targets, Demon Boss & HUD
+function drawStoryTrials() {
+    if (!ctx) return;
+    let now = Date.now();
+
+    // 1. Overseer Observation Balcony & Model at X = 2000, Y = 660
+    ctx.save();
+    let ovX = 2000, ovY = 660;
+    // Stone plinth
+    ctx.fillStyle = "#1e293b";
+    ctx.strokeStyle = "#f59e0b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(ovX - 35, ovY, 70, 24, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Overseer character model
+    if (!window.storyOverseerDummy) {
+        window.storyOverseerDummy = createPlayer(-190, 'AIR', {}, 'AI', ovX);
+        window.storyOverseerDummy.facingRight = true;
+        window.storyOverseerDummy.stance = 'LIGHT';
+    }
+    window.storyOverseerDummy.x = ovX - 15;
+    window.storyOverseerDummy.y = ovY - 50;
+    drawPlayer(window.storyOverseerDummy);
+
+    // Golden Halo above Overseer
+    ctx.strokeStyle = "#fde047";
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = "#f59e0b";
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.arc(ovX, ovY - 60, 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = "#fbbf24";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("⚖️ Распорядитель", ovX, ovY - 78);
+
+    // Overseer Speech Bubble
+    if (storyTrials.overseerTimer > 0 && storyTrials.overseerText) {
+        let bw = Math.min(540, ctx.measureText(storyTrials.overseerText).width + 36);
+        ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+        ctx.strokeStyle = "#fbbf24";
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.roundRect(ovX - bw / 2, ovY - 120, bw, 32, 8);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#fef08a";
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillText(storyTrials.overseerText, ovX, ovY - 100);
+    }
+    ctx.restore();
+
+    // 2. Elevated Arena Battle Ledges
+    ctx.save();
+    ctx.fillStyle = "#1e293b";
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 2;
+    // Left ledge: X: 2180..2320, Y: 720
+    ctx.fillRect(2180, 720, 140, 18);
+    ctx.strokeRect(2180, 720, 140, 18);
+    // Right ledge: X: 2630..2770, Y: 720
+    ctx.fillRect(2630, 720, 140, 18);
+    ctx.strokeRect(2630, 720, 140, 18);
+    ctx.restore();
+
+    // 3. Stage 2: Overhead Logic Maze (X: 2360 .. 2600, Y: 530 .. 720)
+    ctx.save();
+    let mLeft = 2360, mRight = 2600, mTop = 530, mBottom = 720;
+
+    // Outer frame
+    ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 3;
+    ctx.fillRect(mLeft, mTop, mRight - mLeft, mBottom - mTop);
+    ctx.strokeRect(mLeft, mTop, mRight - mLeft, mBottom - mTop);
+
+    // Internal Maze Stone Walls (creating the channel)
+    ctx.strokeStyle = "#0284c7";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    // Divider 1 (vertical from roof down)
+    ctx.moveTo(2440, mTop); ctx.lineTo(2440, 650);
+    // Divider 2 (horizontal across)
+    ctx.moveTo(2440, 650); ctx.lineTo(2530, 650);
+    // Divider 3 (vertical from bottom up)
+    ctx.moveTo(2530, 650); ctx.lineTo(2530, 590);
+    // Bottom inner wall
+    ctx.moveTo(mLeft, 680); ctx.lineTo(2450, 680);
+    ctx.stroke();
+
+    // Bottom Entrance Gap & Breakable Wall
+    if (!storyTrials.mazeWallBroken) {
+        // Grey Breakable Stone Wall
+        ctx.fillStyle = "#64748b";
+        ctx.strokeStyle = "#94a3b8";
+        ctx.lineWidth = 2;
+        ctx.fillRect(2465, 714, 38, 16);
+        ctx.strokeRect(2465, 714, 38, 16);
+        // Cracks
+        ctx.strokeStyle = "#334155";
+        ctx.beginPath();
+        ctx.moveTo(2475, 715); ctx.lineTo(2482, 722); ctx.lineTo(2495, 728);
+        ctx.stroke();
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "bold 9px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("🧱 СТЕНА", 2484, 726);
+    } else {
+        // Open glowing water channel entrance
+        ctx.fillStyle = "rgba(56, 189, 248, 0.35)";
+        ctx.fillRect(2465, 716, 38, 14);
+    }
+
+    // Bullseye Target at (2480, 565)
+    let tgtX = 2480, tgtY = 565;
+    ctx.save();
+    if (storyTrials.mazeTargetHit) {
+        ctx.fillStyle = "#fde047";
+        ctx.shadowColor = "#f59e0b";
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.arc(tgtX, tgtY, 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("✨", tgtX, tgtY + 4);
+    } else {
+        // Red Bullseye
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath(); ctx.arc(tgtX, tgtY, 14, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(tgtX, tgtY, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath(); ctx.arc(tgtX, tgtY, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#fef08a";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("🎯", tgtX, tgtY - 18);
+    }
+    ctx.restore();
+    ctx.restore();
+
+    // 4. Stage 3: 5 Scattered Bullseye Targets
+    if (storyTrials.stage === 3) {
+        for (let trg of storyTrials.targets) {
+            ctx.save();
+            let bob = Math.sin(now * 0.005 + trg.id) * 3;
+            ctx.fillStyle = "#ef4444";
+            ctx.shadowColor = "#ef4444";
+            ctx.shadowBlur = 10;
+            ctx.beginPath(); ctx.arc(trg.x, trg.y + bob, trg.r, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.arc(trg.x, trg.y + bob, trg.r * 0.65, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath(); ctx.arc(trg.x, trg.y + bob, trg.r * 0.35, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    // 5. Training Demonic Mannequins
+    for (let m of storyTrials.mannequins) {
+        ctx.save();
+        if (!m.dummy) {
+            m.dummy = createPlayer(-100 - m.id, 'WATER', {}, 'AI', m.x);
+            m.dummy.stance = 'DEMON';
+            m.dummy.width = 30;
+            m.dummy.height = 50;
+        }
+        m.dummy.x = m.x - 15;
+        m.dummy.y = m.y - 50;
+        m.dummy.facingRight = m.facingRight;
+        m.dummy.attackTimer = (m.state === 'STRIKE') ? 14 : 0;
+        drawPlayer(m.dummy);
+
+        // Wooden dummy armor & demonic mask
+        ctx.fillStyle = "#6b21a8";
+        ctx.beginPath();
+        ctx.arc(m.x, m.y - 42, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (m.hitFlash > 0) {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+            ctx.beginPath();
+            ctx.arc(m.x, m.y - 25, 22, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Windup telegraph
+        if (m.state === 'WINDUP') {
+            ctx.strokeStyle = "#c084fc";
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = "#a855f7";
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            let startAngle = m.facingRight ? -0.4 : Math.PI - 0.4;
+            let endAngle = m.facingRight ? 0.4 : Math.PI + 0.4;
+            ctx.arc(m.x, m.y - 25, 55, startAngle, endAngle);
+            ctx.stroke();
+            ctx.fillStyle = "#f43f5e";
+            ctx.font = "bold 11px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("⚠️ Замах!", m.x, m.y - 68);
+        }
+
+        // Mannequin Health Bar
+        let bw = 45;
+        let hpW = Math.max(0, (m.hp / m.maxHp) * bw);
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(m.x - bw / 2, m.y - 58, bw, 5);
+        ctx.fillStyle = "#c084fc";
+        ctx.fillRect(m.x - bw / 2, m.y - 58, hpW, 5);
+        ctx.restore();
+    }
+
+    // 6. Stage 4: Trials Demon Boss
+    if (storyTrials.stage === 4 && storyTrials.demon) {
+        let d = storyTrials.demon;
+        ctx.save();
+        if (!d.dummy) {
+            d.dummy = createPlayer(-199, 'WATER', {}, 'AI', d.x);
+            d.dummy.stance = 'DEMON';
+            d.dummy.width = 50;
+            d.dummy.height = 80;
+        }
+        d.dummy.x = d.x - 25;
+        d.dummy.y = d.y;
+        d.dummy.facingRight = d.facingRight;
+        d.dummy.attackTimer = (d.state === 'SLAM' || d.state === 'POWER_WAVE') ? 16 : 0;
+
+        // Draw scaled boss model
+        ctx.save();
+        ctx.translate(d.x, d.y + 40);
+        ctx.scale(1.35, 1.35);
+        ctx.translate(-d.x, -(d.y + 40));
+        drawPlayer(d.dummy);
+        ctx.restore();
+
+        // Dark demonic aura & horns
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "#991b1b";
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y + 10, 16, Math.PI, 0);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Boss Leap Windup telegraph
+        if (d.state === 'WINDUP_LEAP') {
+            ctx.fillStyle = "rgba(147, 51, 234, 0.4)";
+            ctx.beginPath();
+            ctx.ellipse(d.x, 850 - 4, 45, 14, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#f43f5e";
+            ctx.font = "bold 13px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("⚡ НАПРЫГИВАНИЕ!", d.x, d.y - 18);
+        }
+
+        // Draw Shockwaves
+        ctx.fillStyle = "#9333ea";
+        ctx.shadowColor = "#c084fc";
+        ctx.shadowBlur = 12;
+        for (let sw of d.shockwaves) {
+            ctx.beginPath();
+            ctx.arc(sw.x, 850 - 15, 20, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Draw Power Waves
+        for (let pw of d.powerWaves) {
+            ctx.fillStyle = "#dc2626";
+            ctx.shadowColor = "#ef4444";
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.arc(pw.x, pw.y, 16, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    // 7. Particles
+    ctx.save();
+    for (let pt of storyTrials.particles) {
+        ctx.fillStyle = pt.color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+
+    // 8. Trials Screen HUD (Warnings Counter & Stage 3 Timer & Notice)
+    if (storyTrials.active) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // screen space
+
+        // Warnings Display (top left)
+        ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+        ctx.strokeStyle = (storyTrials.warnings > 0) ? "#f59e0b" : "#38bdf8";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(16, 48, 220, 36, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = (storyTrials.warnings > 0) ? "#fbbf24" : "#f1f5f9";
+        ctx.font = "bold 13px sans-serif";
+        ctx.textAlign = "left";
+        let warnDots = (storyTrials.warnings === 0) ? "⚪⚪⚪" : (storyTrials.warnings === 1) ? "🟡⚪⚪" : "🟡🟡⚪";
+        ctx.fillText(`⚠️ Предупреждения: ${storyTrials.warnings}/3  ${warnDots}`, 28, 71);
+
+        // Stage 3 10-Second Timer (top center)
+        if (storyTrials.stage === 3) {
+            let remSec = Math.max(0, storyTrials.targetTimer / 60).toFixed(1);
+            let isUrgent = storyTrials.targetTimer < 180;
+            ctx.fillStyle = isUrgent ? "rgba(127, 29, 29, 0.95)" : "rgba(15, 23, 42, 0.95)";
+            ctx.strokeStyle = isUrgent ? "#ef4444" : "#f59e0b";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.roundRect(canvas.width / 2 - 110, 48, 220, 42, 12);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = isUrgent ? "#fecaca" : "#fef08a";
+            ctx.font = "900 18px 'Segoe UI', Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(`⏱️ ${remSec} сек  [${storyTrials.targets.length}/5]`, canvas.width / 2, 75);
+        }
+
+        // Stage 4 Boss Health Bar (top center)
+        if (storyTrials.stage === 4 && storyTrials.demon) {
+            let d = storyTrials.demon;
+            let barW = 380, barH = 22;
+            let bx = canvas.width / 2 - barW / 2, by = 48;
+            let hpW = Math.max(0, (d.hp / d.maxHp) * barW);
+
+            ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+            ctx.strokeStyle = "#dc2626";
+            ctx.lineWidth = 2.5;
+            ctx.fillRect(bx, by, barW, barH);
+            ctx.strokeRect(bx, by, barW, barH);
+
+            ctx.fillStyle = "#dc2626";
+            ctx.fillRect(bx, by, hpW, barH);
+
+            ctx.fillStyle = "#fef2f2";
+            ctx.font = "bold 12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(`⚔️ ИСПЫТАТЕЛЬНЫЙ ДЕМОН  [${d.hp.toFixed(1)} / ${d.maxHp}]`, canvas.width / 2, by + 16);
+        }
+
+        // In-game notices (e.g. heal forbidden)
+        if (storyTrials.noticeTimer > 0 && storyTrials.noticeText) {
+            ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 2;
+            let nw = 340;
+            ctx.beginPath();
+            ctx.roundRect(canvas.width / 2 - nw / 2, canvas.height - 85, nw, 32, 8);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = "#fca5a5";
+            ctx.font = "bold 13px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(storyTrials.noticeText, canvas.width / 2, canvas.height - 64);
+        }
+
+        // Announcement Banner
+        if (storyTrials.announcementTimer > 0 && storyTrials.announcement) {
+            let bw = Math.min(680, canvas.width - 32);
+            ctx.fillStyle = "rgba(15, 23, 42, 0.96)";
+            ctx.strokeStyle = storyTrials.announcementColor;
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = storyTrials.announcementColor;
+            ctx.shadowBlur = 18;
+            ctx.beginPath();
+            ctx.roundRect(canvas.width / 2 - bw / 2, 98, bw, 42, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = storyTrials.announcementColor;
+            ctx.font = "900 16px 'Segoe UI', Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(storyTrials.announcement, canvas.width / 2, 125);
+        }
+        ctx.restore();
+    }
+}
+
 

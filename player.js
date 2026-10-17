@@ -1314,6 +1314,15 @@ function updatePlayers() {
                 usingReserve = true;
             }
 
+            if (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && storyState.inTrials) {
+                canAffordHeal = false;
+                if (kHeal && !p.prevHealKey && !p.isAi) {
+                    if (typeof showStoryTrialNotice === 'function') {
+                        showStoryTrialNotice("Лечение запрещено правилами Испытаний!");
+                    }
+                }
+            }
+
             if (kHeal && !p.prevHealKey && !p.isHealing && !p.isParrying && canAffordHeal && p.overheatTimer<=0) {
                 let isAoE = (p.type === 'WATER' && p.stance !== 'DEMON' && numPlayers === 2 && kUp); 
                 let isFiery = (p.type === 'FIRE' && kUp);
@@ -1656,7 +1665,12 @@ function updatePlayers() {
 
                 let dropHitBox = { x: p.waterDrop.x - 12, y: p.waterDrop.y - 12, width: 24, height: 24 };
                 let storyBonus = (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && storyState.waterDropBonusDmg) ? storyState.waterDropBonusDmg : 0;
-                if (window.isStoryMode && typeof storyState !== 'undefined' && storyState.guardian) {
+                if (window.isStoryMode && typeof storyState !== 'undefined' && storyState.inTrials && typeof checkStoryTrialWaterDropHit === 'function') {
+                    if (checkStoryTrialWaterDropHit(p.waterDrop, p, dropHitBox)) {
+                        p.waterDropActive = false;
+                        p.waterDrop = null;
+                    }
+                } else if (window.isStoryMode && typeof storyState !== 'undefined' && storyState.guardian) {
                     let g = storyState.guardian;
                     let gBox = { x: g.x - g.w/2, y: g.y, width: g.w, height: g.h };
                     if (rectIntersect(dropHitBox, gBox)) {
@@ -2605,19 +2619,43 @@ function updatePlayers() {
                 let nearRopeForAttack = (p.type === 'WATER_ROPE' && p.ropeActive && p.ropeA && p.ropeB && distToSegment({ x: p.x + p.width/2, y: p.y + p.height/2 }, p.ropeA, p.ropeB) < 95);
 
                 let canAttackNow = kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && p.lightCharge === 0 && p.overheatTimer <= 0 && !p.isRopeSliding && !nearRopeForAttack && !p.holdingBossRope;
-                if (typeof window !== 'undefined' && window.isStoryMode && p.type === 'WATER' && p.stance === 'LIGHT' && !(typeof storyState !== 'undefined' && storyState.trialsWeaponGranted)) {
-                    // В сюжетном режиме в состоянии воды пока нельзя атаковать обычным ударом X (чтобы не раскрывать себя) — только X + F!
-                    canAttackNow = false;
+                if (typeof window !== 'undefined' && window.isStoryMode && !(typeof storyState !== 'undefined' && storyState.trialsWeaponGranted)) {
+                    // До начала Испытаний оружия у героев ещё нет (кроме удара Воды в режиме Демона или комбо X+F)
+                    if (p.type !== 'WATER' || p.stance === 'LIGHT') {
+                        canAttackNow = false;
+                    }
                 }
                 if (canAttackNow) {
                     if (p.type === 'AIR') {
+                        p.attackTimer = 12;
                         p.attackCooldown = 22; 
                         playSound('throw'); 
-                        let dx = (boss.x + boss.width/2) - (p.x + p.width/2); 
-                        let dy = (boss.y + boss.height/2) - (p.y + p.height/2); 
-                        let dist = Math.hypot(dx, dy) || 1; 
-                        airTraps.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: (dx/dist)*14, vy: (dy/dist)*14, pId: p.id });
-                        swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - 70, y: p.y + 10, width: 70, height: 20 };
+                        let tx = p.x + (p.facingRight ? 220 : -220);
+                        let ty = p.y + 15;
+                        if (typeof window !== 'undefined' && window.isStoryMode && typeof getNearestStoryTrialTarget === 'function') {
+                            let tgt = getNearestStoryTrialTarget(p);
+                            if (tgt) { tx = tgt.x; ty = tgt.y; }
+                        } else if (boss && boss.x > -1000) {
+                            tx = boss.x + boss.width / 2;
+                            ty = boss.y + boss.height / 2;
+                        }
+                        let dx = tx - (p.x + p.width/2); 
+                        let dy = ty - (p.y + p.height/2); 
+                        let dist = Math.hypot(dx, dy) || 1;
+                        let vx = (dx / dist) * 14;
+                        let vy = (dy / dist) * 14;
+                        // Timur: "у воздуха он иногда будет мазать своими ловушками (потому что еще не очень опытный)"
+                        if (typeof window !== 'undefined' && window.isStoryMode && Math.random() < 0.36) {
+                            let missAngle = (Math.random() < 0.5 ? 1 : -1) * (0.34 + Math.random() * 0.24);
+                            let cosA = Math.cos(missAngle), sinA = Math.sin(missAngle);
+                            let rvx = vx * cosA - vy * sinA;
+                            let rvy = vx * sinA + vy * cosA;
+                            vx = rvx;
+                            vy = rvy;
+                            p.storyMissedTrapTimer = 45;
+                        }
+                        airTraps.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: vx, vy: vy, pId: p.id });
+                        swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - 75, y: p.y + 6, width: 75, height: 28 };
                         p.attackType = "NORMAL";
                     } else {
                         p.attackTimer = 12; 
@@ -2897,6 +2935,10 @@ function updatePlayers() {
 
                         for (let ph of phantoms) {
                             if (p.attackType === "DOWN" && rectIntersect(swordHitbox, ph)) { p.vy = -14; p.jumps = 1; p.airDashed = false; triggerVibration('clash'); triggerShake(2, 5, 0, 1); freezeFrames = 5; }
+                        }
+
+                        if (typeof window !== 'undefined' && window.isStoryMode && typeof checkStoryTrialHitbox === 'function' && swordHitbox) {
+                            checkStoryTrialHitbox(swordHitbox, p);
                         }
                     }
                 p.prevAttackKey = rawAttack;

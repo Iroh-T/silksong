@@ -1020,6 +1020,12 @@ function updateProjectiles() {
     for (let i = airTraps.length - 1; i >= 0; i--) {
         let t = airTraps[i]; t.x += t.vx; t.y += t.vy;
         if (t.x < 0 || t.x > ARENA_W || t.y < -2000 || t.y > FLOOR + 400) { airTraps.splice(i, 1); continue; }
+        if (typeof window !== 'undefined' && window.isStoryMode && typeof checkStoryTrialProjectileHit === 'function') {
+            if (checkStoryTrialProjectileHit(t, 'AIR_TRAP')) {
+                airTraps.splice(i, 1);
+                continue;
+            }
+        }
         if (rectIntersect({x: t.x-8, y: t.y-8, width: 16, height: 16}, boss) && boss.state !== "TRANSITION") {
             let caster = players.find(pl => pl.id === t.pId);
             let stateBefore = boss.state;

@@ -177,6 +177,11 @@ function runAiCompanion(p) {
 
     // --- STORY MODE AUTONOMOUS & LIVELY COMPANION AI ---
     if (typeof window !== 'undefined' && window.isStoryMode) {
+        // 0. If inside the 4-Stage Trials Arena, run dedicated Trials Combat & Puzzle AI!
+        if (typeof storyState !== 'undefined' && storyState.inTrials && typeof runStoryTrialsCompanionAI === 'function') {
+            return runStoryTrialsCompanionAI(p, inp, requestJump);
+        }
+
         // 1. Revive downed ally first if anyone is hurt
         let downedAlly = players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0);
         if (downedAlly && p.hp > 0.5) {
