@@ -298,7 +298,7 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
             if (players.length > 1 && activeAllies.length > 0 && !p.isDowned) { 
                 p.isDowned = true; 
                 p.hp = 0.1; 
-                p.downedTimer = 900; // 15 секунд (900 кадров при 60 FPS)
+                p.downedTimer = 600; // 10 секунд (600 кадров при 60 FPS)
             } else { 
                 p.hp = 0; 
             }
@@ -632,11 +632,25 @@ function updatePlayers() {
         let onPlatform = false;
         if (p.vy >= 0) {
             for (let plat of platforms) {
-                if (p.y + p.height <= plat.y + 15 && p.y + p.height + p.vy >= plat.y && p.x + p.width > plat.x && p.x < plat.x + plat.w) {
+                if (plat.isWall) continue;
+                if (p.y + p.height <= plat.y + 16 && p.y + p.height + p.vy >= plat.y && p.x + p.width > plat.x && p.x < plat.x + plat.w) {
                     p.y = plat.y - p.height; p.vy = 0; onPlatform = true; 
                     p.lastSafeX = plat.x + plat.w / 2 - p.width / 2; 
                     p.lastSafeY = plat.y - p.height;
                     if (plat.num) p.highestPlatReached = Math.max(p.highestPlatReached || 1, plat.num);
+                    break;
+                }
+            }
+        } else if (p.vy < 0) {
+            // Твёрдые платформы (в паркуре сюжета): если прыгнуть снизу под платформой, ударяешься головой об неё!
+            for (let plat of platforms) {
+                if (!plat.solid && !(typeof window !== 'undefined' && window.isStoryMode)) continue;
+                let platH = plat.h || 18;
+                if (p.y >= plat.y + platH - 14 && p.y + p.vy <= plat.y + platH && p.x + p.width > plat.x + 4 && p.x < plat.x + plat.w - 4) {
+                    p.y = plat.y + platH;
+                    p.vy = 2.0;
+                    p.jumpHoldTimer = 99;
+                    if (typeof playSound === 'function') playSound('step');
                     break;
                 }
             }
@@ -651,8 +665,32 @@ function updatePlayers() {
                 }
             }
         }
+        // Story Mode Water Pond check (X: 3820..4500, Y: 350..445)
+        p.inStoryWater = false;
+        if (typeof window !== 'undefined' && window.isStoryMode) {
+            if (p.x + p.width > 3820 && p.x < 4500 && p.y + p.height > 356 && p.y < 450) {
+                if (!p.wasInStoryWater && p.vy > 1.5) {
+                    if (typeof playSound === 'function') playSound('waterSplash');
+                    if (typeof voidExplosions !== 'undefined') {
+                        voidExplosions.push({ x: p.x + p.width / 2, y: 358, timer: 16, isWhite: true, isOrange: false, r: 28 });
+                    }
+                }
+                p.inStoryWater = true;
+                // Плавучесть в воде: мягкое покачивание у поверхности, возможность плыть и выпрыгивать
+                if (p.y + p.height > 388) {
+                    p.vy -= 0.72;
+                    if (p.vy > 2.2) p.vy = 2.2;
+                } else {
+                    if (p.vy > 1.8) p.vy *= 0.82;
+                }
+                onPlatform = true;
+                p.jumps = 0;
+            }
+            p.wasInStoryWater = p.inStoryWater;
+        }
         let onFloor = false;
-        if (!onPlatform && p.y + p.height >= FLOOR && !p.isUnderFloor) {
+        let canHitMainFloor = !(typeof window !== 'undefined' && window.isStoryMode) || (p.x + p.width > 0 && p.x < 3820 && p.y + p.height <= FLOOR + 26 && p.vy >= 0);
+        if (!onPlatform && canHitMainFloor && p.y + p.height >= FLOOR && !p.isUnderFloor) {
             if (abyssGooFloorActive && !abyssGooSolidified) {
                 // Пол залит черной густой жижей Бездны!
                 let hitsPerCharge = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
@@ -850,9 +888,17 @@ function updatePlayers() {
             kStance = (p.keys && p.keys.stance) ? isKeyPressed(p.keys.stance) : isKeyPressed(['KeyS', 'KeyT', 'KeyV']);
         }
 
+        let rawHealKey = kHeal;
         if (typeof window !== 'undefined' && window.isStoryMode) {
             kHeal = false;
             kDash = false;
+            if (p.type === 'AIR' || p.type === 'EARTH') {
+                if (!(typeof storyState !== 'undefined' && storyState.trialsWeaponGranted)) {
+                    kSpec = false;
+                    kStance = false;
+                    kAttack = false;
+                }
+            }
         }
 
         let rawAttack = kAttack;
@@ -1176,13 +1222,13 @@ function updatePlayers() {
             }
         }
 
-        if (p.tpDebuffTimer > 0) { p.tpDebuffTimer--; kSpec = false; kHeal = false; if (p.tpDebuffTimer <= 0) p.purpleHp = 0; }
+        if (p.tpDebuffTimer > 0) { p.tpDebuffTimer--; kSpec = false; kHeal = false; rawHealKey = false; if (p.tpDebuffTimer <= 0) p.purpleHp = 0; }
         if (p.tpCooldown > 0) p.tpCooldown--;
         p.isDashing = false;
 
         if (p.overheatTimer > 0 || boss.state.includes("SCREAM") || boss.state === "L_INTRO_FALL" || boss.state === "L_INTRO_RISE" || boss.state === "L_PHASE3_RISE" || boss.state === "L_CLIMB_START") {
             kJump = false; kAttack = false; kDash = false; kSpec = false; kLight = false; 
-            if (boss.state.includes("SCREAM") || boss.state === "L_CLIMB_START") { kLeft = false; kRight = false; kHeal = false; }
+            if (boss.state.includes("SCREAM") || boss.state === "L_CLIMB_START") { kLeft = false; kRight = false; kHeal = false; rawHealKey = false; }
             if (p.overheatTimer > 0) p.speed = 3.5;
         }
 
@@ -1213,6 +1259,29 @@ function updatePlayers() {
             p.isHealing = false; p.isAoEHealing = false; p.healTimer = 0; 
             if (p.type === 'STAMINA'){ p.isCharging = false; p.chargeTimer = 0; }
         } else {
+            // --- БЛИЖНЕЕ ВОСКРЕШЕНИЕ НА [A] (Отдать 1 HP или 0.5 HP тяжело раненому союзнику) ---
+            let nearbyDownedAlly = players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0 && Math.hypot((pl.x + pl.width / 2) - (p.x + p.width / 2), (pl.y + pl.height / 2) - (p.y + p.height / 2)) <= 75);
+            if (nearbyDownedAlly && rawHealKey && !p.prevHealKey && !p.isHealing && !p.isParrying && p.overheatTimer <= 0 && p.hp > 0.5) {
+                let giveHp = (p.hp > 1.0) ? 1.0 : 0.5;
+                p.hp = Math.max(0.5, Math.round((p.hp - giveHp) * 2) / 2);
+                nearbyDownedAlly.isDowned = false;
+                nearbyDownedAlly.hp = giveHp;
+                nearbyDownedAlly.stamina = 2;
+                nearbyDownedAlly.downedTimer = 0;
+                nearbyDownedAlly.invuln = 90;
+                kHeal = false;
+                playSound('heal');
+                playSound('lightChime');
+                triggerShake(4, 8);
+                if (typeof voidExplosions !== 'undefined') {
+                    voidExplosions.push({ x: nearbyDownedAlly.x + nearbyDownedAlly.width / 2, y: nearbyDownedAlly.y + nearbyDownedAlly.height / 2, timer: 22, isWhite: true, isOrange: false, r: 45 });
+                }
+                if (giveHp === 0.5 && numPlayers === 2) {
+                    let curU = (p.id === 1) ? getCurrentUser() : getP2User();
+                    if (curU && typeof unlockAchievement === 'function') unlockAchievement('brother_for_brother', curU);
+                }
+            }
+
             let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
             let hitsPerCharge = (typeof getHitsPerHeal === 'function') ? getHitsPerHeal() : 8;
             let healCost = (p.type === 'FIRE' && kUp) ? 1.5 : (p.isAoEHealing ? 1 : 1);
@@ -1231,7 +1300,8 @@ function updatePlayers() {
                 let isAoE = (p.type === 'WATER' && p.stance !== 'DEMON' && numPlayers === 2 && kUp); 
                 let isFiery = (p.type === 'FIRE' && kUp);
                 let needsHeal = p.hp < p.maxHp || isFiery || (p.type === 'WATER' && p.stance === 'DEMON'); 
-                let hasDownedAlly = players.some(pl => pl.isDowned);
+                let canRangedRevive = (p.type === 'WATER' || p.type === 'WATER_ROPE');
+                let hasDownedAlly = canRangedRevive && players.some(pl => pl.isDowned);
                 if (isAoE) needsHeal = players.some(pl => pl.hp < pl.maxHp) || hasDownedAlly;
                 if (needsHeal || (p.type === 'STAMINA' && p.stamina < p.maxStamina) || hasDownedAlly) {
                     p.isHealing = true; 
@@ -1265,7 +1335,7 @@ function updatePlayers() {
                     }
                 }
             }
-            p.prevHealKey = kHeal;
+            p.prevHealKey = rawHealKey;
 
             let isLightStun = (boss.state === "VOID_SINK_STUN");
             let reqCharge = isLightStun ? 15 : 60;
@@ -1567,11 +1637,12 @@ function updatePlayers() {
                 }
 
                 let dropHitBox = { x: p.waterDrop.x - 12, y: p.waterDrop.y - 12, width: 24, height: 24 };
+                let storyBonus = (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && storyState.waterDropBonusDmg) ? storyState.waterDropBonusDmg : 0;
                 if (window.isStoryMode && typeof storyState !== 'undefined' && storyState.guardian) {
                     let g = storyState.guardian;
                     let gBox = { x: g.x - g.w/2, y: g.y, width: g.w, height: g.h };
                     if (rectIntersect(dropHitBox, gBox)) {
-                        g.hp -= 2.5;
+                        g.hp -= (2.5 + storyBonus);
                         g.hitFlash = 20;
                         playSound('hitBoss');
                         playSound('waterSplash');
@@ -1581,16 +1652,16 @@ function updatePlayers() {
                         p.waterDrop = null;
                     }
                 } else if (rectIntersect(dropHitBox, boss) && boss.invuln <= 0) {
-                    tryDamageBoss(1.0, null);
+                    tryDamageBoss(1.0 + storyBonus, null);
                     playSound('hitBoss');
                     playSound('waterSplash');
                     triggerShake(5, 8);
                     voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 18, isWhite: false, isOrange: false, r: 35 });
                     p.waterDropActive = false;
                     p.waterDrop = null;
-                } else if (numPlayers === 2) {
-                    let ally = players.find(pl => pl.id !== p.id && !pl.isDowned && pl.hp > 0);
-                    if (ally && rectIntersect(dropHitBox, ally)) {
+                } else if (numPlayers === 2 || players.length > 1) {
+                    let ally = players.find(pl => pl.id !== p.id && !pl.isDowned && pl.hp > 0 && rectIntersect(dropHitBox, pl));
+                    if (ally) {
                         ally.hp = Math.min(ally.maxHp, ally.hp + 0.5);
                         playSound('heal');
                         playSound('waterSplash');
@@ -1599,9 +1670,17 @@ function updatePlayers() {
                         p.waterDrop = null;
                     }
                 }
-                if (p.waterDrop && (p.waterDrop.y >= FLOOR || p.waterDrop.x <= 0 || p.waterDrop.x >= ARENA_W || p.waterDrop.timer <= 0)) {
+                let dropExpired = false;
+                if (p.waterDrop) {
+                    if (window.isStoryMode) {
+                        dropExpired = (p.waterDrop.timer <= 0 || p.waterDrop.y > 950 || p.waterDrop.x < -550 || p.waterDrop.x > 4600);
+                    } else {
+                        dropExpired = (p.waterDrop.y >= FLOOR || p.waterDrop.x <= 0 || p.waterDrop.x >= ARENA_W || p.waterDrop.timer <= 0);
+                    }
+                }
+                if (p.waterDrop && dropExpired) {
                     playSound('waterSplash');
-                    voidExplosions.push({ x: p.waterDrop.x, y: Math.min(FLOOR, p.waterDrop.y), timer: 15, isWhite: false, isOrange: false, r: 25 });
+                    voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 15, isWhite: false, isOrange: false, r: 25 });
                     p.waterDropActive = false;
                     p.waterDrop = null;
                 }
@@ -1702,7 +1781,8 @@ function updatePlayers() {
             let onWall = false;
             let isClimbPhase = boss.state.startsWith("L_CLIMB") || boss.phase === 2.5;
             
-            if (!isClimbPhase && !window.isFireBossMode) {
+            // В сюжетном режиме способности карабкаться по стенам пока нет!
+            if (!isClimbPhase && !window.isFireBossMode && !window.isStoryMode) {
                 if (p.x <= 5 && kLeft && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = -1; p.facingRight = true; } 
                 else if (p.x >= ARENA_W - p.width - 5 && kRight && p.y >= topWallLimit && !onPlatform) { onWall = true; wallDir = 1; p.facingRight = false; }
             }
@@ -1853,7 +1933,7 @@ function updatePlayers() {
             if (!kSpec) p.prevDaggerKey = false;
             
             let isFallingTransition = (boss.state === "L_CLIMB_TRANSITION" && boss.transitionTimer < 120);
-            if (!isFallingTransition && !p.isUnderFloor && (p.y > camY + GAME_HEIGHT + 150 || p.y > FLOOR + 250)) {
+            if (!window.isStoryMode && !isFallingTransition && !p.isUnderFloor && (p.y > camY + GAME_HEIGHT + 150 || p.y > FLOOR + 250)) {
                 if (isClimbPhase && p.invuln > 0) {
                     // Во время подъема по платформам при неуязвимости (например, после SA2) игрок не получает урон от бездны!
                     p.x = p.lastSafeX || (ARENA_W / 2); 
@@ -1913,15 +1993,17 @@ function updatePlayers() {
                         if (p.type !== 'FIRE') consumeCompletedHeal(); 
                         if (typeof healsUsedInBattle !== 'undefined') healsUsedInBattle++;
 
-                        // Любой успешный хил (включая мультисвязыватель) обязательно поднимает упавших союзников!
+                        // Дистанционно воскрешать союзников завершением хила могут ТОЛЬКО оба героя Воды (WATER и WATER_ROPE)!
                         let didRevive = false;
-                        for (let pl of players) {
-                            if (pl.isDowned) {
-                                pl.isDowned = false;
-                                pl.hp = 1.5;
-                                pl.stamina = 2;
-                                pl.downedTimer = 0;
-                                didRevive = true;
+                        if (p.type === 'WATER' || p.type === 'WATER_ROPE') {
+                            for (let pl of players) {
+                                if (pl.isDowned) {
+                                    pl.isDowned = false;
+                                    pl.hp = 1.5;
+                                    pl.stamina = 2;
+                                    pl.downedTimer = 0;
+                                    didRevive = true;
+                                }
                             }
                         }
                         if (didRevive) playSound('lightChime');
@@ -1948,14 +2030,17 @@ function updatePlayers() {
                 } else {
                     let targetTime = (p.type === 'WATER' && p.stance === 'DEMON') ? 60 : (p.isAoEHealing ? 240 : p.healFramesTotal);
                     if (p.healTimer >= targetTime) { 
+                        // Дистанционно воскрешать союзников завершением хила могут ТОЛЬКО оба героя Воды (WATER и WATER_ROPE)!
                         let didRevive = false;
-                        for (let pl of players) {
-                            if (pl.isDowned) {
-                                pl.isDowned = false;
-                                pl.hp = 1.5;
-                                pl.stamina = 2;
-                                pl.downedTimer = 0;
-                                didRevive = true;
+                        if (p.type === 'WATER' || p.type === 'WATER_ROPE') {
+                            for (let pl of players) {
+                                if (pl.isDowned) {
+                                    pl.isDowned = false;
+                                    pl.hp = 1.5;
+                                    pl.stamina = 2;
+                                    pl.downedTimer = 0;
+                                    didRevive = true;
+                                }
                             }
                         }
                         let revivingHp = p.hp;
@@ -1968,8 +2053,8 @@ function updatePlayers() {
                             playSound('heal');
                         } else if (p.isAoEHealing) { 
                             for(let pl of players) { 
-                                if (pl.isDowned) { pl.isDowned = false; pl.hp = 3; pl.stamina = 3; pl.downedTimer=0; didRevive = true; } 
-                                else { pl.hp = Math.min(pl.maxHp, pl.hp + 2); } 
+                                if (pl.isDowned && (p.type === 'WATER' || p.type === 'WATER_ROPE')) { pl.isDowned = false; pl.hp = 3; pl.stamina = 3; pl.downedTimer=0; didRevive = true; } 
+                                else if (!pl.isDowned) { pl.hp = Math.min(pl.maxHp, pl.hp + 2); } 
                             } 
                             consumeCompletedHeal();
                         } 
@@ -2502,6 +2587,10 @@ function updatePlayers() {
                 let nearRopeForAttack = (p.type === 'WATER_ROPE' && p.ropeActive && p.ropeA && p.ropeB && distToSegment({ x: p.x + p.width/2, y: p.y + p.height/2 }, p.ropeA, p.ropeB) < 95);
 
                 let canAttackNow = kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && p.lightCharge === 0 && p.overheatTimer <= 0 && !p.isRopeSliding && !nearRopeForAttack && !p.holdingBossRope;
+                if (typeof window !== 'undefined' && window.isStoryMode && p.type === 'WATER' && p.stance === 'LIGHT' && !(typeof storyState !== 'undefined' && storyState.trialsWeaponGranted)) {
+                    // В сюжетном режиме в состоянии воды пока нельзя атаковать обычным ударом X (чтобы не раскрывать себя) — только X + F!
+                    canAttackNow = false;
+                }
                 if (canAttackNow) {
                     if (p.type === 'AIR') {
                         p.attackCooldown = 22; 
@@ -2520,7 +2609,8 @@ function updatePlayers() {
                         playSound('slash'); 
                         triggerVibration('attack');
                         
-                        let currentAtkRange = p.atkRange;
+                        // Удар Воды в состоянии Демона короче его обычной атаки (55 вместо 95)
+                        let currentAtkRange = (p.type === 'WATER' && p.stance === 'DEMON') ? 55 : p.atkRange;
                         let isUpAtk = kUp && !kDown;
                         
                         if (isUpAtk) {
@@ -2551,7 +2641,7 @@ function updatePlayers() {
                             else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + p.atkRange/2, swordHitbox.y + 10, 4); }
                         } else {
                             if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 45 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); } 
-                            else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + p.atkRange/2, swordHitbox.y + 10, 4); }
+                            else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - currentAtkRange, y: p.y + 10, width: currentAtkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + currentAtkRange/2, swordHitbox.y + 10, 4); }
                         }
                     }
 
@@ -2824,13 +2914,31 @@ function updatePlayers() {
                 p.y = domeCeilY;
                 if (p.vy < 0) p.vy = 0;
             }
+        } else if (window.isStoryMode) {
+            // Горизонтальная коллизия с твёрдыми платформами и стенами в сюжете
+            for (let plat of platforms) {
+                if (!plat.solid && !plat.isWall) continue;
+                let platH = plat.h || 18;
+                if (p.y + p.height > plat.y + 8 && p.y < plat.y + platH - 6) {
+                    if (p.vx > 0 && p.x + p.width > plat.x && (p.x - p.vx + p.width) <= plat.x + 14) {
+                        p.x = plat.x - p.width;
+                        p.vx = 0;
+                    } else if (p.vx < 0 && p.x < plat.x + plat.w && (p.x - p.vx) >= plat.x + plat.w - 14) {
+                        p.x = plat.x + plat.w;
+                        p.vx = 0;
+                    }
+                }
+            }
+            if (p.y < -2000) { p.y = -2000; if (p.vy < 0) p.vy = 0; }
+            if (p.x < -480) { p.x = -480; if (p.vx < 0) p.vx = 0; }
+            if (p.x > ARENA_W - p.width) { p.x = ARENA_W - p.width; if (p.vx > 0) p.vx = 0; }
         } else {
             let ceilingLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) ? -2000 : 0;
             if (p.y < ceilingLimit) { p.y = ceilingLimit; if (p.vy < 0) p.vy = 0; } 
             if (p.x < 0) p.x = 0; if (p.x > ARENA_W - p.width) p.x = ARENA_W - p.width;
         }
-        if (Math.abs(p.vx) > 0 && p.y + p.height >= FLOOR && !boss.state.startsWith("CINEMATIC")) applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 1);
-        let isGrounded = (p.y + p.height >= FLOOR - 2 || onFloor || onPlatform);
+        if (Math.abs(p.vx) > 0 && (onFloor || onPlatform) && !boss.state.startsWith("CINEMATIC")) applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 1);
+        let isGrounded = (onFloor || onPlatform || (!window.isStoryMode && p.y + p.height >= FLOOR - 2));
         p.onGround = isGrounded;
         if (isGrounded && Math.abs(p.vx) > 0.3 && !boss.state.startsWith("CINEMATIC") && !p.isDowned) {
             p.walkDist = (p.walkDist || 0) + Math.abs(p.vx);
@@ -3597,9 +3705,30 @@ function drawPlayer(p) {
         ctx.fillRect(-15, -50, 30, 50); 
         ctx.restore();
         ctx.fillStyle = "red"; 
-        ctx.font = "16px Arial"; 
+        ctx.font = "bold 15px Arial"; 
         ctx.textAlign = "center"; 
         ctx.fillText(Math.ceil(p.downedTimer / 60) + " сек", p.x + 15, p.y - 10); 
+
+        // Подсказка [A] при подходе любого живого союзника с > 0.5 HP
+        if (typeof players !== 'undefined') {
+            let rescuer = players.find(pl => pl.id !== p.id && !pl.isDowned && pl.hp > 0.5 && Math.hypot((pl.x + pl.width / 2) - (p.x + p.width / 2), (pl.y + pl.height / 2) - (p.y + p.height / 2)) <= 75);
+            if (rescuer) {
+                let costStr = (rescuer.hp > 1.0) ? "1 HP" : "0.5 HP";
+                ctx.save();
+                ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+                ctx.strokeStyle = "#4ade80";
+                ctx.lineWidth = 1.8;
+                let bw = 220, bh = 26;
+                let bx = p.x + 15 - bw / 2, by = p.y - 46;
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.fillStyle = "#4ade80";
+                ctx.font = "bold 12px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(`[A] Лечение: Воскресить (-${costStr})`, p.x + 15, by + 17);
+                ctx.restore();
+            }
+        }
         ctx.textAlign = "left";
         return; 
     }
@@ -4120,7 +4249,7 @@ function drawPlayer(p) {
     // --- TRANSLUCENT SWORD SLASH ARCS & WEAPONS ---
     if (p.attackTimer > 0 && p.lightCharge === 0) {
         let atkProgress = 1 - (p.attackTimer / 12); 
-        let currentRange = p.atkRange;
+        let currentRange = (p.type === 'WATER' && p.stance === 'DEMON') ? 55 : p.atkRange;
         let slashColor = p.color;
         
         if (p.attackType === "LIGHT") {

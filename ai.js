@@ -175,9 +175,51 @@ function runAiCompanion(p) {
         }
     }
 
+    // --- STORY MODE EXPLORATION AI ---
+    if (typeof window !== 'undefined' && window.isStoryMode) {
+        let downedAlly = players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0);
+        if (downedAlly && p.hp > 0.5) {
+            let dxA = (downedAlly.x + downedAlly.width / 2) - (p.x + p.width / 2);
+            let dyA = (downedAlly.y + downedAlly.height / 2) - (p.y + p.height / 2);
+            if (Math.hypot(dxA, dyA) <= 68) {
+                inp.heal = true;
+            } else {
+                if (dxA > 0) inp.right = true;
+                else inp.left = true;
+                if (dyA < -35 && p.onGround) requestJump(14);
+            }
+            return inp;
+        }
+        let leader = players.find(pl => !pl.isAi && !pl.isDowned && pl.hp > 0) || players[0];
+        if (leader && leader !== p) {
+            let followOffset = (p.type === 'EARTH') ? 85 : 50;
+            let targetX = leader.facingRight ? (leader.x - followOffset) : (leader.x + followOffset);
+            let dxL = targetX - p.x;
+            let dyL = leader.y - p.y;
+            if (Math.abs(dxL) > 22) {
+                if (dxL > 0) inp.right = true;
+                else inp.left = true;
+            } else {
+                p.facingRight = leader.facingRight;
+            }
+            if ((dyL < -35 || (leader.vy < -5 && Math.abs(dxL) < 120)) && p.onGround) {
+                requestJump(14);
+            }
+            // If AI falls far behind on parkour or cliff drop, catch up smoothly
+            if (Math.abs(leader.x - p.x) > 520 || Math.abs(leader.y - p.y) > 420) {
+                p.x = leader.x + (leader.facingRight ? -45 : 45);
+                p.y = leader.y;
+                p.vx = 0;
+                p.vy = 0;
+            }
+        }
+        return inp;
+    }
+
     // --- 1. TOP PRIORITY: REVIVING DOWNED TEAMMATES ---
     if (downedTeammates.length > 0) {
-        if (hasHeal) {
+        let canRangedRevive = (p.type === 'WATER' || p.type === 'WATER_ROPE');
+        if (canRangedRevive && hasHeal) {
             aiInternalState.isChargingConcentration = false;
             if (distX < 140 && boss.state !== "CINEMATIC_TIE_WAIT" && boss.state !== "DEFEATED") {
                 if (dirToBoss > 0) inp.left = true;
@@ -191,6 +233,23 @@ function runAiCompanion(p) {
                 inp.heal = true;
                 return inp;
             }
+        } else if (p.hp > 0.5) {
+            // Любой герой (или Вода без заряда хила) может подбежать вплотную к раненому союзнику и отдать 1 HP (или 0.5 HP) нажатием A!
+            aiInternalState.isChargingConcentration = false;
+            let targetAlly = downedTeammates[0];
+            let dAllyX = (targetAlly.x + targetAlly.width / 2) - (p.x + p.width / 2);
+            let dAllyY = (targetAlly.y + targetAlly.height / 2) - (p.y + p.height / 2);
+            if (Math.hypot(dAllyX, dAllyY) <= 68) {
+                inp.heal = true;
+            } else {
+                if (dAllyX > 0) inp.right = true;
+                else inp.left = true;
+                if (dAllyY < -35 && aiInternalState.jumpCooldown <= 0) {
+                    requestJump(14);
+                    aiInternalState.jumpCooldown = 35;
+                }
+            }
+            return inp;
         }
     }
 

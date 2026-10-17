@@ -823,15 +823,25 @@
     </div>
 
     <!-- Story Campfire Rest Modal -->
-    <div id="story-campfire-modal" style="display: none; position: fixed; inset: 0; background: rgba(3, 5, 15, 0.92); backdrop-filter: blur(10px); z-index: 1200; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
-        <div style="background: linear-gradient(150deg, #10162a 0%, #17213d 100%); border: 2px solid #f59e0b; box-shadow: 0 0 50px rgba(245, 158, 11, 0.4); border-radius: 16px; max-width: 460px; width: 100%; padding: 22px; text-align: center; color: #e2e8f0; position: relative;">
+    <div id="story-campfire-modal" style="display: none; position: fixed; inset: 0; background: rgba(3, 5, 15, 0.85); backdrop-filter: blur(8px); z-index: 1200; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+        <div style="background: linear-gradient(150deg, #10162a 0%, #17213d 100%); border: 2px solid #f59e0b; box-shadow: 0 0 50px rgba(245, 158, 11, 0.4); border-radius: 16px; max-width: 480px; width: 100%; padding: 22px; text-align: center; color: #e2e8f0; position: relative;">
             <div style="font-size: 38px; margin-bottom: 6px;">🔥</div>
             <div style="font-size: 21px; font-weight: 900; color: #fbbf24; margin-bottom: 4px; letter-spacing: 1px;">СКАМЕЙКА С КОСТРОМ</div>
-            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 14px;">Опушка леса • Точка полного отдыха</div>
+            <div id="story-campfire-location" style="font-size: 12px; color: #94a3b8; margin-bottom: 14px;">Опушка леса • Точка полного отдыха</div>
             
-            <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 18px; text-align: left; font-size: 12.5px; line-height: 1.5; color: #fde68a;">
-                ✨ <b>Силы восстановлены:</b> Здоровье (5/5 ❤️) полностью восполнено!<br>
-                ☁️ Игра автоматически сохранена в облаке.
+            <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 12px; margin-bottom: 14px; text-align: left; font-size: 12.5px; line-height: 1.5; color: #fde68a;">
+                ✨ <b>Вся команда присела у костра:</b> Здоровье (5/5 ❤️) полностью восполнено!<br>
+                ☁️ Игра автоматически сохранена.<br>
+                🎒 Нажмите <b>[Tab]</b> для Рюкзака и Карты или <b>[Пробел]</b> для Выбора героев.
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <button class="menu-btn" style="margin: 0; padding: 11px 10px; font-size: 12.5px; border-color: #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.14);" onclick="openStoryBackpackModal()">
+                    🎒 [Tab] РЮКЗАК / КАРТА
+                </button>
+                <button class="menu-btn" style="margin: 0; padding: 11px 10px; font-size: 12.5px; border-color: #a855f7; color: #d8b4fe; background: rgba(168, 85, 247, 0.16);" onclick="openStoryHeroSelectModal()">
+                    👥 [Пробел] ВЫБОР ГЕРОЕВ
+                </button>
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -845,17 +855,91 @@
         </div>
     </div>
 
+    <!-- Story Mode Player Count Selection Modal (1P vs 2P Local) -->
+    <div id="story-player-count-modal" style="display: none; position: fixed; inset: 0; background: rgba(3, 5, 16, 0.94); backdrop-filter: blur(10px); z-index: 1210; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+        <div style="background: linear-gradient(150deg, #0d1528 0%, #15223e 100%); border: 2px solid #00d2ff; box-shadow: 0 0 50px rgba(0, 210, 255, 0.35); border-radius: 16px; max-width: 480px; width: 100%; padding: 24px; text-align: center; color: #e2e8f0;">
+            <div style="font-size: 36px; margin-bottom: 6px;">🎮</div>
+            <div style="font-size: 21px; font-weight: 900; color: #00d2ff; margin-bottom: 6px; letter-spacing: 1px;">СКОЛЬКО ИГРОКОВ В СЮЖЕТКЕ?</div>
+            <div style="font-size: 12.5px; color: #cbd5e1; line-height: 1.5; margin-bottom: 18px;">
+                Выберите режим прохождения сюжетной кампании:
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+                <button class="menu-btn" style="margin: 0; padding: 14px 16px; text-align: left; border-color: #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.12);" onclick="selectStoryPlayerCount(1)">
+                    <div style="font-size: 15px; font-weight: 900; margin-bottom: 4px;">👤 1 ИГРОК (ОДИНОЧНЫЙ + ИИ)</div>
+                    <div style="font-size: 11.5px; color: #cbd5e1; font-weight: 400;">Вы начинаете за Воду 💧. Когда встретите Воздух 💨 и Землю 🌿, ими будет управлять умный ИИ (на лавочке можно менять героя!).</div>
+                </button>
+                <button class="menu-btn" style="margin: 0; padding: 14px 16px; text-align: left; border-color: #ffaa00; color: #ffaa00; background: rgba(255, 170, 0, 0.12);" onclick="selectStoryPlayerCount(2)">
+                    <div style="font-size: 15px; font-weight: 900; margin-bottom: 4px;">👥 2 ИГРОКА (ЛОКАЛЬНО НА ОДНОМ ЭКРАНЕ)</div>
+                    <div style="font-size: 11.5px; color: #cbd5e1; font-weight: 400;">Игрок 1 начинает за Воду 💧 (Игрок 2 ждёт встречи). Как только вы встретите Воздух 💨 на верхнем ярусе — Игрок 2 сразу берёт управление над ним!</div>
+                </button>
+            </div>
+            <button class="menu-btn" style="margin: 0; width: 100%; padding: 10px; font-size: 12.5px; border-color: #64748b; color: #cbd5e1; background: rgba(255,255,255,0.06);" onclick="closeStoryPlayerCountModal()">
+                ↩ НАЗАД К СЛОТАМ
+            </button>
+        </div>
+    </div>
+
+    <!-- Story Backpack & Map Modal ([Tab] on Bench) -->
+    <div id="story-backpack-modal" style="display: none; position: fixed; inset: 0; background: rgba(3, 6, 18, 0.94); backdrop-filter: blur(10px); z-index: 1250; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+        <div style="background: linear-gradient(150deg, #0c162c 0%, #162442 100%); border: 2px solid #38bdf8; box-shadow: 0 0 55px rgba(56, 189, 248, 0.4); border-radius: 16px; max-width: 680px; width: 100%; padding: 22px; color: #e2e8f0; max-height: 92vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid rgba(56,189,248,0.25); padding-bottom: 10px;">
+                <div>
+                    <div style="font-size: 20px; font-weight: 900; color: #38bdf8; letter-spacing: 1px;">🎒 РЮКЗАК И КАРТА МИРА</div>
+                    <div style="font-size: 11.5px; color: #94a3b8;">Доступно во время отдыха на скамейке [Tab]</div>
+                </div>
+                <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #64748b; color: #cbd5e1;" onclick="closeStoryBackpackModal()">✕ Закрыть [Tab]</button>
+            </div>
+
+            <!-- Visual 3-Tier Map matching Timur's drawing -->
+            <div style="background: rgba(6, 11, 25, 0.9); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
+                <div style="font-size: 13px; font-weight: 800; color: #7dd3fc; margin-bottom: 8px; text-align: left;">🗺️ СХЕМА ДОЛИНЫ И ПОДЗЕМЕЛЬЯ:</div>
+                <div id="story-map-diagram" style="position: relative; height: 225px; background: #070d1c; border-radius: 8px; border: 1px solid #1e293b; overflow: hidden; font-size: 11px;">
+                </div>
+            </div>
+
+            <!-- Backpack Items & Abilities -->
+            <div id="story-backpack-items" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; text-align: left; margin-bottom: 14px;">
+            </div>
+
+            <button class="menu-btn" style="margin: 0; width: 100%; padding: 11px; font-size: 13px; border-color: #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.14);" onclick="closeStoryBackpackModal()">
+                ✓ ВЕРНУТЬСЯ К КОСТРУ
+            </button>
+        </div>
+    </div>
+
+    <!-- Story Hero Selection Modal ([Space] on Bench) -->
+    <div id="story-hero-select-modal" style="display: none; position: fixed; inset: 0; background: rgba(4, 6, 18, 0.94); backdrop-filter: blur(10px); z-index: 1250; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+        <div style="background: linear-gradient(150deg, #131129 0%, #1d183b 100%); border: 2px solid #a855f7; box-shadow: 0 0 55px rgba(168, 85, 247, 0.4); border-radius: 16px; max-width: 620px; width: 100%; padding: 22px; color: #e2e8f0; max-height: 92vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid rgba(168,85,247,0.3); padding-bottom: 10px;">
+                <div>
+                    <div style="font-size: 20px; font-weight: 900; color: #d8b4fe; letter-spacing: 1px;">👥 ВЫБОР ГЕРОЕВ ОТРЯДА</div>
+                    <div style="font-size: 11.5px; color: #94a3b8;">Нельзя брать повторки • Хотя бы 1 игрок должен играть на Воде 💧</div>
+                </div>
+                <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #64748b; color: #cbd5e1;" onclick="closeStoryHeroSelectModal()">✕ Закрыть [Пробел]</button>
+            </div>
+
+            <div id="story-hero-select-warning" style="display: none; background: rgba(239, 68, 68, 0.18); border: 1px solid #ef4444; color: #fca5a5; padding: 9px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 10px; font-weight: 700;"></div>
+
+            <div id="story-hero-select-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+            </div>
+
+            <button class="menu-btn" style="margin: 0; width: 100%; padding: 12px; font-size: 13px; border-color: #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.14);" onclick="closeStoryHeroSelectModal()">
+                ✓ ПРИМЕНИТЬ СОСТАВ ОТРЯДА
+            </button>
+        </div>
+    </div>
+
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=76.0"></script>
-    <script src="audio.js?v=76.0"></script>
-    <script src="controls.js?v=76.0"></script>
-    <script src="ai.js?v=76.0"></script>
-    <script src="player.js?v=76.0"></script>
-    <script src="story.js?v=76.0"></script>
-    <script src="boss.js?v=76.0"></script>
-    <script src="game.js?v=76.0"></script>
+    <script src="constants.js?v=77.0"></script>
+    <script src="audio.js?v=77.0"></script>
+    <script src="controls.js?v=77.0"></script>
+    <script src="ai.js?v=77.0"></script>
+    <script src="player.js?v=77.0"></script>
+    <script src="story.js?v=77.0"></script>
+    <script src="boss.js?v=77.0"></script>
+    <script src="game.js?v=77.0"></script>
 
     <!-- Pure Firebase Online Multiplayer Module -->
-    <script src="network.js?v=76.0"></script>
+    <script src="network.js?v=77.0"></script>
 </body>
 </html>

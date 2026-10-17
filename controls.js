@@ -1345,14 +1345,20 @@ function selectInput(in1, in2) {
     }
 
     if (window.isStoryMode) {
-        if (in1 === 'TOUCH') {
+        if (in1 === 'TOUCH' || in2 === 'TOUCH') {
             let mobUi = document.getElementById("mobile-ui");
             if (mobUi) mobUi.style.display = "flex";
             let ctrlCont = document.getElementById("controls-container");
             if (ctrlCont) ctrlCont.style.display = "none";
+        } else {
+            let mobUi = document.getElementById("mobile-ui");
+            if (mobUi) mobUi.style.display = "none";
+            let ctrlCont = document.getElementById("controls-container");
+            if (ctrlCont) ctrlCont.style.display = "block";
         }
         p1HeroSelection = 'WATER';
-        numPlayers = 1;
+        p2HeroSelection = 'AIR';
+        numPlayers = window.storyPlayerCount || 1;
         hasAiCompanion = false;
         startStorySession(window.activeStorySlot || 1, window.isNewStoryGame);
         return;
@@ -1391,6 +1397,7 @@ window.isStoryMode = false;
 window.activeStorySlot = 1;
 window.isNewStoryGame = true;
 window.storySlotToDelete = null;
+window.storyPlayerCount = 1;
 
 async function openStorySlotsScreen() {
     let cur = getCurrentUser();
@@ -1503,14 +1510,12 @@ function createNewStoryGame(slotNum) {
     window.isNewStoryGame = true;
     window.isFireBossMode = false;
     isFireBossMode = false;
-    numPlayers = 1;
-    hasAiCompanion = false;
-    setP2User(null);
-    openScreen('input-select');
-    let in1 = document.getElementById("input-1p");
-    let in2 = document.getElementById("input-2p");
-    if (in1) in1.style.display = "block";
-    if (in2) in2.style.display = "none";
+    let modal = document.getElementById('story-player-count-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    } else {
+        selectStoryPlayerCount(1);
+    }
 }
 window.createNewStoryGame = createNewStoryGame;
 
@@ -1520,16 +1525,34 @@ function loadStoryGame(slotNum) {
     window.isNewStoryGame = false;
     window.isFireBossMode = false;
     isFireBossMode = false;
-    numPlayers = 1;
+    let modal = document.getElementById('story-player-count-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    } else {
+        selectStoryPlayerCount(1);
+    }
+}
+window.loadStoryGame = loadStoryGame;
+
+function closeStoryPlayerCountModal() {
+    let modal = document.getElementById('story-player-count-modal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeStoryPlayerCountModal = closeStoryPlayerCountModal;
+
+function selectStoryPlayerCount(count) {
+    closeStoryPlayerCountModal();
+    window.storyPlayerCount = count === 2 ? 2 : 1;
+    numPlayers = window.storyPlayerCount;
     hasAiCompanion = false;
     setP2User(null);
     openScreen('input-select');
     let in1 = document.getElementById("input-1p");
     let in2 = document.getElementById("input-2p");
-    if (in1) in1.style.display = "block";
-    if (in2) in2.style.display = "none";
+    if (in1) in1.style.display = (numPlayers === 1) ? "block" : "none";
+    if (in2) in2.style.display = (numPlayers === 2) ? "block" : "none";
 }
-window.loadStoryGame = loadStoryGame;
+window.selectStoryPlayerCount = selectStoryPlayerCount;
 
 function confirmDeleteStorySlot(slotNum) {
     window.storySlotToDelete = slotNum;
