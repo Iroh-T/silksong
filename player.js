@@ -668,7 +668,7 @@ function updatePlayers() {
         // Story Mode Water Pond check (X: 3820..4500, Y: 350..445)
         p.inStoryWater = false;
         if (typeof window !== 'undefined' && window.isStoryMode) {
-            if (p.x + p.width > 3820 && p.x < 4500 && p.y + p.height > 356 && p.y < 450) {
+            if (p.x + p.width > 3816 && p.x < 4500 && p.y + p.height > 354 && p.y < 455) {
                 if (!p.wasInStoryWater && p.vy > 1.5) {
                     if (typeof playSound === 'function') playSound('waterSplash');
                     if (typeof voidExplosions !== 'undefined') {
@@ -677,11 +677,28 @@ function updatePlayers() {
                 }
                 p.inStoryWater = true;
                 // Плавучесть в воде: мягкое покачивание у поверхности, возможность плыть и выпрыгивать
-                if (p.y + p.height > 388) {
-                    p.vy -= 0.72;
-                    if (p.vy > 2.2) p.vy = 2.2;
+                if (p.y + p.height > 386) {
+                    p.vy -= 0.75;
+                    if (p.vy > 2.0) p.vy = 2.0;
                 } else {
-                    if (p.vy > 1.8) p.vy *= 0.82;
+                    if (p.vy > 1.6) p.vy *= 0.8;
+                }
+                // Защита дна пруда (Y = 445) и левого берега (X = 3820):
+                if (p.y + p.height > 442) {
+                    p.y = 442 - p.height;
+                    if (p.vy > 0) p.vy = 0;
+                }
+                if (p.x < 3822 && p.vx <= 0) {
+                    // Если плывём влево к берегу у поверхности — плавно выходим на берег (Y = 350)!
+                    if (p.y + p.height <= 402) {
+                        p.y = FLOOR - p.height;
+                        p.vy = 0;
+                        p.inStoryWater = false;
+                    } else {
+                        // Если глубоко под водой — упираемся в каменный берег пруда
+                        p.x = 3822;
+                        p.vx = 0;
+                    }
                 }
                 onPlatform = true;
                 p.jumps = 0;
@@ -689,7 +706,8 @@ function updatePlayers() {
             p.wasInStoryWater = p.inStoryWater;
         }
         let onFloor = false;
-        let canHitMainFloor = !(typeof window !== 'undefined' && window.isStoryMode) || (p.x + p.width > 0 && p.x < 3820 && p.y + p.height <= FLOOR + 26 && p.vy >= 0);
+        // На среднем ярусе (X: 0..3820) земля сплошная (провалиться сквозь неё у берега пруда нельзя; обрыв вниз находится только слева при X < 0!)
+        let canHitMainFloor = !(typeof window !== 'undefined' && window.isStoryMode) || (p.x + p.width > 4 && p.x < 3824 && p.y + p.height <= FLOOR + 125 && p.vy >= -2);
         if (!onPlatform && canHitMainFloor && p.y + p.height >= FLOOR && !p.isUnderFloor) {
             if (abyssGooFloorActive && !abyssGooSolidified) {
                 // Пол залит черной густой жижей Бездны!

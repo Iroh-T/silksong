@@ -175,8 +175,9 @@ function runAiCompanion(p) {
         }
     }
 
-    // --- STORY MODE EXPLORATION AI ---
+    // --- STORY MODE AUTONOMOUS & LIVELY COMPANION AI ---
     if (typeof window !== 'undefined' && window.isStoryMode) {
+        // 1. Revive downed ally first if anyone is hurt
         let downedAlly = players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0);
         if (downedAlly && p.hp > 0.5) {
             let dxA = (downedAlly.x + downedAlly.width / 2) - (p.x + p.width / 2);
@@ -186,28 +187,115 @@ function runAiCompanion(p) {
             } else {
                 if (dxA > 0) inp.right = true;
                 else inp.left = true;
-                if (dyA < -35 && p.onGround) requestJump(14);
+                if (dyA < -35 && (p.onGround || p.inStoryWater)) requestJump(15);
             }
             return inp;
         }
+
+        // 2. Initialize per-companion autonomous brain state
+        if (!p.storyAi) {
+            p.storyAi = {
+                timer: 0,
+                action: 'SCOUT', // 'SCOUT', 'WANDER_LEFT', 'WANDER_RIGHT', 'LOOK_AROUND', 'HOP'
+                targetOffset: (p.type === 'AIR') ? 115 : -85,
+                lookDir: 1
+            };
+        }
+        let brain = p.storyAi;
+        brain.timer--;
+
         let leader = players.find(pl => !pl.isAi && !pl.isDowned && pl.hp > 0) || players[0];
         if (leader && leader !== p) {
-            let followOffset = (p.type === 'EARTH') ? 85 : 50;
-            let targetX = leader.facingRight ? (leader.x - followOffset) : (leader.x + followOffset);
-            let dxL = targetX - p.x;
-            let dyL = leader.y - p.y;
-            if (Math.abs(dxL) > 22) {
-                if (dxL > 0) inp.right = true;
+            let leaderMoving = Math.abs(leader.vx) > 0.4;
+            // Determine natural story progression direction on each tier:
+            // Upper Tier (Y < 50): objective is to the LEFT (-1) toward the cliff shaft
+            // Middle & Lower Tiers: objective is to the RIGHT (+1)
+            let storyGoalDir = (p.y < 50) ? -1 : 1;
+
+            if (brain.timer <= 0) {
+                let roll = Math.random();
+                if (leaderMoving) {
+                    // When the player is moving, AI companions often scout AHEAD in the direction of travel
+                    // or run alongside at varying distances instead of sticking behind the player's back!
+                    brain.action = 'SCOUT';
+                    if (p.type === 'AIR') {
+                        brain.targetOffset = (roll < 0.68) ? (85 + Math.random() * 75) : (-45 - Math.random() * 50);
+                    } else {
+                        brain.targetOffset = (roll < 0.52) ? (65 + Math.random() * 60) : (-65 - Math.random() * 55);
+                    }
+                    brain.timer = 45 + Math.floor(Math.random() * 45);
+                } else {
+                    // When the player stops, AI companions autonomously explore nearby, pace, look toward the goal, or hop!
+                    if (roll < 0.34) {
+                        brain.action = 'WANDER_GOAL';
+                        brain.targetOffset = storyGoalDir * (70 + Math.random() * 95);
+                        brain.timer = 40 + Math.floor(Math.random() * 40);
+                    } else if (roll < 0.62) {
+                        brain.action = 'WANDER_OPPOSITE';
+                        brain.targetOffset = -storyGoalDir * (45 + Math.random() * 75);
+                        brain.timer = 35 + Math.floor(Math.random() * 40);
+                    } else if (roll < 0.85) {
+                        brain.action = 'LOOK_AROUND';
+                        brain.lookDir = (Math.random() < 0.65) ? storyGoalDir : -storyGoalDir;
+                        brain.timer = 35 + Math.floor(Math.random() * 45);
+                    } else {
+                        brain.action = 'HOP';
+                        brain.timer = 28;
+                    }
+                }
+            }
+
+            // Compute desired X position
+            let moveDir = leaderMoving ? (leader.vx >= 0 ? 1 : -1) : storyGoalDir;
+            let desiredX = leader.x + (brain.action === 'SCOUT' ? moveDir * brain.targetOffset : brain.targetOffset);
+
+            // Keep Upper Tier AI from falling off the cliff at X = -150 until the player actually jumps down!
+            if (p.y < 50 && leader.y < 50 && leader.x > -110) {
+                desiredX = Math.max(-95, desiredX);
+            }
+            // Keep Lower Tier AI near the Gates/Bench without running into closed walls
+            if (p.y > 600) {
+                desiredX = Math.min(1820, Math.max(-440, desiredX));
+            }
+
+            // Parkour climb logic if near the Water Pond / Mossy Platforms (X > 3800, Y between 0 and 450)
+            if (leader.y < p.y - 45 && p.x > 3760 && typeof platforms !== 'undefined') {
+                // Find the lowest mossy platform above the AI
+                let nextPlat = null;
+                for (let plObj of platforms) {
+                    if (plObj.mossy && plObj.y < p.y + 10 && plObj.y > p.y - 170) {
+                        if (!nextPlat || plObj.y > nextPlat.y) nextPlat = plObj;
+                    }
+                }
+                if (nextPlat) {
+                    desiredX = nextPlat.x + nextPlat.w * 0.5;
+                }
+            }
+
+            let dxTarget = desiredX - p.x;
+            let dyLeader = leader.y - p.y;
+
+            if (brain.action === 'LOOK_AROUND' && Math.abs(leader.x - p.x) < 165) {
+                p.facingRight = (brain.lookDir > 0);
+                if (Math.random() < 0.04) brain.lookDir *= -1;
+            } else if (Math.abs(dxTarget) > 18) {
+                if (dxTarget > 0) inp.right = true;
                 else inp.left = true;
             } else {
-                p.facingRight = leader.facingRight;
+                p.facingRight = (storyGoalDir > 0);
             }
-            if ((dyL < -35 || (leader.vy < -5 && Math.abs(dxL) < 120)) && p.onGround) {
-                requestJump(14);
+
+            // Playful or obstacle jumps
+            if (brain.action === 'HOP' && p.onGround) {
+                requestJump(10);
+                brain.action = 'LOOK_AROUND';
+            } else if ((dyLeader < -42 || p.inStoryWater || (leader.vy < -5.5 && Math.abs(leader.x - p.x) < 140 && Math.random() < 0.35)) && (p.onGround || p.inStoryWater)) {
+                requestJump(p.type === 'AIR' ? 16 : 14);
             }
-            // If AI falls far behind on parkour or cliff drop, catch up smoothly
-            if (Math.abs(leader.x - p.x) > 520 || Math.abs(leader.y - p.y) > 420) {
-                p.x = leader.x + (leader.facingRight ? -45 : 45);
+
+            // Only catch up if separated across completely different tiers/screens
+            if (Math.abs(leader.x - p.x) > 680 || Math.abs(leader.y - p.y) > 460) {
+                p.x = leader.x + (storyGoalDir * -60);
                 p.y = leader.y;
                 p.vx = 0;
                 p.vy = 0;

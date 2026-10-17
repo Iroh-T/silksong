@@ -729,7 +729,49 @@ function updateStoryMode() {
             // Handled at top of updateStoryMode when S is pressed
             break;
 
-        case 'GO_TO_BENCH':
+        case 'GO_TO_BENCH': {
+            // 0. DEMON SECRECY RULE: Water MUST hide the Demon from everyone!
+            // Timur: "вода должен скрывать демона от всех, а сейчас мы спокойно можем проходить игру на демоне, так не должно быть"
+            let waterPl = players.find(pl => pl && pl.type === 'WATER');
+            if (waterPl && waterPl.stance === 'DEMON') {
+                let nearAirNpc = (!storyState.airMet && waterPl.y < 60 && Math.abs(waterPl.x - STORY_CONFIG.AIR_NPC_X) < 420);
+                let nearEarthNpc = (!storyState.earthMet && waterPl.y > 550 && Math.abs(waterPl.x - STORY_CONFIG.EARTH_NPC_X) < 420);
+                let alliesPresent = (storyState.airMet || storyState.earthMet || nearAirNpc || nearEarthNpc);
+
+                if (alliesPresent) {
+                    // Instant exposure in front of Air or Earth!
+                    storyState.step = 'DEMON_EXPOSED';
+                    storyState.stepTimer = 0;
+                    storyState.exposedReason = "Союзники увидели ваш облик Демона! Скрывайте эту силу от всех!";
+                    if (storyState.earthMet || nearEarthNpc) {
+                        storyState.earthDialogueTimer = 140;
+                        storyState.exposedQuote = "🌿 «Стой... Ты что, ДЕМОН?!»";
+                    } else {
+                        storyState.airDialogueTimer = 140;
+                        storyState.exposedQuote = "💨 «Подожди... Ты же ДЕМОН?!»";
+                    }
+                    if (typeof screenShake !== 'undefined') { screenShake.timer = 35; screenShake.mag = 16; }
+                    if (typeof playSound === 'function') playSound('parry');
+                    break;
+                } else {
+                    // Alone in the forest: cannot walk around in Demon form or cross past the Campfire (x > 3500)
+                    storyState.demonAuraTimer = (storyState.demonAuraTimer || 0) + 1;
+                    if (storyState.demonAuraTimer >= 150 || waterPl.x > 3520) {
+                        storyState.step = 'DEMON_EXPOSED';
+                        storyState.stepTimer = 0;
+                        storyState.demonAuraTimer = 0;
+                        storyState.exposedReason = "Стражи Леса почувствовали незакрытую ауру Демона! Всегда скрывайте её клавишей [S]!";
+                        storyState.exposedQuote = "";
+                        storyState.lightningTimer = 45;
+                        if (typeof screenShake !== 'undefined') { screenShake.timer = 40; screenShake.mag = 20; }
+                        if (typeof playSound === 'function') playSound('parry');
+                        break;
+                    }
+                }
+            } else {
+                storyState.demonAuraTimer = 0;
+            }
+
             // 1. Check if ANY player in the party sits on Bench 1 (3600, 350) or Bench 2 (1450, 850)
             // Timur: "если хоть один садится на скамейку - то все садятся"
             if (storyState.stepTimer > 22) {
@@ -793,6 +835,25 @@ function updateStoryMode() {
                 }
             }
             break;
+        }
+
+        case 'DEMON_EXPOSED': {
+            for (let pl of players) {
+                if (pl) { pl.vx = 0; pl.vy = 0; }
+            }
+            if (storyState.stepTimer >= 135) {
+                storyState.demonAuraTimer = 0;
+                storyState.exposedQuote = "";
+                storyState.checkpoint.stance = 'LIGHT';
+                respawnPlayerAtStoryCheckpoint();
+                for (let pl of players) {
+                    if (pl && pl.type === 'WATER') pl.stance = 'LIGHT';
+                }
+                storyState.step = 'GO_TO_BENCH';
+                storyState.stepTimer = 0;
+            }
+            break;
+        }
 
         case 'BENCH_REST': {
             let bId = storyState.activeBenchId || 1;
@@ -1699,11 +1760,14 @@ function drawStoryWaterPond() {
     }
     ctx.stroke();
 
-    // Pond stone basin floor & right cliff wall
+    // Pond stone basin floor, left stone shore bank, & right cliff wall
     ctx.fillStyle = "#0f172a";
+    ctx.fillRect(x1 - 24, STORY_CONFIG.FLOOR, 26, waterBot - STORY_CONFIG.FLOOR + 45);
     ctx.fillRect(x1, waterBot, w, 45);
     ctx.fillRect(x2, -380, 60, 870);
     ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x1 - 24, STORY_CONFIG.FLOOR, 24, waterBot - STORY_CONFIG.FLOOR + 45);
     ctx.strokeRect(x2, -380, 60, 870);
     ctx.restore();
 }
@@ -2245,6 +2309,59 @@ function drawStoryCampfireAndBench(bx, floorY = STORY_CONFIG.FLOOR) {
 // Draw Screen-Space Story Prompts and Objectives ("Таблички")
 function drawStoryScreenHUD() {
     if (storyState.step === 'LIGHTNING_WINDUP' || storyState.step === 'LIGHTNING' || storyState.step.startsWith('TITLE')) return;
+
+    // Render DEMON_EXPOSED full-screen warning overlay if player failed to hide the Demon!
+    if (storyState.step === 'DEMON_EXPOSED') {
+        ctx.save();
+        ctx.fillStyle = "rgba(18, 4, 28, 0.86)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.textAlign = "center";
+        if (storyState.exposedQuote) {
+            ctx.fillStyle = "#fde047";
+            ctx.font = "bold 20px 'Segoe UI', Arial, sans-serif";
+            ctx.fillText(storyState.exposedQuote, canvas.width / 2, canvas.height / 2 - 48);
+        }
+        ctx.fillStyle = "#ef4444";
+        ctx.shadowColor = "#ef4444";
+        ctx.shadowBlur = 22;
+        ctx.font = "900 30px 'Segoe UI', Arial, sans-serif";
+        ctx.fillText("⚠️ ВАС РАСКРЫЛИ! ⚠️", canvas.width / 2, canvas.height / 2 - 6);
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#f1f5f9";
+        ctx.font = "bold 15px 'Segoe UI', Arial, sans-serif";
+        ctx.fillText(storyState.exposedReason || "Вода должен скрывать силу Демона от всех!", canvas.width / 2, canvas.height / 2 + 28);
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "13px 'Segoe UI', Arial, sans-serif";
+        ctx.fillText("Возвращение к последней точке сохранения...", canvas.width / 2, canvas.height / 2 + 56);
+        ctx.restore();
+        return;
+    }
+
+    // Render live Demon Aura Warning if Water switched to DEMON during exploration!
+    if (storyState.demonAuraTimer && storyState.demonAuraTimer > 0) {
+        let remSec = Math.max(0, (150 - storyState.demonAuraTimer) / 60).toFixed(1);
+        ctx.save();
+        let bw = 540;
+        let bx = canvas.width / 2 - bw / 2;
+        ctx.fillStyle = "rgba(88, 12, 45, 0.92)";
+        ctx.strokeStyle = "#f43f5e";
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "#f43f5e";
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.roundRect(bx, 54, bw, 36, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ffe4e6";
+        ctx.font = "bold 13.5px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`⚠️ СКРОЙТЕ ДЕМОНА [S]! Нельзя идти в этом облике! (${remSec} с)`, canvas.width / 2, 77);
+        ctx.restore();
+    }
 
     let promptText = "";
     let p = players[0];
