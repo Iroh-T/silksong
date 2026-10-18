@@ -872,6 +872,8 @@ function updatePlayers() {
 
         let kLeft=false, kRight=false, kDown=false, kUp=false, kJump=false, kAttack=false, kHeal=false, kSpec=false, kDash=false, kLight=false, kStance=false, kUlt=false, kWaterDrop=false;
 
+        let isDuoKeyboard = (typeof p1InputType !== 'undefined' && typeof p2InputType !== 'undefined' && (p1InputType === 'DUO_KEYBOARD_P1' || p2InputType === 'DUO_KEYBOARD_P2')) || (p.inputType === 'DUO_KEYBOARD_P1' || p.inputType === 'DUO_KEYBOARD_P2');
+
         if (p.inputType === 'AI' || p.isAi) {
             let aiIn = (typeof runAiCompanion === 'function') ? runAiCompanion(p) : {};
             kLeft = !!aiIn.left; kRight = !!aiIn.right; kUp = !!aiIn.up; kDown = !!aiIn.down;
@@ -902,8 +904,8 @@ function updatePlayers() {
             kLeft = isKeyPressed(p.keys.left); kRight = isKeyPressed(p.keys.right); kDown = isKeyPressed(p.keys.down); kUp = isKeyPressed(p.keys.up);
             kJump = isKeyPressed(p.keys.jump); kAttack = isKeyPressed(p.keys.attack); kHeal = isKeyPressed(p.keys.heal); kSpec = isKeyPressed(p.keys.special);
             kDash = p.keys.dash ? isKeyPressed(p.keys.dash) : false; 
-            kLight = (p.keys && p.keys.light && isKeyPressed(p.keys.light)) || isKeyPressed(['ShiftLeft', 'ShiftRight', 'KeyL']) || ((p.inputType === 'KEYBOARD_SHOOTER' || p.inputType === 'KEYBOARD_2') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : false);
-            kStance = (p.keys && p.keys.stance) ? isKeyPressed(p.keys.stance) : isKeyPressed(['KeyS', 'KeyT', 'KeyV']);
+            kLight = (p.keys && p.keys.light && isKeyPressed(p.keys.light)) || (!isDuoKeyboard && isKeyPressed(['ShiftLeft', 'ShiftRight', 'KeyL'])) || ((p.inputType === 'KEYBOARD_SHOOTER' || p.inputType === 'KEYBOARD_2') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : false);
+            kStance = (p.keys && p.keys.stance && isKeyPressed(p.keys.stance)) || (!isDuoKeyboard && isKeyPressed(['KeyS', 'KeyT', 'KeyV']));
         }
 
         let rawHealKey = kHeal;
@@ -926,9 +928,9 @@ function updatePlayers() {
         // 1. Проверка одновременного нажатия C и F:
         // Если игрок нажал одновременно C и F, спец-способность слота F (сюрикен / парирование) блокируется!
         if (p.inputType !== 'AI' && !p.isAi && p.inputType !== 'ONLINE_REMOTE') {
-            let isKeyCPressed = isKeyPressed(['KeyC', 'KeyС']);
-            let isKeyFPressed = isKeyPressed(['KeyF', 'KeyА']);
-            let isCFSimultaneous = (isKeyCPressed && isKeyFPressed) || (kDash && isKeyFPressed) || (kDash && kSpec);
+            let isKeyCPressed = !isDuoKeyboard && isKeyPressed(['KeyC', 'KeyС']);
+            let isKeyFPressed = !isDuoKeyboard && isKeyPressed(['KeyF', 'KeyА']);
+            let isCFSimultaneous = !isDuoKeyboard && ((isKeyCPressed && isKeyFPressed) || (kDash && isKeyFPressed) || (kDash && kSpec));
             if (isCFSimultaneous) {
                 p.prevDaggerKey = true; // предотвращает срабатывание способности (сюрикен, парирование)
             }
@@ -954,8 +956,9 @@ function updatePlayers() {
                 let canDoComboQ = (p.type === 'WATER_ROPE') || (p.type === 'STAMINA' && p.weaponMode === 'PINK');
                 let canDoComboW = (p.type === 'WATER' && (p.stance === 'LIGHT' || window.isStoryMode));
 
-                let directQ = isKeyPressed(['KeyQ', 'KeyЙ']);
-                let directW = isKeyPressed(['KeyW', 'KeyЦ']);
+                // Прямые шорткаты Q/W работают только когда не включен режим DUO_KEYBOARD (где у P2 на W прыжок/вверх, а на Q хилка)
+                let directQ = !isDuoKeyboard && isKeyPressed(['KeyQ', 'KeyЙ']);
+                let directW = !isDuoKeyboard && isKeyPressed(['KeyW', 'KeyЦ']);
 
                 let wantComboQ = canDoComboQ && (directQ || (kAttack && kStance) || (p.comboBufferAtkTimer > 0 && kStance) || (p.comboBufferStanceTimer > 0 && kAttack));
                 let wantComboW = canDoComboW && !isCFSimultaneous && (directW || (kAttack && kSpec) || (p.comboBufferAtkTimer > 0 && kSpec) || (p.comboBufferSpecTimer > 0 && kAttack));

@@ -106,17 +106,19 @@ function setupStoryPlatforms() {
         // 5. Lower Underground Tier (Floor 3: X = -480..3200, Y = 850) - open corridor past gates
         { x: -480, y: STORY_CONFIG.LOWER_FLOOR, w: 3680, h: 65, solid: true, tier: 3 },
 
-        // Trials Arena Enclosure (X = 1980..3020, Y = 460..850) - solid ONLY during trials!
-        { x: 1980, y: 460, w: 25, h: 400, solid: false, isWall: true, isTrialsArenaWall: true },
-        { x: 2995, y: 460, w: 25, h: 400, solid: false, isWall: true, isTrialsArenaWall: true },
-        { x: 1980, y: 450, w: 1040, h: 20, solid: true, isTrialsCeiling: true },
+        // Dedicated Isolated Trials Arena Chamber (X = 5000..6000, Y = 450..870)
+        // Hidden from corridor view; accessible ONLY via Arch Gate teleport!
+        { x: 4980, y: STORY_CONFIG.LOWER_FLOOR, w: 1040, h: 65, solid: true, isTrialsArenaFloor: true },
+        { x: 4980, y: 460, w: 25, h: 400, solid: true, isWall: true, isTrialsArenaWall: true },
+        { x: 5995, y: 460, w: 25, h: 400, solid: true, isWall: true, isTrialsArenaWall: true },
+        { x: 4980, y: 450, w: 1040, h: 20, solid: true, isTrialsCeiling: true },
         // Elevated Combat Ledges in Arena
-        { x: 2150, y: 720, w: 130, h: 18, solid: true, isArenaLedge: true },
-        { x: 2720, y: 720, w: 130, h: 18, solid: true, isArenaLedge: true },
+        { x: 5180, y: 720, w: 130, h: 18, solid: true, isArenaLedge: true },
+        { x: 5680, y: 720, w: 130, h: 18, solid: true, isArenaLedge: true },
         // Overhead Maze Platforms (Stage 2 ONLY - solid dynamically toggled)
-        { x: 2360, y: 720, w: 105, h: 16, solid: false, isMazeBase1: true },
-        { x: 2505, y: 720, w: 105, h: 16, solid: false, isMazeBase2: true },
-        { x: 2360, y: 530, w: 250, h: 16, solid: false, isMazeRoof: true }
+        { x: 5360, y: 720, w: 105, h: 16, solid: false, isMazeBase1: true },
+        { x: 5505, y: 720, w: 105, h: 16, solid: false, isMazeBase2: true },
+        { x: 5360, y: 530, w: 250, h: 16, solid: false, isMazeRoof: true }
     ];
 }
 
@@ -134,14 +136,20 @@ function getStoryP1Keys() {
     let p1Keys = mapStoryControlsToKeysObj(userControls ? userControls.SCHEME_1 : DEFAULT_CONTROLS.SCHEME_1);
     if (p1InputType === 'KEYBOARD_2' || p1InputType === 'KEYBOARD_SHOOTER') {
         p1Keys = mapStoryControlsToKeysObj(userControls ? userControls.SCHEME_2 : DEFAULT_CONTROLS.SCHEME_2);
+    } else if (p1InputType === 'DUO_KEYBOARD_P1') {
+        let duo1 = (userControls && userControls.DUO_KEYBOARD && userControls.DUO_KEYBOARD.p1) || DEFAULT_CONTROLS.DUO_KEYBOARD.p1;
+        p1Keys = mapStoryControlsToKeysObj(duo1);
     }
     return p1Keys;
 }
 
 function getStoryP2Keys() {
     let p2Keys = mapStoryControlsToKeysObj(userControls ? userControls.SCHEME_2 : DEFAULT_CONTROLS.SCHEME_2);
-    if (p2InputType === 'KEYBOARD_1') {
+    if (p2InputType === 'KEYBOARD_1' || p2InputType === 'KEYBOARD_SILK') {
         p2Keys = mapStoryControlsToKeysObj(userControls ? userControls.SCHEME_1 : DEFAULT_CONTROLS.SCHEME_1);
+    } else if (p2InputType === 'DUO_KEYBOARD_P2') {
+        let duo2 = (userControls && userControls.DUO_KEYBOARD && userControls.DUO_KEYBOARD.p2) || DEFAULT_CONTROLS.DUO_KEYBOARD.p2;
+        p2Keys = mapStoryControlsToKeysObj(duo2);
     }
     return p2Keys;
 }
@@ -1031,10 +1039,13 @@ function updateStoryMode() {
         targetCamY = 0;
     }
 
-    // When inside Trials, fix camera so the entire arena is visible at once!
+    // When inside Trials, lock camera to dedicated arena chamber (X: 5000..6000, Y: 470..870)
+    // Entire arena is visible from border to border in 1 frame without scrolling!
     if (typeof storyTrials !== 'undefined' && storyTrials.active) {
-        targetCamX = 2000;
+        targetCamX = 5000;
         targetCamY = 470;
+        camX = 5000;
+        camY = 470;
     }
 
     camX += (targetCamX - camX) * 0.15;
@@ -1184,6 +1195,12 @@ function updateWaterGuardian() {
 function respawnPlayerAtStoryCheckpoint() {
     let cpX = storyState.checkpoint.x || STORY_CONFIG.START_X;
     let cpY = storyState.checkpoint.y || STORY_CONFIG.FLOOR;
+
+    if (typeof storyTrials !== 'undefined') {
+        storyTrials.active = false;
+        storyTrials.warnings = 0;
+    }
+    storyState.inTrials = false;
 
     for (let idx = 0; idx < players.length; idx++) {
         let pl = players[idx];
@@ -2777,10 +2794,14 @@ function enterStoryTrialsViaGate() {
     triggerShake(6, 12);
     flashAlpha = 0.6;
 
-    // Teleport party into the arena
-    if (players[0]) { players[0].x = 2120; players[0].y = 850 - 50; players[0].vx = 0; players[0].vy = 0; }
-    if (players[1]) { players[1].x = 2070; players[1].y = 850 - 50; players[1].vx = 0; players[1].vy = 0; }
-    if (players[2]) { players[2].x = 2020; players[2].y = 850 - 50; players[2].vx = 0; players[2].vy = 0; }
+    // Teleport party into the arena chamber (X = 5000..6000, Y = 470..870)
+    if (players[0]) { players[0].x = 5120; players[0].y = 850 - 50; players[0].vx = 0; players[0].vy = 0; }
+    if (players[1]) { players[1].x = 5070; players[1].y = 850 - 50; players[1].vx = 0; players[1].vy = 0; }
+    if (players[2]) { players[2].x = 5020; players[2].y = 850 - 50; players[2].vx = 0; players[2].vy = 0; }
+
+    // Instant camera snap to show the entire 1000x400 arena in 1 single frame!
+    camX = 5000;
+    camY = 470;
 
     storyState.inTrials = true;
     storyTrials.active = true;
@@ -2838,8 +2859,8 @@ function startStoryTrialsStage(stageNum, isRestart) {
         storyTrials.announcementColor = "#38bdf8";
         storyTrials.announcementTimer = 180;
         storyTrials.mannequins = [
-            { id: 1, x: 2100, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: true, state: 'WALK', strikeTimer: 0, strikeCooldown: 40, hitFlash: 0 },
-            { id: 2, x: 2880, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: false, state: 'WALK', strikeTimer: 0, strikeCooldown: 60, hitFlash: 0 }
+            { id: 1, x: 5120, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: true, state: 'WALK', strikeTimer: 0, strikeCooldown: 40, hitFlash: 0 },
+            { id: 2, x: 5880, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: false, state: 'WALK', strikeTimer: 0, strikeCooldown: 60, hitFlash: 0 }
         ];
     } else if (stageNum === 2) {
         storyTrials.announcement = "ЭТАП 2: ЛАБИРИНТ И МИШЕНЬ";
@@ -2854,7 +2875,7 @@ function startStoryTrialsStage(stageNum, isRestart) {
         triggerShake(5, 8);
         for (let k = 0; k < 15; k++) {
             storyTrials.particles.push({
-                x: 2480 + (Math.random() - 0.5) * 200,
+                x: 5480 + (Math.random() - 0.5) * 200,
                 y: 530 + Math.random() * 50,
                 vx: (Math.random() - 0.5) * 4,
                 vy: Math.random() * 3,
@@ -2864,7 +2885,7 @@ function startStoryTrialsStage(stageNum, isRestart) {
             });
         }
         storyTrials.mannequins = [
-            { id: 3, x: 2780, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: false, state: 'WALK', strikeTimer: 0, strikeCooldown: 50, hitFlash: 0 }
+            { id: 3, x: 5780, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: false, state: 'WALK', strikeTimer: 0, strikeCooldown: 50, hitFlash: 0 }
         ];
     } else if (stageNum === 3) {
         storyTrials.announcement = "ЭТАП 3: СКОРОСТНЫЕ МИШЕНИ (10 СЕКУНД)";
@@ -2874,11 +2895,11 @@ function startStoryTrialsStage(stageNum, isRestart) {
         storyTrials.overseerTimer = 240;
         storyTrials.targetTimer = 600; // 10 sec @ 60 FPS
         storyTrials.targets = [
-            { id: 1, x: 2060, y: 815, r: 16, hp: 1 },
-            { id: 2, x: 2245, y: 690, r: 16, hp: 1 },
-            { id: 3, x: 2480, y: 495, r: 16, hp: 1 },
-            { id: 4, x: 2700, y: 690, r: 16, hp: 1 },
-            { id: 5, x: 2920, y: 815, r: 16, hp: 1 }
+            { id: 1, x: 5080, y: 815, r: 16, hp: 1 },
+            { id: 2, x: 5245, y: 690, r: 16, hp: 1 },
+            { id: 3, x: 5500, y: 495, r: 16, hp: 1 },
+            { id: 4, x: 5745, y: 690, r: 16, hp: 1 },
+            { id: 5, x: 5920, y: 815, r: 16, hp: 1 }
         ];
     } else if (stageNum === 4) {
         storyTrials.announcement = "ЭТАП 4: ИСПЫТАТЕЛЬНЫЙ ДЕМОН";
@@ -2887,7 +2908,7 @@ function startStoryTrialsStage(stageNum, isRestart) {
         storyTrials.overseerText = "Распорядитель: «Финальное испытание! Одолейте Испытательного Демона! Берегитесь напрыгивания!»";
         storyTrials.overseerTimer = 280;
         storyTrials.demon = {
-            x: 2720,
+            x: 5780,
             y: 850 - 80,
             vx: 0,
             vy: 0,
@@ -2980,17 +3001,14 @@ function completeStoryTrialsStage() {
     } else {
         storyTrials.stage = 5;
         storyTrials.trialsCleared = true;
-        storyTrials.overseerText = "Распорядитель: «Невероятно! Вы прошли все четыре ступени Испытаний! Ваша сила и слаженность доказаны!»";
+        storyTrials.overseerText = "Распорядитель: «Невероятно! Вы прошли все четыре ступени Испытаний! Ваша сила и слаженность доказаны! Портал выхода открыт!»";
         storyTrials.overseerTimer = 360;
-        storyTrials.announcement = "🏆 ВСЕ ИСПЫТАНИЯ ПРОЙДЕНЫ! ПОБЕДА!";
+        storyTrials.announcement = "🏆 ВСЕ ИСПЫТАНИЯ ПРОЙДЕНЫ! ВЫХОД В ПОДЗЕМЕЛЬЕ ОТКРЫТ! ⛩️";
         storyTrials.announcementColor = "#fde047";
         storyTrials.announcementTimer = 320;
         playSound('bladeSpin');
         playSound('lightChime');
         platforms.filter(p => p.isTrialsArenaWall).forEach(p => p.solid = false);
-        // Open the exit gate at X = 3100
-        let exitGate = platforms.find(p => p.isTrialsExitGate);
-        if (exitGate) exitGate.y = 220;
     }
 }
 
@@ -3002,10 +3020,35 @@ function updateStoryTrials() {
     if (storyTrials.noticeTimer > 0) storyTrials.noticeTimer--;
     if (storyTrials.overseerTimer > 0) storyTrials.overseerTimer--;
 
-    // 0. Waiting for all 3 heroes to assemble in the center circle
+    // Exit portal teleportation back to Floor 3 corridor outside the Arch Gate
+    if (storyTrials.trialsCleared) {
+        let p1 = players[0];
+        if (p1 && p1.x >= 5860) {
+            playSound('lightChime');
+            playSound('parry');
+            triggerShake(6, 12);
+            flashAlpha = 0.5;
+            for (let idx = 0; idx < players.length; idx++) {
+                let pl = players[idx];
+                if (pl) {
+                    pl.x = 1920 + idx * 30;
+                    pl.y = 800;
+                    pl.vx = 0;
+                    pl.vy = 0;
+                }
+            }
+            storyTrials.active = false;
+            storyState.inTrials = false;
+            camX = 1450;
+            camY = 470;
+            return;
+        }
+    }
+
+    // 0. Waiting for all 3 heroes to assemble in the center circle (X = 5500, Y = 850)
     if (storyTrials.state === 'WAITING_FOR_CENTER') {
         let livingHeroes = players.filter(pl => pl && pl.hp > 0);
-        let inCenterCount = livingHeroes.filter(pl => Math.abs(pl.x - 2500) < 80 && pl.y >= 750).length;
+        let inCenterCount = livingHeroes.filter(pl => Math.abs(pl.x - 5500) < 80 && pl.y >= 750).length;
         storyTrials.inCenterCount = inCenterCount;
 
         if (inCenterCount === livingHeroes.length && livingHeroes.length >= 1) {
@@ -3019,7 +3062,7 @@ function updateStoryTrials() {
                 triggerShake(8, 14);
                 for (let k = 0; k < 20; k++) {
                     storyTrials.particles.push({
-                        x: 2500, y: 845,
+                        x: 5500, y: 845,
                         vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8,
                         color: Math.random() < 0.5 ? "#fde047" : "#38bdf8",
                         size: 4 + Math.random() * 5, timer: 40
@@ -3079,7 +3122,7 @@ function updateStoryTrials() {
                 m.vx = m.facingRight ? 1.6 : -1.6;
                 m.x += m.vx;
                 // Keep mannequin on floor
-                m.x = Math.max(1940, Math.min(3060, m.x));
+                m.x = Math.max(5020, Math.min(5980, m.x));
 
                 if (m.strikeCooldown > 0) m.strikeCooldown--;
                 if (minDist <= 65 && m.strikeCooldown <= 0) {
@@ -3182,7 +3225,7 @@ function updateStoryTrials() {
                         triggerShake(8, 14);
                         for (let k = 0; k < 16; k++) {
                             storyTrials.particles.push({
-                                x: 2480,
+                                x: 5480,
                                 y: 565,
                                 vx: (Math.random() - 0.5) * 8,
                                 vy: (Math.random() - 0.5) * 8,
@@ -3271,7 +3314,7 @@ function updateStoryTrials() {
                     triggerVibration('damage');
                 }
             }
-            if (sw.timer <= 0 || sw.x < 1920 || sw.x > 3080) {
+            if (sw.timer <= 0 || sw.x < 4980 || sw.x > 6020) {
                 d.shockwaves.splice(i, 1);
             }
         }
@@ -3290,7 +3333,7 @@ function updateStoryTrials() {
                     triggerVibration('damage');
                 }
             }
-            if (pw.timer <= 0 || pw.x < 1920 || pw.x > 3080) {
+            if (pw.timer <= 0 || pw.x < 4980 || pw.x > 6020) {
                 d.powerWaves.splice(i, 1);
             }
         }
@@ -3301,7 +3344,7 @@ function updateStoryTrials() {
             if (nearestPl) {
                 d.vx = d.facingRight ? 1.8 : -1.8;
                 d.x += d.vx;
-                d.x = Math.max(1960, Math.min(3040, d.x));
+                d.x = Math.max(5020, Math.min(5980, d.x));
             }
             if (d.attackCooldown <= 0 && nearestPl) {
                 d.attackCooldown = 110;
@@ -3417,14 +3460,14 @@ function checkStoryTrialHitbox(swordHitbox, attacker) {
 
     // 2. Stage 2: Breakable Wall below maze entrance
     if (storyTrials.stage === 2 && !storyTrials.mazeWallBroken) {
-        let wallBox = { x: 2460, y: 712, width: 45, height: 24 };
+        let wallBox = { x: 5460, y: 712, width: 45, height: 24 };
         if (rectIntersect(swordHitbox, wallBox)) {
             storyTrials.mazeWallBroken = true;
             playSound('breakStone');
             triggerShake(6, 10);
             for (let k = 0; k < 18; k++) {
                 storyTrials.particles.push({
-                    x: 2480,
+                    x: 5480,
                     y: 720,
                     vx: (Math.random() - 0.5) * 8,
                     vy: -Math.random() * 7,
@@ -3484,7 +3527,7 @@ function checkStoryTrialWaterDropHit(drop, p, hitBox) {
 
     // Stage 2: Breakable wall hit by water drop
     if (storyTrials.stage === 2 && !storyTrials.mazeWallBroken) {
-        let wallBox = { x: 2460, y: 712, width: 45, height: 24 };
+        let wallBox = { x: 5460, y: 712, width: 45, height: 24 };
         if (rectIntersect(hitBox, wallBox)) {
             storyTrials.mazeWallBroken = true;
             playSound('breakStone');
@@ -3496,19 +3539,19 @@ function checkStoryTrialWaterDropHit(drop, p, hitBox) {
 
     // Stage 2: Entrance to the maze channel (only after wall broken)
     if (storyTrials.stage === 2 && storyTrials.mazeWallBroken && !storyTrials.mazeTargetHit) {
-        if (drop.x >= 2450 && drop.x <= 2515 && drop.y >= 700 && drop.y <= 745) {
+        if (drop.x >= 5450 && drop.x <= 5515 && drop.y >= 700 && drop.y <= 745) {
             storyTrials.mazeDropGuide = {
                 drop: drop,
                 owner: p,
                 idx: 0,
                 points: [
-                    { x: 2480, y: 715 },
-                    { x: 2480, y: 685 },
-                    { x: 2390, y: 685 },
-                    { x: 2390, y: 620 },
-                    { x: 2570, y: 620 },
-                    { x: 2570, y: 565 },
-                    { x: 2480, y: 565 }
+                    { x: 5480, y: 715 },
+                    { x: 5480, y: 685 },
+                    { x: 5390, y: 685 },
+                    { x: 5390, y: 620 },
+                    { x: 5570, y: 620 },
+                    { x: 5570, y: 565 },
+                    { x: 5480, y: 565 }
                 ]
             };
             playSound('waterSplash');
@@ -3613,13 +3656,13 @@ function getNearestStoryTrialTarget(p) {
 
     if (storyTrials.stage === 2) {
         if (p.type === 'EARTH' && !storyTrials.mazeWallBroken) {
-            return { x: 2480, y: 720 };
+            return { x: 5480, y: 720 };
         }
         if (storyTrials.mannequins.length > 0) {
             let m = storyTrials.mannequins[0];
             return { x: m.x, y: m.y - 25 };
         }
-        return { x: 2480, y: 565 };
+        return { x: 5480, y: 565 };
     }
 
     if (storyTrials.stage === 3) {
@@ -3642,9 +3685,17 @@ function getNearestStoryTrialTarget(p) {
 function runStoryTrialsCompanionAI(p, inp, requestJump) {
     if (!storyTrials.active) return;
 
-    // 0. Walk to center circle when waiting for party to assemble
+    // 0. Follow player into center circle when waiting for party to assemble
     if (storyTrials.state === 'WAITING_FOR_CENTER') {
-        let targetX = (p === players[1]) ? 2465 : (p === players[2]) ? 2535 : 2500;
+        let leader = players[0];
+        let targetX;
+        if (leader && leader.x < 5420) {
+            // Companion bots run behind player towards the center
+            targetX = (p === players[1]) ? (leader.x - 45) : (leader.x - 85);
+        } else {
+            // Once leader reaches center area, step into circle flanking the player
+            targetX = (p === players[1]) ? 5465 : 5535;
+        }
         let dx = targetX - p.x;
         if (Math.abs(dx) > 10) {
             if (dx > 0) inp.right = true; else inp.left = true;
@@ -3666,7 +3717,7 @@ function runStoryTrialsCompanionAI(p, inp, requestJump) {
 
     // 2. Stage 2: Earth Companion breaks the bottom maze wall!
     if (storyTrials.stage === 2 && p.type === 'EARTH' && !storyTrials.mazeWallBroken) {
-        let targetX = 2480;
+        let targetX = 5480;
         let dx = targetX - p.x;
         if (Math.abs(dx) > 18) {
             if (dx > 0) inp.right = true; else inp.left = true;
@@ -3731,12 +3782,90 @@ function runStoryTrialsCompanionAI(p, inp, requestJump) {
 
 // Draw the entire Trials Arena, Overseer, Maze, Mannequins, Targets, Demon Boss & HUD
 function drawStoryTrials() {
-    if (!ctx) return;
+    if (!ctx || !storyTrials || !storyTrials.active) return;
     let now = Date.now();
 
-    // 1. Overseer Observation Balcony & Model at X = 2000, Y = 660
+    // 0. Dedicated Ancient Trials Chamber Backdrop (X: 5000..6000, Y: 470..870)
     ctx.save();
-    let ovX = 2000, ovY = 660;
+    let bgGrad = ctx.createLinearGradient(5000, 470, 5000, 870);
+    bgGrad.addColorStop(0, "#080c14");
+    bgGrad.addColorStop(0.5, "#0d1322");
+    bgGrad.addColorStop(1, "#141c2e");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(4990, 460, 1020, 410);
+
+    // Stone Pillars in background
+    ctx.fillStyle = "#162032";
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 2;
+    let pilX = [5020, 5220, 5420, 5620, 5820, 5970];
+    for (let px of pilX) {
+        ctx.fillRect(px - 14, 460, 28, 390);
+        ctx.strokeRect(px - 14, 460, 28, 390);
+    }
+
+    // Glowing Runic Torches
+    let torchX = [5120, 5880];
+    for (let tx of torchX) {
+        ctx.fillStyle = "#78350f";
+        ctx.fillRect(tx - 3, 670, 6, 20);
+        let fGrad = ctx.createRadialGradient(tx, 665, 2, tx, 665, 28);
+        fGrad.addColorStop(0, "rgba(56, 189, 248, 0.7)");
+        fGrad.addColorStop(0.5, "rgba(147, 51, 234, 0.3)");
+        fGrad.addColorStop(1, "rgba(56, 189, 248, 0)");
+        ctx.fillStyle = fGrad;
+        ctx.beginPath();
+        ctx.arc(tx, 665, 28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#38bdf8";
+        ctx.beginPath();
+        ctx.arc(tx, 665, 5 + Math.sin(now * 0.01 + tx) * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Chamber Floor & Boundary Walls
+    ctx.fillStyle = "#1e293b";
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 2.5;
+    ctx.fillRect(4980, 850, 1040, 50);
+    ctx.strokeRect(4980, 850, 1040, 50);
+    ctx.fillRect(4980, 440, 1040, 25);
+    ctx.strokeRect(4980, 440, 1040, 25);
+    ctx.fillRect(4980, 460, 25, 400);
+    ctx.strokeRect(4980, 460, 25, 400);
+    ctx.fillRect(5995, 460, 25, 400);
+    ctx.strokeRect(5995, 460, 25, 400);
+
+    // Exit portal when trials cleared
+    if (storyTrials.trialsCleared) {
+        let px = 5900, py = 850;
+        let pGrad = ctx.createLinearGradient(px, py - 180, px, py);
+        pGrad.addColorStop(0, "rgba(253, 224, 71, 0.65)");
+        pGrad.addColorStop(0.5, "rgba(56, 189, 248, 0.45)");
+        pGrad.addColorStop(1, "rgba(15, 23, 42, 0.2)");
+        ctx.fillStyle = pGrad;
+        ctx.fillRect(px - 25, py - 160, 50, 160);
+
+        ctx.strokeStyle = "#fde047";
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "#f59e0b";
+        ctx.shadowBlur = 15;
+        ctx.strokeRect(px - 28, py - 165, 56, 165);
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = "#fef08a";
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("✨ ПОРТАЛ ВЫХОДА ✨", px, py - 175);
+        ctx.font = "bold 10px sans-serif";
+        ctx.fillStyle = "#86efac";
+        ctx.fillText("«Шагните в портал»", px, py - 90);
+    }
+    ctx.restore();
+
+    // 1. Overseer Observation Balcony & Model at X = 5040, Y = 660
+    ctx.save();
+    let ovX = 5040, ovY = 660;
     // Stone plinth
     ctx.fillStyle = "#1e293b";
     ctx.strokeStyle = "#f59e0b";
@@ -3792,18 +3921,18 @@ function drawStoryTrials() {
     ctx.fillStyle = "#1e293b";
     ctx.strokeStyle = "#38bdf8";
     ctx.lineWidth = 2;
-    // Left ledge: X: 2180..2320, Y: 720
-    ctx.fillRect(2180, 720, 140, 18);
-    ctx.strokeRect(2180, 720, 140, 18);
-    // Right ledge: X: 2630..2770, Y: 720
-    ctx.fillRect(2630, 720, 140, 18);
-    ctx.strokeRect(2630, 720, 140, 18);
+    // Left ledge: X: 5180..5320, Y: 720
+    ctx.fillRect(5180, 720, 140, 18);
+    ctx.strokeRect(5180, 720, 140, 18);
+    // Right ledge: X: 5680..5820, Y: 720
+    ctx.fillRect(5680, 720, 140, 18);
+    ctx.strokeRect(5680, 720, 140, 18);
     ctx.restore();
 
-    // 2.5 Central Assembly Circle (X = 2500, Y = 850) - Active when assembling party
+    // 2.5 Central Assembly Circle (X = 5500, Y = 850) - Active when assembling party
     if (storyTrials.state === 'WAITING_FOR_CENTER') {
         ctx.save();
-        let cx = 2500, cy = 848;
+        let cx = 5500, cy = 848;
         let t = now * 0.002;
         let inCount = storyTrials.inCenterCount || 0;
         let readyProg = (storyTrials.centerReadyTimer || 0) / 30; // 0..1
@@ -3864,10 +3993,10 @@ function drawStoryTrials() {
         ctx.restore();
     }
 
-    // 3. Stage 2: Overhead Logic Maze (X: 2360 .. 2600, Y: 530 .. 720) - ONLY during Stage 2
+    // 3. Stage 2: Overhead Logic Maze (X: 5360 .. 5600, Y: 530 .. 720) - ONLY during Stage 2
     if (storyTrials.stage === 2) {
         ctx.save();
-        let mLeft = 2360, mRight = 2600, mTop = 530, mBottom = 720;
+        let mLeft = 5360, mRight = 5600, mTop = 530, mBottom = 720;
 
         // Outer frame
         ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
@@ -3881,13 +4010,13 @@ function drawStoryTrials() {
         ctx.lineWidth = 6;
         ctx.beginPath();
         // Divider 1 (vertical from roof down)
-        ctx.moveTo(2440, mTop); ctx.lineTo(2440, 650);
+        ctx.moveTo(5440, mTop); ctx.lineTo(5440, 650);
         // Divider 2 (horizontal across)
-        ctx.moveTo(2440, 650); ctx.lineTo(2530, 650);
+        ctx.moveTo(5440, 650); ctx.lineTo(5530, 650);
         // Divider 3 (vertical from bottom up)
-        ctx.moveTo(2530, 650); ctx.lineTo(2530, 590);
+        ctx.moveTo(5530, 650); ctx.lineTo(5530, 590);
         // Bottom inner wall
-        ctx.moveTo(mLeft, 680); ctx.lineTo(2450, 680);
+        ctx.moveTo(mLeft, 680); ctx.lineTo(5450, 680);
         ctx.stroke();
 
         // Bottom Entrance Gap & Breakable Wall
@@ -3896,25 +4025,25 @@ function drawStoryTrials() {
             ctx.fillStyle = "#64748b";
             ctx.strokeStyle = "#94a3b8";
             ctx.lineWidth = 2;
-            ctx.fillRect(2465, 714, 38, 16);
-            ctx.strokeRect(2465, 714, 38, 16);
+            ctx.fillRect(5465, 714, 38, 16);
+            ctx.strokeRect(5465, 714, 38, 16);
             // Cracks
             ctx.strokeStyle = "#334155";
             ctx.beginPath();
-            ctx.moveTo(2475, 715); ctx.lineTo(2482, 722); ctx.lineTo(2495, 728);
+            ctx.moveTo(5475, 715); ctx.lineTo(5482, 722); ctx.lineTo(5495, 728);
             ctx.stroke();
             ctx.fillStyle = "#f8fafc";
             ctx.font = "bold 9px sans-serif";
             ctx.textAlign = "center";
-            ctx.fillText("🧱 СТЕНА", 2484, 726);
+            ctx.fillText("🧱 СТЕНА", 5484, 726);
         } else {
             // Open glowing water channel entrance
             ctx.fillStyle = "rgba(56, 189, 248, 0.35)";
-            ctx.fillRect(2465, 716, 38, 14);
+            ctx.fillRect(5465, 716, 38, 14);
         }
 
-        // Bullseye Target at (2480, 565)
-        let tgtX = 2480, tgtY = 565;
+        // Bullseye Target at (5480, 565)
+        let tgtX = 5480, tgtY = 565;
         ctx.save();
         if (storyTrials.mazeTargetHit) {
             ctx.fillStyle = "#fde047";
