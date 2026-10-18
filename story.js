@@ -37,7 +37,12 @@ const STORY_CONFIG = {
     BENCH_2_Y: 850,
     TRIALS_GATE_X: 1850,
     TRIALS_GATE_Y: 850,
-    START_X: 120
+    START_X: 120,
+    SPIKE_PITS: [
+        { id: 1, x1: 60, x2: 240, stepX: 120, stepY: 790, stepW: 60 },
+        { id: 2, x1: 580, x2: 820, step1X: 635, step1Y: 795, step1W: 50, step2X: 735, step2Y: 775, step2W: 50 },
+        { id: 3, x1: 1580, x2: 1720, stepX: 1630, stepY: 805, stepW: 40 }
+    ]
 };
 
 let storyState = {
@@ -73,6 +78,14 @@ let storyState = {
     trialsGateOpen: false,
     checkpoint: { x: 120, y: 350, stance: 'WATER', hp: 5, benchId: 0 },
     leaves: [],
+    stalactites: [
+        { id: 1, x: 380, y: 535, startY: 535, vy: 0, state: 'HANGING', shakeTimer: 0, respawnTimer: 0 },
+        { id: 2, x: 500, y: 535, startY: 535, vy: 0, state: 'HANGING', shakeTimer: 0, respawnTimer: 0 },
+        { id: 3, x: 690, y: 535, startY: 535, vy: 0, state: 'HANGING', shakeTimer: 0, respawnTimer: 0 },
+        { id: 4, x: 960, y: 535, startY: 535, vy: 0, state: 'HANGING', shakeTimer: 0, respawnTimer: 0 },
+        { id: 5, x: 1650, y: 535, startY: 535, vy: 0, state: 'HANGING', shakeTimer: 0, respawnTimer: 0 }
+    ],
+    hazardParticles: [],
     grassBlades: [],
     stars: [],
     campfireFlames: [],
@@ -103,11 +116,32 @@ function setupStoryPlatforms() {
         // 4. Far-Left Shaft Wall (X = -520) guiding the drop down to the Underground Tier
         { x: -520, y: -380, w: 40, h: 1290, solid: true, isWall: true },
 
-        // 5. Lower Underground Tier (Floor 3: X = -480..3200, Y = 850) - open corridor past gates
-        { x: -480, y: STORY_CONFIG.LOWER_FLOOR, w: 3680, h: 65, solid: true, tier: 3 },
-        // Trials Arena Enclosure (X = 1980..3020, Y = 460..850)
-        { x: 1980, y: 460, w: 25, h: 400, solid: true, isWall: true, isTrialsArenaWall: true },
-        { x: 2995, y: 460, w: 25, h: 400, solid: true, isWall: true, isTrialsArenaWall: true },
+        // 5. Lower Underground Tier (Floor 3: Y = 850) with 3 Spike Pits and Stepping Stones
+        // Floor Segment 1: from drop shaft (X = -480) to Pit 1 (X = 60)
+        { x: -480, y: STORY_CONFIG.LOWER_FLOOR, w: 540, h: 65, solid: true, tier: 3 },
+        // Pit 1 Bottom (Y = 915) & Stepping Stone Platform (X = 120, Y = 790)
+        { x: 60, y: 915, w: 180, h: 30, solid: true, isSpikePitBottom: true },
+        { x: 120, y: 790, w: 60, h: 18, solid: true, mossy: true, isHazardStep: true },
+
+        // Floor Segment 2: from Pit 1 (X = 240) to Pit 2 (X = 580)
+        { x: 240, y: STORY_CONFIG.LOWER_FLOOR, w: 340, h: 65, solid: true, tier: 3 },
+        // Pit 2 Bottom (Y = 915) & Stepping Pillars
+        { x: 580, y: 915, w: 240, h: 30, solid: true, isSpikePitBottom: true },
+        { x: 635, y: 795, w: 50, h: 18, solid: true, mossy: true, isHazardStep: true },
+        { x: 735, y: 775, w: 50, h: 18, solid: true, mossy: true, isHazardStep: true },
+
+        // Floor Segment 3: from Pit 2 (X = 820) to Pit 3 (X = 1580) - covers Earth (1100) & Bench 2 (1450)
+        { x: 820, y: STORY_CONFIG.LOWER_FLOOR, w: 760, h: 65, solid: true, tier: 3 },
+        // Pit 3 Bottom (Y = 915) & Stepping Pillar
+        { x: 1580, y: 915, w: 140, h: 30, solid: true, isSpikePitBottom: true },
+        { x: 1630, y: 805, w: 40, h: 18, solid: true, mossy: true, isHazardStep: true },
+
+        // Floor Segment 4: from Pit 3 (X = 1720) to Far-Right (X = 3200) - covers Gates (1850) & arena
+        { x: 1720, y: STORY_CONFIG.LOWER_FLOOR, w: 1480, h: 65, solid: true, tier: 3 },
+
+        // Trials Arena Enclosure (X = 1980..3020, Y = 460..850) - solid ONLY during trials!
+        { x: 1980, y: 460, w: 25, h: 400, solid: false, isWall: true, isTrialsArenaWall: true },
+        { x: 2995, y: 460, w: 25, h: 400, solid: false, isWall: true, isTrialsArenaWall: true },
         { x: 1980, y: 450, w: 1040, h: 20, solid: true, isTrialsCeiling: true },
         // Elevated Combat Ledges in Arena
         { x: 2150, y: 720, w: 130, h: 18, solid: true, isArenaLedge: true },
@@ -880,6 +914,11 @@ function updateStoryMode() {
             // 6. Update Trials engine if active
             if (typeof storyTrials !== 'undefined' && storyTrials.active) {
                 updateStoryTrials();
+            }
+
+            // 6b. Update Underground Hazards (Spike Pits & Falling Stalactites)
+            if (!storyState.inTrials) {
+                updateStoryHazards();
             }
             break;
         }
@@ -1887,16 +1926,340 @@ function drawStoryUndergroundTier() {
     ctx.lineTo(3200, 535);
     ctx.stroke();
 
-    // Lower Underground Floor 3 (X = -480..3200, Y = 850)
+    // 3. Hanging & Falling Stalactites from the Ceiling (Y = 535)
+    if (storyState.stalactites) {
+        for (let s of storyState.stalactites) {
+            if (s.state === 'SMASHED') continue;
+            ctx.save();
+            let shakeX = (s.state === 'WINDUP') ? (Math.sin(now * 0.08) * 3) : 0;
+            let sx = s.x + shakeX;
+            let sy = s.y;
+
+            // Stalactite rock cone
+            ctx.fillStyle = "#334155";
+            ctx.strokeStyle = "#64748b";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(sx - 13, sy);
+            ctx.lineTo(sx + 13, sy);
+            ctx.lineTo(sx, sy + 38);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Highlight ridge on left side
+            ctx.fillStyle = "#94a3b8";
+            ctx.beginPath();
+            ctx.moveTo(sx - 13, sy);
+            ctx.lineTo(sx, sy);
+            ctx.lineTo(sx, sy + 38);
+            ctx.closePath();
+            ctx.fill();
+
+            // Water droplet or falling warning particle at tip
+            if (s.state === 'WINDUP') {
+                ctx.fillStyle = "#ef4444";
+                ctx.beginPath();
+                ctx.arc(sx, sy + 40, 3, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = "#38bdf8";
+                ctx.beginPath();
+                ctx.arc(sx, sy + 39, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+    }
+
+    // 4. Solid Floor Segments (Y = 850)
+    let floorSegments = [
+        { x: -480, w: 540 },  // -480 to 60
+        { x: 240,  w: 340 },  // 240 to 580
+        { x: 820,  w: 760 },  // 820 to 1580
+        { x: 1720, w: 1480 }  // 1720 to 3200
+    ];
+
     ctx.fillStyle = "#080f1a";
-    ctx.fillRect(-480, STORY_CONFIG.LOWER_FLOOR, 3680, 90);
     ctx.strokeStyle = "#22c55e";
     ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(-480, STORY_CONFIG.LOWER_FLOOR);
-    ctx.lineTo(3200, STORY_CONFIG.LOWER_FLOOR);
-    ctx.stroke();
+
+    for (let seg of floorSegments) {
+        ctx.fillRect(seg.x, STORY_CONFIG.LOWER_FLOOR, seg.w, 90);
+        ctx.beginPath();
+        ctx.moveTo(seg.x, STORY_CONFIG.LOWER_FLOOR);
+        ctx.lineTo(seg.x + seg.w, STORY_CONFIG.LOWER_FLOOR);
+        ctx.stroke();
+
+        // Hanging moss roots
+        ctx.save();
+        ctx.strokeStyle = "#15803d";
+        ctx.lineWidth = 1.5;
+        for (let rx = seg.x + 18; rx < seg.x + seg.w - 15; rx += 45) {
+            let rh = 5 + ((rx * 7) % 8);
+            ctx.beginPath();
+            ctx.moveTo(rx, STORY_CONFIG.LOWER_FLOOR + 2);
+            ctx.lineTo(rx, STORY_CONFIG.LOWER_FLOOR + 2 + rh);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // 5. Spike Pits & Stepping Stones
+    if (STORY_CONFIG.SPIKE_PITS) {
+        for (let pit of STORY_CONFIG.SPIKE_PITS) {
+            let pw = pit.x2 - pit.x1;
+
+            // Deep pit background
+            ctx.fillStyle = "#030712";
+            ctx.fillRect(pit.x1, STORY_CONFIG.LOWER_FLOOR, pw, 75);
+
+            // Left & right rocky cliff walls dropping down into the pit
+            ctx.fillStyle = "#0f172a";
+            ctx.strokeStyle = "#334155";
+            ctx.lineWidth = 2;
+            ctx.fillRect(pit.x1 - 6, STORY_CONFIG.LOWER_FLOOR, 6, 75);
+            ctx.strokeRect(pit.x1 - 6, STORY_CONFIG.LOWER_FLOOR, 6, 75);
+            ctx.fillRect(pit.x2, STORY_CONFIG.LOWER_FLOOR, 6, 75);
+            ctx.strokeRect(pit.x2, STORY_CONFIG.LOWER_FLOOR, 6, 75);
+
+            // Ambient dark red / poisonous mist in pit
+            ctx.fillStyle = "rgba(185, 28, 28, 0.18)";
+            ctx.fillRect(pit.x1, 880, pw, 35);
+
+            // Menacing rows of sharp obsidian / blood spikes (pointing up)
+            let spikeSpacing = 16;
+            for (let spX = pit.x1 + 8; spX < pit.x2 - 8; spX += spikeSpacing) {
+                let spikeH = 34 + ((spX * 13) % 12);
+                let spikeY = 915;
+                ctx.save();
+                let sGrad = ctx.createLinearGradient(spX, spikeY, spX, spikeY - spikeH);
+                sGrad.addColorStop(0, "#1e1b4b");
+                sGrad.addColorStop(0.6, "#450a0a");
+                sGrad.addColorStop(1, "#ef4444");
+                ctx.fillStyle = sGrad;
+                ctx.strokeStyle = "#fca5a5";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(spX - 7, spikeY);
+                ctx.lineTo(spX + 7, spikeY);
+                ctx.lineTo(spX, spikeY - spikeH);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(spX - 2, spikeY);
+                ctx.lineTo(spX, spikeY - spikeH);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        // Stepping stone platforms inside the pits
+        let steps = [
+            { x: 120, y: 790, w: 60, h: 18 },
+            { x: 635, y: 795, w: 50, h: 18 },
+            { x: 735, y: 775, w: 50, h: 18 },
+            { x: 1630, y: 805, w: 40, h: 18 }
+        ];
+
+        for (let st of steps) {
+            ctx.save();
+            ctx.fillStyle = "#1e293b";
+            ctx.strokeStyle = "#475569";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(st.x, st.y, st.w, st.h, 4);
+            ctx.fill();
+            ctx.stroke();
+
+            // Emerald moss top
+            ctx.fillStyle = "#22c55e";
+            ctx.shadowColor = "#22c55e";
+            ctx.shadowBlur = 6;
+            ctx.beginPath();
+            ctx.roundRect(st.x, st.y, st.w, 4, [4, 4, 0, 0]);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Runic dot in center
+            ctx.fillStyle = "#86efac";
+            ctx.beginPath();
+            ctx.arc(st.x + st.w / 2, st.y + 10, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    // 6. Hazard Particles (Debris, Sparks, Smoke)
+    if (storyState.hazardParticles) {
+        ctx.save();
+        for (let pt of storyState.hazardParticles) {
+            ctx.fillStyle = pt.color;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
     ctx.restore();
+}
+
+// Update Spike Pit hazards, player safe ground respawning, and falling stalactites
+function updateStoryHazards() {
+    // 1. Record solid safe ground for players
+    for (let pl of players) {
+        if (!pl || pl.hp <= 0) continue;
+        if (pl.y >= 750 && pl.y <= 860 && pl.onGround) {
+            let inPit = STORY_CONFIG.SPIKE_PITS.some(pit => pl.x > pit.x1 - 10 && pl.x < pit.x2 + 10);
+            if (!inPit) {
+                pl.lastSafeX = pl.x;
+                pl.lastSafeY = pl.y;
+            }
+        }
+    }
+
+    // 2. Check Spike Pit Hazard Collisions
+    for (let pit of STORY_CONFIG.SPIKE_PITS) {
+        let spikeBox = { x: pit.x1 + 6, y: 865, width: (pit.x2 - pit.x1) - 12, height: 55 };
+        for (let pl of players) {
+            if (!pl || pl.hp <= 0 || pl.invuln > 0) continue;
+            let plBox = { x: pl.x - 12, y: pl.y - 45, width: 24, height: 50 };
+            if (rectIntersect(spikeBox, plBox)) {
+                // Downward strike pogo bounce
+                let isDownAttack = (pl.attackType === 'DOWN' || (pl.vy > 0 && pl.attackTimer > 0));
+                if (isDownAttack) {
+                    pl.vy = -14;
+                    pl.jumps = 1;
+                    playSound('parry');
+                    playSound('slash');
+                    triggerShake(4, 8);
+                    for (let k = 0; k < 10; k++) {
+                        storyState.hazardParticles.push({
+                            x: pl.x, y: 875,
+                            vx: (Math.random() - 0.5) * 8, vy: -Math.random() * 6 - 2,
+                            color: Math.random() < 0.5 ? "#fde047" : "#ffffff",
+                            size: 3 + Math.random() * 3, timer: 20
+                        });
+                    }
+                } else {
+                    takeDamage(pl, 0.5, true, true, true);
+                    playSound('hitBoss');
+                    playSound('slash');
+                    triggerShake(6, 12);
+                    flashAlpha = 0.35;
+                    for (let k = 0; k < 16; k++) {
+                        storyState.hazardParticles.push({
+                            x: pl.x, y: 885,
+                            vx: (Math.random() - 0.5) * 9, vy: -Math.random() * 7 - 2,
+                            color: Math.random() < 0.5 ? "#ef4444" : "#94a3b8",
+                            size: 3.5 + Math.random() * 3.5, timer: 25
+                        });
+                    }
+                    pl.x = pl.lastSafeX || (pit.x1 - 30);
+                    pl.y = pl.lastSafeY || (850 - 50);
+                    pl.vx = 0;
+                    pl.vy = 0;
+                    pl.invuln = 55;
+                }
+            }
+        }
+    }
+
+    // 3. Update Stalactites
+    if (storyState.stalactites) {
+        for (let s of storyState.stalactites) {
+            if (s.state === 'HANGING') {
+                let triggered = players.some(pl => pl && pl.hp > 0 && Math.abs(pl.x - s.x) < 45 && pl.y > s.y && pl.y < 870);
+                if (triggered) {
+                    s.state = 'WINDUP';
+                    s.shakeTimer = 22;
+                }
+            } else if (s.state === 'WINDUP') {
+                s.shakeTimer--;
+                if (Math.random() < 0.45) {
+                    storyState.hazardParticles.push({
+                        x: s.x + (Math.random() - 0.5) * 16, y: s.y + 35,
+                        vx: (Math.random() - 0.5) * 2, vy: Math.random() * 3 + 1,
+                        color: "#94a3b8", size: 2 + Math.random() * 2, timer: 20
+                    });
+                }
+                if (s.shakeTimer <= 0) {
+                    s.state = 'FALLING';
+                    s.vy = 3.5;
+                    playSound('parry');
+                }
+            } else if (s.state === 'FALLING') {
+                s.vy += 0.85;
+                s.y += s.vy;
+
+                storyState.hazardParticles.push({
+                    x: s.x + (Math.random() - 0.5) * 10, y: s.y,
+                    vx: 0, vy: -1, color: "#64748b", size: 2.5, timer: 14
+                });
+
+                let sBox = { x: s.x - 14, y: s.y, width: 28, height: 40 };
+
+                // Hit player
+                let hitPl = players.find(pl => pl && pl.hp > 0 && pl.invuln <= 0 && rectIntersect(sBox, { x: pl.x - 14, y: pl.y - 45, width: 28, height: 45 }));
+                if (hitPl) {
+                    takeDamage(hitPl, 0.5, true, true, true);
+                    hitPl.invuln = 45;
+                    playSound('breakStone');
+                    playSound('hitBoss');
+                    triggerShake(6, 10);
+                    s.state = 'SMASHED';
+                    s.respawnTimer = 600;
+                    for (let k = 0; k < 16; k++) {
+                        storyState.hazardParticles.push({
+                            x: s.x, y: s.y + 20,
+                            vx: (Math.random() - 0.5) * 8, vy: -Math.random() * 7,
+                            color: Math.random() < 0.5 ? "#64748b" : "#475569",
+                            size: 3 + Math.random() * 4, timer: 30
+                        });
+                    }
+                }
+
+                // Hit floor
+                if (s.y >= 840) {
+                    s.state = 'SMASHED';
+                    s.respawnTimer = 600;
+                    playSound('breakStone');
+                    triggerShake(4, 7);
+                    for (let k = 0; k < 14; k++) {
+                        storyState.hazardParticles.push({
+                            x: s.x, y: 845,
+                            vx: (Math.random() - 0.5) * 7, vy: -Math.random() * 6 - 1,
+                            color: Math.random() < 0.5 ? "#64748b" : "#94a3b8",
+                            size: 3 + Math.random() * 3.5, timer: 28
+                        });
+                    }
+                }
+            } else if (s.state === 'SMASHED') {
+                s.respawnTimer--;
+                if (s.respawnTimer <= 0) {
+                    s.y = s.startY;
+                    s.vy = 0;
+                    s.state = 'HANGING';
+                }
+            }
+        }
+    }
+
+    // 4. Update Hazard Particles
+    if (storyState.hazardParticles) {
+        for (let i = storyState.hazardParticles.length - 1; i >= 0; i--) {
+            let pt = storyState.hazardParticles[i];
+            pt.x += pt.vx;
+            pt.y += pt.vy;
+            pt.timer--;
+            if (pt.timer <= 0) storyState.hazardParticles.splice(i, 1);
+        }
+    }
 }
 
 // Draw Air (💨) and Earth (🌿) waiting NPCs & Speech Bubbles
@@ -2790,6 +3153,7 @@ function enterStoryTrialsViaGate() {
     storyTrials.centerReadyTimer = 0;
     storyTrials.inCenterCount = 0;
     storyState.trialsWeaponGranted = false;
+    platforms.filter(p => p.isTrialsArenaWall).forEach(p => p.solid = true);
 
     // Ensure maze platforms are inactive initially
     let mb1 = platforms.find(p => p.isMazeBase1);
@@ -2985,6 +3349,7 @@ function completeStoryTrialsStage() {
         storyTrials.announcementTimer = 320;
         playSound('bladeSpin');
         playSound('lightChime');
+        platforms.filter(p => p.isTrialsArenaWall).forEach(p => p.solid = false);
         // Open the exit gate at X = 3100
         let exitGate = platforms.find(p => p.isTrialsExitGate);
         if (exitGate) exitGate.y = 220;
@@ -3382,8 +3747,35 @@ function updateStoryTrials() {
     }
 }
 
-// Melee attack hitbox against trial entities
+// Melee attack hitbox against trial entities and hazards
 function checkStoryTrialHitbox(swordHitbox, attacker) {
+    // 0. Stalactite destruction
+    if (storyState.stalactites) {
+        for (let s of storyState.stalactites) {
+            if (s.state === 'HANGING' || s.state === 'FALLING' || s.state === 'WINDUP') {
+                let sBox = { x: s.x - 16, y: s.y, width: 32, height: 45 };
+                if (rectIntersect(swordHitbox, sBox)) {
+                    s.state = 'SMASHED';
+                    s.respawnTimer = 600;
+                    playSound('breakStone');
+                    playSound('parry');
+                    triggerShake(4, 7);
+                    for (let k = 0; k < 12; k++) {
+                        storyState.hazardParticles.push({
+                            x: s.x, y: s.y + 20,
+                            vx: (Math.random() - 0.5) * 8, vy: -Math.random() * 7,
+                            color: "#64748b", size: 3 + Math.random() * 3, timer: 25
+                        });
+                    }
+                    if (attacker.attackType === 'DOWN') {
+                        attacker.vy = -14;
+                        attacker.jumps = 1;
+                    }
+                }
+            }
+        }
+    }
+
     if (!storyTrials.active) return;
 
     // Timur: "вода - 0.75, воздух - 0.75, земля - 0.5"

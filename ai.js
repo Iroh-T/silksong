@@ -296,6 +296,16 @@ function runAiCompanion(p) {
                 brain.action = 'LOOK_AROUND';
             } else if ((dyLeader < -42 || p.inStoryWater || (leader.vy < -5.5 && Math.abs(leader.x - p.x) < 140 && Math.random() < 0.35)) && (p.onGround || p.inStoryWater)) {
                 requestJump(p.type === 'AIR' ? 16 : 14);
+            } else if (p.y > 750 && p.onGround && typeof STORY_CONFIG !== 'undefined' && STORY_CONFIG.SPIKE_PITS) {
+                // Jump over underground spike pits when approaching them
+                let dir = (dxTarget > 0) ? 1 : -1;
+                for (let pit of STORY_CONFIG.SPIKE_PITS) {
+                    let dToPit = (dir > 0) ? (pit.x1 - p.x) : (p.x - pit.x2);
+                    if (dToPit >= -10 && dToPit <= 65) {
+                        requestJump(p.type === 'AIR' ? 14 : 12.5);
+                        break;
+                    }
+                }
             }
 
             // Only catch up if separated across completely different tiers/screens
