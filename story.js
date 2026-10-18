@@ -103,19 +103,19 @@ function setupStoryPlatforms() {
         // 4. Far-Left Shaft Wall (X = -520) guiding the drop down to the Underground Tier
         { x: -520, y: -380, w: 40, h: 1290, solid: true, isWall: true },
 
-        // 5. Lower Underground Tier (Floor 3: X = -480..3200, Y = 850)
+        // 5. Lower Underground Tier (Floor 3: X = -480..3200, Y = 850) - open corridor past gates
         { x: -480, y: STORY_CONFIG.LOWER_FLOOR, w: 3680, h: 65, solid: true, tier: 3 },
-        // Gates of the Trials at X = 1880 (rises when heroes approach with Air & Earth)
-        { x: 1880, y: (storyState.trialsGateY !== undefined ? storyState.trialsGateY : 420), w: 48, h: 430, solid: true, isWall: true, isTrialsGate: true },
-        // Right Boundary Wall of Trials Arena at X = 3100
-        { x: 3100, y: 420, w: 48, h: 430, solid: true, isWall: true, isTrialsExitGate: true },
+        // Trials Arena Enclosure (X = 1980..3020, Y = 460..850)
+        { x: 1980, y: 460, w: 25, h: 400, solid: true, isWall: true, isTrialsArenaWall: true },
+        { x: 2995, y: 460, w: 25, h: 400, solid: true, isWall: true, isTrialsArenaWall: true },
+        { x: 1980, y: 450, w: 1040, h: 20, solid: true, isTrialsCeiling: true },
         // Elevated Combat Ledges in Arena
-        { x: 2180, y: 720, w: 140, h: 18, solid: true, isArenaLedge: true },
-        { x: 2630, y: 720, w: 140, h: 18, solid: true, isArenaLedge: true },
-        // Overhead Maze Base Platforms & Breakable Wall (Stage 2)
-        { x: 2360, y: 720, w: 105, h: 16, solid: true, isMazeBase: true },
-        { x: 2505, y: 720, w: 105, h: 16, solid: true, isMazeBase: true },
-        { x: 2360, y: 530, w: 250, h: 16, solid: true, isMazeRoof: true }
+        { x: 2150, y: 720, w: 130, h: 18, solid: true, isArenaLedge: true },
+        { x: 2720, y: 720, w: 130, h: 18, solid: true, isArenaLedge: true },
+        // Overhead Maze Platforms (Stage 2 ONLY - solid dynamically toggled)
+        { x: 2360, y: 720, w: 105, h: 16, solid: false, isMazeBase1: true },
+        { x: 2505, y: 720, w: 105, h: 16, solid: false, isMazeBase2: true },
+        { x: 2360, y: 530, w: 250, h: 16, solid: false, isMazeRoof: true }
     ];
 }
 
@@ -847,24 +847,21 @@ function updateStoryMode() {
                 }
             }
 
-            // 5. Check Gate of the Trials at X = 1880, Y = 850
-            if (storyState.airMet && storyState.earthMet && !storyState.inTrials) {
-                let nearGate = players.some(pl => pl && pl.y > 650 && pl.x >= 1680 && pl.x <= 1890);
-                if (nearGate) {
-                    storyState.trialsGateY = Math.max(220, (storyState.trialsGateY || 420) - 5);
-                    storyState.trialsGateOpen = (storyState.trialsGateY <= 240);
-                } else if (!storyState.trialsGateOpen && storyState.trialsGateY < 420) {
-                    storyState.trialsGateY = Math.min(420, storyState.trialsGateY + 4);
-                }
-                let gatePlat = platforms.find(p => p.isTrialsGate);
-                if (gatePlat) {
-                    gatePlat.y = storyState.trialsGateY;
-                }
-
-                // Crossing into the Trials Arena (X >= 1930)
-                let enteredArena = players.some(pl => pl && pl.y > 650 && pl.x >= 1930);
-                if (enteredArena) {
-                    startStoryTrials();
+            // 5. Standing near Gate of the Trials at X = 1850, Y = 850
+            if (!storyState.inTrials) {
+                let p1 = players[0];
+                let nearGate = p1 && (p1.y > 700) && (Math.abs(p1.x - 1850) < 65);
+                storyState.nearTrialsGate = !!nearGate;
+                if (nearGate && storyState.airMet && storyState.earthMet) {
+                    let kDown = checkKeyInput(p1.keys, 'down') || keys['ArrowDown'] || keys['KeyS'] || (typeof touchInputs !== 'undefined' && touchInputs && touchInputs.down);
+                    if (kDown) {
+                        clearKeyInput(p1.keys, 'down');
+                        keys['ArrowDown'] = false;
+                        keys['KeyS'] = false;
+                        if (typeof enterStoryTrialsViaGate === 'function') {
+                            enterStoryTrialsViaGate();
+                        }
+                    }
                 }
             }
 
@@ -1010,26 +1007,25 @@ function updateStoryMode() {
         focusY = p1.y * 0.65 + players[1].y * 0.35;
     }
     let minCamX = (focusX < 40 || focusY > 420) ? -480 : 0;
-    if (typeof storyTrials !== 'undefined' && storyTrials.active) {
-        minCamX = 1860;
-    }
-    let maxCamX = (typeof storyTrials !== 'undefined' && storyTrials.active) ? (3100 - GAME_WIDTH) : (STORY_CONFIG.ARENA_W - GAME_WIDTH);
-    let targetCamX = Math.max(minCamX, Math.min(maxCamX, focusX - GAME_WIDTH * 0.38));
-    camX += (targetCamX - camX) * 0.1;
-
+    let targetCamX = Math.max(minCamX, Math.min(STORY_CONFIG.ARENA_W - GAME_WIDTH, focusX - GAME_WIDTH * 0.38));
     let targetCamY = 0;
-    if (typeof storyTrials !== 'undefined' && storyTrials.active) {
-        targetCamY = 540;
-    } else if (focusY < 160) {
-        // Upper Tier / Mossy Parkour climb
+
+    if (focusY < 160) {
         targetCamY = Math.max(-280, focusY - 220);
     } else if (focusY > 410) {
-        // Shaft drop / Lower Underground Tier (Y = 850)
         targetCamY = Math.min(540, focusY - 290);
     } else {
         targetCamY = 0;
     }
-    camY += (targetCamY - camY) * 0.12;
+
+    // When inside Trials, fix camera so the entire arena is visible at once!
+    if (typeof storyTrials !== 'undefined' && storyTrials.active) {
+        targetCamX = 2000;
+        targetCamY = 470;
+    }
+
+    camX += (targetCamX - camX) * 0.15;
+    camY += (targetCamY - camY) * 0.15;
 
     // 6. Party Wipe / Death Respawn at Checkpoint
     let anyAlive = players.some(pl => pl && pl.hp > 0 && !pl.isDowned);
@@ -1991,21 +1987,26 @@ function drawStoryTrialsGate(gx, floorY) {
     ctx.save();
     let gateY = (typeof storyState !== 'undefined' && storyState.trialsGateY !== undefined) ? storyState.trialsGateY : 420;
 
-    // 1. Sliding Heavy Stone Portcullis / Gate Door
-    ctx.fillStyle = "#0f172a";
-    ctx.strokeStyle = "#334155";
-    ctx.lineWidth = 2.5;
-    ctx.fillRect(gx + 4, gateY, 48, floorY - 420);
-    ctx.strokeRect(gx + 4, gateY, 48, floorY - 420);
+    // 1. Mystical Portal Mist in Archway Recess
+    let runesActive = (storyState.airMet && storyState.earthMet);
+    if (runesActive) {
+        let portalGrad = ctx.createLinearGradient(gx, floorY - 260, gx, floorY);
+        portalGrad.addColorStop(0, "rgba(56, 189, 248, 0.45)");
+        portalGrad.addColorStop(0.5, "rgba(147, 51, 234, 0.35)");
+        portalGrad.addColorStop(1, "rgba(15, 23, 42, 0.15)");
+        ctx.fillStyle = portalGrad;
+        ctx.fillRect(gx - 4, floorY - 260, 64, 260);
 
-    // Iron reinforcement bands and spikes
-    ctx.strokeStyle = "#475569";
-    ctx.lineWidth = 2;
-    for (let sy = gateY + 30; sy < floorY; sy += 45) {
-        ctx.beginPath();
-        ctx.moveTo(gx + 4, sy);
-        ctx.lineTo(gx + 52, sy);
-        ctx.stroke();
+        // Swirling portal runes / particles
+        ctx.fillStyle = "#38bdf8";
+        let t = Date.now() * 0.003;
+        for (let i = 0; i < 4; i++) {
+            let py = floorY - 40 - ((Date.now() * 0.06 + i * 55) % 200);
+            let px = gx + 28 + Math.sin(t + i) * 18;
+            ctx.beginPath();
+            ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
 
     // 2. Majestic Stone Gate Arch & Pillars
@@ -2013,17 +2014,16 @@ function drawStoryTrialsGate(gx, floorY) {
     ctx.strokeStyle = "#f59e0b";
     ctx.lineWidth = 2.5;
     // Left Pillar
-    ctx.fillRect(gx - 18, floorY - 260, 22, 260);
-    ctx.strokeRect(gx - 18, floorY - 260, 22, 260);
+    ctx.fillRect(gx - 26, floorY - 260, 24, 260);
+    ctx.strokeRect(gx - 26, floorY - 260, 24, 260);
     // Right Pillar
-    ctx.fillRect(gx + 52, floorY - 260, 22, 260);
-    ctx.strokeRect(gx + 52, floorY - 260, 22, 260);
+    ctx.fillRect(gx + 58, floorY - 260, 24, 260);
+    ctx.strokeRect(gx + 58, floorY - 260, 24, 260);
     // Top Arch Lintel
-    ctx.fillRect(gx - 22, floorY - 280, 100, 26);
-    ctx.strokeRect(gx - 22, floorY - 280, 100, 26);
+    ctx.fillRect(gx - 32, floorY - 280, 120, 26);
+    ctx.strokeRect(gx - 32, floorY - 280, 120, 26);
 
     // Glowing Trial Runes
-    let runesActive = (storyState.airMet && storyState.earthMet);
     ctx.fillStyle = runesActive ? "#fbbf24" : "#64748b";
     ctx.shadowColor = runesActive ? "#f59e0b" : "transparent";
     ctx.shadowBlur = runesActive ? 12 : 0;
@@ -2032,9 +2032,24 @@ function drawStoryTrialsGate(gx, floorY) {
     ctx.fillText("⛩️ ВРАТА ИСПЫТАНИЙ", gx + 28, floorY - 295);
 
     if (!storyState.inTrials && (!storyTrials || !storyTrials.trialsCleared)) {
-        ctx.font = "11px sans-serif";
-        ctx.fillStyle = runesActive ? "#86efac" : "#94a3b8";
-        ctx.fillText(runesActive ? "«Врата открыты — сделайте шаг вперед!»" : "(Соберите команду на скамейке)", gx + 28, floorY - 312);
+        if (storyState.nearTrialsGate && runesActive) {
+            // Interactive prompt box when standing at gate
+            ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+            ctx.strokeStyle = "#fbbf24";
+            ctx.lineWidth = 2;
+            let bw = 260, bh = 30;
+            ctx.beginPath();
+            ctx.roundRect(gx + 28 - bw / 2, floorY - 330, bw, bh, 8);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = "#fef08a";
+            ctx.font = "bold 12px sans-serif";
+            ctx.fillText("[ВНИЗ / S] Войти в Зал Испытаний ⛩️", gx + 28, floorY - 310);
+        } else {
+            ctx.font = "11px sans-serif";
+            ctx.fillStyle = runesActive ? "#86efac" : "#94a3b8";
+            ctx.fillText(runesActive ? "«Врата активны — подойдите и нажмите [Вниз]»" : "(Соберите команду на скамейке)", gx + 28, floorY - 312);
+        }
     }
     ctx.restore();
 }
@@ -2707,9 +2722,12 @@ function drawStoryEnvironmentAssets() {
 // ============================================================================
 let storyTrials = {
     active: false,
+    state: 'IDLE', // 'IDLE', 'WAITING_FOR_CENTER', 'IN_STAGE'
     stage: 0, // 0 = not started, 1 = mannequins, 2 = maze, 3 = targets, 4 = demon boss, 5 = cleared
     warnings: 0, // 0..3
     stageTimer: 0,
+    centerReadyTimer: 0,
+    inCenterCount: 0,
     announcement: "",
     announcementTimer: 0,
     announcementColor: "#38bdf8",
@@ -2739,31 +2757,51 @@ function showStoryTrialNotice(text) {
     storyTrials.noticeTimer = 110;
 }
 
-function startStoryTrials() {
+function enterStoryTrialsViaGate() {
     if (storyTrials.active) return;
+    playSound('lightChime');
+    playSound('parry');
+    triggerShake(6, 12);
+    flashAlpha = 0.6;
+
+    // Teleport party into the arena
+    if (players[0]) { players[0].x = 2120; players[0].y = 850 - 50; players[0].vx = 0; players[0].vy = 0; }
+    if (players[1]) { players[1].x = 2070; players[1].y = 850 - 50; players[1].vx = 0; players[1].vy = 0; }
+    if (players[2]) { players[2].x = 2020; players[2].y = 850 - 50; players[2].vx = 0; players[2].vy = 0; }
+
     storyState.inTrials = true;
     storyTrials.active = true;
+    storyTrials.state = 'WAITING_FOR_CENTER';
+    storyTrials.stage = 0;
     storyTrials.warnings = 0;
     storyTrials.trialsCleared = false;
-    storyState.trialsWeaponGranted = true;
+    storyTrials.centerReadyTimer = 0;
+    storyTrials.inCenterCount = 0;
+    storyState.trialsWeaponGranted = false;
 
-    // Slam gate shut behind party
-    storyState.trialsGateY = 420;
-    let gp = platforms.find(p => p.isTrialsGate);
-    if (gp) gp.y = 420;
+    // Ensure maze platforms are inactive initially
+    let mb1 = platforms.find(p => p.isMazeBase1);
+    let mb2 = platforms.find(p => p.isMazeBase2);
+    let mr = platforms.find(p => p.isMazeRoof);
+    if (mb1) mb1.solid = false;
+    if (mb2) mb2.solid = false;
+    if (mr) mr.solid = false;
 
-    playSound('parry');
-    playSound('lightChime');
-    triggerShake(8, 14);
+    storyTrials.announcement = "⛩️ ВСТАНЬТЕ ВСЕМ ОТРЯДОМ В ЦЕНТР АРЕНЫ";
+    storyTrials.announcementColor = "#38bdf8";
+    storyTrials.announcementTimer = 300;
+    storyTrials.overseerText = "Распорядитель: «Приветствую вас! Чтобы начать Испытания, встаньте всем отрядом в центр круга!»";
+    storyTrials.overseerTimer = 320;
+}
+window.enterStoryTrialsViaGate = enterStoryTrialsViaGate;
 
-    storyTrials.overseerText = "Распорядитель: «Приветствую вас в Зале Испытаний! Оружие даровано. Испытание 1 начинается!»";
-    storyTrials.overseerTimer = 260;
-
-    startStoryTrialsStage(1, false);
+function startStoryTrials() {
+    enterStoryTrialsViaGate();
 }
 
 function startStoryTrialsStage(stageNum, isRestart) {
     storyTrials.stage = stageNum;
+    storyTrials.state = 'IN_STAGE';
     storyTrials.stageTimer = 0;
     storyTrials.warningRestarting = false;
 
@@ -2772,6 +2810,14 @@ function startStoryTrialsStage(stageNum, isRestart) {
             if (pl) storyTrials.stageStartHp[pl.id] = pl.hp;
         }
     }
+
+    // Toggle Maze platforms solid ONLY in Stage 2!
+    let mb1 = platforms.find(p => p.isMazeBase1);
+    let mb2 = platforms.find(p => p.isMazeBase2);
+    let mr = platforms.find(p => p.isMazeRoof);
+    if (mb1) mb1.solid = (stageNum === 2);
+    if (mb2) mb2.solid = (stageNum === 2);
+    if (mr) mr.solid = (stageNum === 2);
 
     if (stageNum === 1) {
         storyTrials.announcement = "ЭТАП 1: ТРЕНИРОВОЧНЫЕ МАНЕКЕНЫ";
@@ -2790,6 +2836,19 @@ function startStoryTrialsStage(stageNum, isRestart) {
         storyTrials.mazeWallBroken = false;
         storyTrials.mazeTargetHit = false;
         storyTrials.mazeDropGuide = null;
+        playSound('breakStone');
+        triggerShake(5, 8);
+        for (let k = 0; k < 15; k++) {
+            storyTrials.particles.push({
+                x: 2480 + (Math.random() - 0.5) * 200,
+                y: 530 + Math.random() * 50,
+                vx: (Math.random() - 0.5) * 4,
+                vy: Math.random() * 3,
+                color: "#64748b",
+                size: 3 + Math.random() * 3,
+                timer: 40
+            });
+        }
         storyTrials.mannequins = [
             { id: 3, x: 2780, y: 850, vx: 0, vy: 0, hp: 5, maxHp: 5, width: 30, height: 50, facingRight: false, state: 'WALK', strikeTimer: 0, strikeCooldown: 50, hitFlash: 0 }
         ];
@@ -2888,6 +2947,16 @@ function completeStoryTrialsStage() {
     storyTrials.announcementColor = "#4ade80";
     storyTrials.announcementTimer = 180;
 
+    if (st === 2) {
+        // Retract maze platforms when Stage 2 is cleared!
+        let mb1 = platforms.find(p => p.isMazeBase1);
+        let mb2 = platforms.find(p => p.isMazeBase2);
+        let mr = platforms.find(p => p.isMazeRoof);
+        if (mb1) mb1.solid = false;
+        if (mb2) mb2.solid = false;
+        if (mr) mr.solid = false;
+    }
+
     if (st < 4) {
         setTimeout(() => {
             if (storyTrials.active) {
@@ -2917,6 +2986,39 @@ function updateStoryTrials() {
     if (storyTrials.announcementTimer > 0) storyTrials.announcementTimer--;
     if (storyTrials.noticeTimer > 0) storyTrials.noticeTimer--;
     if (storyTrials.overseerTimer > 0) storyTrials.overseerTimer--;
+
+    // 0. Waiting for all 3 heroes to assemble in the center circle
+    if (storyTrials.state === 'WAITING_FOR_CENTER') {
+        let livingHeroes = players.filter(pl => pl && pl.hp > 0);
+        let inCenterCount = livingHeroes.filter(pl => Math.abs(pl.x - 2500) < 80 && pl.y >= 750).length;
+        storyTrials.inCenterCount = inCenterCount;
+
+        if (inCenterCount === livingHeroes.length && livingHeroes.length >= 1) {
+            storyTrials.centerReadyTimer = (storyTrials.centerReadyTimer || 0) + 1;
+            if (storyTrials.centerReadyTimer >= 30) {
+                storyTrials.centerReadyTimer = 0;
+                storyTrials.state = 'IN_STAGE';
+                storyState.trialsWeaponGranted = true;
+                playSound('lightChime');
+                playSound('slash');
+                triggerShake(8, 14);
+                for (let k = 0; k < 20; k++) {
+                    storyTrials.particles.push({
+                        x: 2500, y: 845,
+                        vx: (Math.random() - 0.5) * 10, vy: -Math.random() * 8,
+                        color: Math.random() < 0.5 ? "#fde047" : "#38bdf8",
+                        size: 4 + Math.random() * 5, timer: 40
+                    });
+                }
+                storyTrials.overseerText = "Распорядитель: «Отряд в сборе! Оружие даровано. Испытание 1 начинается!»";
+                storyTrials.overseerTimer = 260;
+                startStoryTrialsStage(1, false);
+            }
+        } else {
+            storyTrials.centerReadyTimer = 0;
+        }
+        return;
+    }
 
     // 1. Check Warning Rule: "если хп опустится до 1 у кого то то этот этап испытания придется переходить заново"
     if (!storyTrials.warningRestarting && storyTrials.stage >= 1 && storyTrials.stage <= 4) {
@@ -3525,6 +3627,16 @@ function getNearestStoryTrialTarget(p) {
 function runStoryTrialsCompanionAI(p, inp, requestJump) {
     if (!storyTrials.active) return;
 
+    // 0. Walk to center circle when waiting for party to assemble
+    if (storyTrials.state === 'WAITING_FOR_CENTER') {
+        let targetX = (p === players[1]) ? 2465 : (p === players[2]) ? 2535 : 2500;
+        let dx = targetX - p.x;
+        if (Math.abs(dx) > 10) {
+            if (dx > 0) inp.right = true; else inp.left = true;
+        }
+        return;
+    }
+
     // 1. Revive downed ally if possible
     let downedAlly = players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0);
     if (downedAlly && p.hp > 1.0) {
@@ -3673,83 +3785,149 @@ function drawStoryTrials() {
     ctx.strokeRect(2630, 720, 140, 18);
     ctx.restore();
 
-    // 3. Stage 2: Overhead Logic Maze (X: 2360 .. 2600, Y: 530 .. 720)
-    ctx.save();
-    let mLeft = 2360, mRight = 2600, mTop = 530, mBottom = 720;
+    // 2.5 Central Assembly Circle (X = 2500, Y = 850) - Active when assembling party
+    if (storyTrials.state === 'WAITING_FOR_CENTER') {
+        ctx.save();
+        let cx = 2500, cy = 848;
+        let t = now * 0.002;
+        let inCount = storyTrials.inCenterCount || 0;
+        let readyProg = (storyTrials.centerReadyTimer || 0) / 30; // 0..1
 
-    // Outer frame
-    ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
-    ctx.strokeStyle = "#38bdf8";
-    ctx.lineWidth = 3;
-    ctx.fillRect(mLeft, mTop, mRight - mLeft, mBottom - mTop);
-    ctx.strokeRect(mLeft, mTop, mRight - mLeft, mBottom - mTop);
-
-    // Internal Maze Stone Walls (creating the channel)
-    ctx.strokeStyle = "#0284c7";
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    // Divider 1 (vertical from roof down)
-    ctx.moveTo(2440, mTop); ctx.lineTo(2440, 650);
-    // Divider 2 (horizontal across)
-    ctx.moveTo(2440, 650); ctx.lineTo(2530, 650);
-    // Divider 3 (vertical from bottom up)
-    ctx.moveTo(2530, 650); ctx.lineTo(2530, 590);
-    // Bottom inner wall
-    ctx.moveTo(mLeft, 680); ctx.lineTo(2450, 680);
-    ctx.stroke();
-
-    // Bottom Entrance Gap & Breakable Wall
-    if (!storyTrials.mazeWallBroken) {
-        // Grey Breakable Stone Wall
-        ctx.fillStyle = "#64748b";
-        ctx.strokeStyle = "#94a3b8";
-        ctx.lineWidth = 2;
-        ctx.fillRect(2465, 714, 38, 16);
-        ctx.strokeRect(2465, 714, 38, 16);
-        // Cracks
-        ctx.strokeStyle = "#334155";
+        // Pulsing ground glow
+        let glowGrad = ctx.createRadialGradient(cx, cy, 10, cx, cy, 85);
+        glowGrad.addColorStop(0, inCount >= 3 ? "rgba(253, 224, 71, 0.45)" : "rgba(56, 189, 248, 0.35)");
+        glowGrad.addColorStop(1, "rgba(56, 189, 248, 0)");
+        ctx.fillStyle = glowGrad;
         ctx.beginPath();
-        ctx.moveTo(2475, 715); ctx.lineTo(2482, 722); ctx.lineTo(2495, 728);
-        ctx.stroke();
-        ctx.fillStyle = "#f8fafc";
-        ctx.font = "bold 9px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("🧱 СТЕНА", 2484, 726);
-    } else {
-        // Open glowing water channel entrance
-        ctx.fillStyle = "rgba(56, 189, 248, 0.35)";
-        ctx.fillRect(2465, 716, 38, 14);
-    }
-
-    // Bullseye Target at (2480, 565)
-    let tgtX = 2480, tgtY = 565;
-    ctx.save();
-    if (storyTrials.mazeTargetHit) {
-        ctx.fillStyle = "#fde047";
-        ctx.shadowColor = "#f59e0b";
-        ctx.shadowBlur = 16;
-        ctx.beginPath();
-        ctx.arc(tgtX, tgtY, 14, 0, Math.PI * 2);
+        ctx.ellipse(cx, cy, 85, 26, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 10px sans-serif";
+
+        // Outer rotating runic ring
+        ctx.strokeStyle = inCount >= 3 ? "#fde047" : "#38bdf8";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = inCount >= 3 ? "#f59e0b" : "#0284c7";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 75, 22, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner rune ring
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 48, 15, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 3 Ritual Markers around circle for the 3 heroes
+        for (let i = 0; i < 3; i++) {
+            let ang = t + (i * Math.PI * 2) / 3;
+            let rx = cx + Math.cos(ang) * 58;
+            let ry = cy + Math.sin(ang) * 18;
+            ctx.fillStyle = (i < inCount) ? "#fde047" : "#64748b";
+            ctx.beginPath();
+            ctx.arc(rx, ry, (i < inCount) ? 5 : 3.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Ready progress ring if charging
+        if (readyProg > 0) {
+            ctx.strokeStyle = "#4ade80";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 80, 24, 0, -Math.PI / 2, -Math.PI / 2 + readyProg * Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Title and counter above the circle
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = inCount >= 3 ? "#fef08a" : "#e0f2fe";
+        ctx.font = "bold 13px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("✨", tgtX, tgtY + 4);
-    } else {
-        // Red Bullseye
-        ctx.fillStyle = "#ef4444";
-        ctx.beginPath(); ctx.arc(tgtX, tgtY, 14, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath(); ctx.arc(tgtX, tgtY, 9, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#ef4444";
-        ctx.beginPath(); ctx.arc(tgtX, tgtY, 5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#fef08a";
-        ctx.font = "bold 10px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("🎯", tgtX, tgtY - 18);
+        ctx.fillText("✨ КРУГ СБОРА ✨", cx, cy - 40);
+        ctx.font = "bold 11px sans-serif";
+        ctx.fillStyle = inCount >= 3 ? "#4ade80" : "#38bdf8";
+        ctx.fillText(`Встаньте в круг [${inCount}/3]`, cx, cy - 24);
+
+        ctx.restore();
     }
-    ctx.restore();
-    ctx.restore();
+
+    // 3. Stage 2: Overhead Logic Maze (X: 2360 .. 2600, Y: 530 .. 720) - ONLY during Stage 2
+    if (storyTrials.stage === 2) {
+        ctx.save();
+        let mLeft = 2360, mRight = 2600, mTop = 530, mBottom = 720;
+
+        // Outer frame
+        ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 3;
+        ctx.fillRect(mLeft, mTop, mRight - mLeft, mBottom - mTop);
+        ctx.strokeRect(mLeft, mTop, mRight - mLeft, mBottom - mTop);
+
+        // Internal Maze Stone Walls (creating the channel)
+        ctx.strokeStyle = "#0284c7";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        // Divider 1 (vertical from roof down)
+        ctx.moveTo(2440, mTop); ctx.lineTo(2440, 650);
+        // Divider 2 (horizontal across)
+        ctx.moveTo(2440, 650); ctx.lineTo(2530, 650);
+        // Divider 3 (vertical from bottom up)
+        ctx.moveTo(2530, 650); ctx.lineTo(2530, 590);
+        // Bottom inner wall
+        ctx.moveTo(mLeft, 680); ctx.lineTo(2450, 680);
+        ctx.stroke();
+
+        // Bottom Entrance Gap & Breakable Wall
+        if (!storyTrials.mazeWallBroken) {
+            // Grey Breakable Stone Wall
+            ctx.fillStyle = "#64748b";
+            ctx.strokeStyle = "#94a3b8";
+            ctx.lineWidth = 2;
+            ctx.fillRect(2465, 714, 38, 16);
+            ctx.strokeRect(2465, 714, 38, 16);
+            // Cracks
+            ctx.strokeStyle = "#334155";
+            ctx.beginPath();
+            ctx.moveTo(2475, 715); ctx.lineTo(2482, 722); ctx.lineTo(2495, 728);
+            ctx.stroke();
+            ctx.fillStyle = "#f8fafc";
+            ctx.font = "bold 9px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("🧱 СТЕНА", 2484, 726);
+        } else {
+            // Open glowing water channel entrance
+            ctx.fillStyle = "rgba(56, 189, 248, 0.35)";
+            ctx.fillRect(2465, 716, 38, 14);
+        }
+
+        // Bullseye Target at (2480, 565)
+        let tgtX = 2480, tgtY = 565;
+        ctx.save();
+        if (storyTrials.mazeTargetHit) {
+            ctx.fillStyle = "#fde047";
+            ctx.shadowColor = "#f59e0b";
+            ctx.shadowBlur = 16;
+            ctx.beginPath();
+            ctx.arc(tgtX, tgtY, 14, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 10px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("✨", tgtX, tgtY + 4);
+        } else {
+            // Red Bullseye
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath(); ctx.arc(tgtX, tgtY, 14, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.arc(tgtX, tgtY, 9, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath(); ctx.arc(tgtX, tgtY, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#fef08a";
+            ctx.font = "bold 10px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("🎯", tgtX, tgtY - 18);
+        }
+        ctx.restore();
+        ctx.restore();
+    }
 
     // 4. Stage 3: 5 Scattered Bullseye Targets
     if (storyTrials.stage === 3) {
@@ -3919,6 +4097,27 @@ function drawStoryTrials() {
         ctx.textAlign = "left";
         let warnDots = (storyTrials.warnings === 0) ? "⚪⚪⚪" : (storyTrials.warnings === 1) ? "🟡⚪⚪" : "🟡🟡⚪";
         ctx.fillText(`⚠️ Предупреждения: ${storyTrials.warnings}/3  ${warnDots}`, 28, 71);
+
+        // Waiting for Center HUD prompt (top center)
+        if (storyTrials.state === 'WAITING_FOR_CENTER') {
+            let inCount = storyTrials.inCenterCount || 0;
+            let allReady = inCount >= 3;
+            ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+            ctx.strokeStyle = allReady ? "#4ade80" : "#38bdf8";
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = allReady ? "#4ade80" : "#38bdf8";
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.roundRect(canvas.width / 2 - 170, 48, 340, 42, 12);
+            ctx.fill();
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            ctx.fillStyle = allReady ? "#4ade80" : "#fef08a";
+            ctx.font = "900 15px 'Segoe UI', Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(`⛩️ ВСТАНЬТЕ В ЦЕНТР АРЕНЫ [${inCount}/3]`, canvas.width / 2, 74);
+        }
 
         // Stage 3 10-Second Timer (top center)
         if (storyTrials.stage === 3) {
