@@ -469,6 +469,18 @@ function getDownPrompt() {
     return "Стрелочка [↓]";
 }
 
+// Safe helper to check key inputs without throwing if undefined or non-array
+function checkKeyInput(keysObj, prop) {
+    if (!keysObj || !keysObj[prop]) return false;
+    let val = keysObj[prop];
+    if (typeof isKeyPressed === 'function') {
+        return isKeyPressed(val);
+    }
+    if (typeof val === 'string') return !!keys[val];
+    if (Array.isArray(val)) return val.some(k => !!keys[k]);
+    return false;
+}
+
 // Safe helper to clear key inputs without throwing if undefined or non-array
 function clearKeyInput(keysObj, prop) {
     if (!keysObj || !keysObj[prop]) return;
