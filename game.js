@@ -1018,8 +1018,26 @@ function resetGameParams() {
 function updateProjectiles() {
     // Air traps
     for (let i = airTraps.length - 1; i >= 0; i--) {
-        let t = airTraps[i]; t.x += t.vx; t.y += t.vy;
-        if (t.x < 0 || t.x > ARENA_W || t.y < -2000 || t.y > FLOOR + 400) { airTraps.splice(i, 1); continue; }
+        let t = airTraps[i];
+        t.x += t.vx;
+        t.y += t.vy;
+        if (typeof particles !== 'undefined' && Math.random() < 0.4) {
+            particles.push({
+                x: t.x + (Math.random() - 0.5) * 4,
+                y: t.y + (Math.random() - 0.5) * 4,
+                vx: -t.vx * 0.12 + (Math.random() - 0.5) * 1.5,
+                vy: -t.vy * 0.12 + (Math.random() - 0.5) * 1.5,
+                radius: 2 + Math.random() * 2,
+                color: Math.random() < 0.65 ? "#ffdd00" : "#ffffff",
+                alpha: 0.8,
+                life: 12 + Math.random() * 6
+            });
+        }
+        let isStory = typeof window !== 'undefined' && window.isStoryMode;
+        let minX = isStory ? -550 : 0;
+        let maxX = isStory ? 7750 : ARENA_W;
+        let maxY = isStory ? 1050 : (FLOOR + 400);
+        if (t.x < minX || t.x > maxX || t.y < -2000 || t.y > maxY) { airTraps.splice(i, 1); continue; }
         if (typeof window !== 'undefined' && window.isStoryMode && typeof checkStoryTrialProjectileHit === 'function') {
             if (checkStoryTrialProjectileHit(t, 'AIR_TRAP')) {
                 airTraps.splice(i, 1);
@@ -1041,7 +1059,11 @@ function updateProjectiles() {
     // Air combo traps
     for (let i = airComboTraps.length - 1; i >= 0; i--) {
         let t = airComboTraps[i]; t.x += t.vx; t.y += t.vy;
-        if (t.x < 0 || t.x > ARENA_W || t.y < -2000 || t.y > FLOOR + 400) { airComboTraps.splice(i, 1); continue; }
+        let isStory = typeof window !== 'undefined' && window.isStoryMode;
+        let minX = isStory ? -550 : 0;
+        let maxX = isStory ? 7750 : ARENA_W;
+        let maxY = isStory ? 1050 : (FLOOR + 400);
+        if (t.x < minX || t.x > maxX || t.y < -2000 || t.y > maxY) { airComboTraps.splice(i, 1); continue; }
         
         let hitAlly = false;
         for (let p of players) {
@@ -4402,9 +4424,25 @@ function draw() {
         }
 
         for (let t of airTraps) { 
-            ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(Date.now()/50); 
-            ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, 6); ctx.lineTo(-6, 6); ctx.closePath(); 
-            ctx.fillStyle = "#ffdd00"; ctx.fill(); ctx.strokeStyle = "white"; ctx.stroke(); ctx.restore(); 
+            ctx.save();
+            ctx.translate(t.x, t.y);
+            let rot = Date.now() / 50;
+            ctx.rotate(rot);
+            // Classic original golden spinning triangle caltrop with white outline (as in regular game fullindex.html:3540)
+            ctx.beginPath();
+            ctx.moveTo(0, -9);
+            ctx.lineTo(7, 7);
+            ctx.lineTo(-7, 7);
+            ctx.closePath();
+            ctx.fillStyle = "#ffdd00";
+            ctx.shadowColor = "#ffdd00";
+            ctx.shadowBlur = 8;
+            ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.restore(); 
         }
         for (let t of airComboTraps) { 
             ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(-Date.now()/50); 

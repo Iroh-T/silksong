@@ -1212,7 +1212,7 @@ function updateDuoSubOptions() {
     if (duoP1Device === 'KEYBOARD' && duoP2Device === 'KEYBOARD') {
         container.innerHTML = `
             <div style="color: #a842f5; font-weight: bold; margin-bottom: 4px;">🎮 Оба на клавиатуре:</div>
-            <div style="color: #ccc; font-size: 12px;">Игрок 1: 1-я раскладка (справа) | Игрок 2: 2-я раскладка (слева)</div>
+            <div style="color: #ccc; font-size: 12px;">Игрок 1: Слева (WASD) | Игрок 2: Справа (Стрелки)</div>
         `;
     } else if (duoP1Device === 'KEYBOARD' && duoP2Device === 'GAMEPAD') {
         let is1 = (duoSoloKeyboardScheme === 'SCHEME_1');
@@ -1320,7 +1320,10 @@ function selectInput(in1, in2) {
         return;
     }
     p1InputType = in1; 
-    if (numPlayers === 2) p2InputType = in2;
+    if (in2) {
+        p2InputType = in2;
+        numPlayers = 2;
+    }
 
     if (typeof isTutorial !== 'undefined' && isTutorial) {
         if (in1 === 'TOUCH') {
@@ -2376,7 +2379,7 @@ function renderKeybindList() {
     }
 
     if (currentEditingScheme === 'DUO_KEYBOARD') {
-        let html = '<div style="color: #00ddff; font-weight: bold; margin: 10px 0 5px 0;">Игрок 1 (Справа / Стрелки):</div>';
+        let html = '<div style="color: #00ddff; font-weight: bold; margin: 10px 0 5px 0;">Игрок 1 (Слева / WASD):</div>';
         for (let act of ACTION_DEFS) {
             let code = userControls.DUO_KEYBOARD.p1[act.id];
             let isWaiting = (rebindingTarget && rebindingTarget.scheme === 'DUO_KEYBOARD' && rebindingTarget.pKey === 'p1' && rebindingTarget.action === act.id);
@@ -2389,7 +2392,7 @@ function renderKeybindList() {
                 </div>
             `;
         }
-        html += '<div style="color: #ffdd44; font-weight: bold; margin: 18px 0 5px 0;">Игрок 2 (Слева / WASD):</div>';
+        html += '<div style="color: #ffdd44; font-weight: bold; margin: 18px 0 5px 0;">Игрок 2 (Справа / Стрелки):</div>';
         for (let act of ACTION_DEFS) {
             let code = userControls.DUO_KEYBOARD.p2[act.id];
             let isWaiting = (rebindingTarget && rebindingTarget.scheme === 'DUO_KEYBOARD' && rebindingTarget.pKey === 'p2' && rebindingTarget.action === act.id);

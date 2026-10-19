@@ -3010,7 +3010,7 @@ function tryDamageFireBoss(dmg, sourcePlayer) {
                 p.vx = 0;
                 p.vy = 0;
                 p.isAttacking = true;
-                p.attackTimer = 12; // Katana windup pose!
+                p.attackTimer = 12; // Sword windup pose!
                 p.invuln = 99999;
             }
 
@@ -3345,7 +3345,7 @@ function updateFireBossFinale(p) {
     if (boss.finaleSubStep === "PROMPT_F") {
         p.vx = 0;
         p.vy = 0;
-        p.attackTimer = 12; // Water frozen in katana windup pose
+        p.attackTimer = 12; // Water frozen in sword windup pose
         p.isAttacking = true;
 
         if (fPressed && !boss.prevFPressed) {

@@ -176,18 +176,18 @@ const DEFAULT_CONTROLS = {
     SCHEME_2: {
         left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
         jump: 'Space', attack: 'MouseLeft', heal: 'KeyQ', dash: 'KeyE', special: 'MouseRight',
-        light: 'KeyR', stance: 'KeyT'
+        light: 'KeyT', stance: 'KeyR'
     },
     DUO_KEYBOARD: {
         p1: {
-            left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown',
-            jump: 'Comma', attack: 'Period', heal: 'KeyK', dash: 'Slash', special: 'Quote',
-            light: 'KeyL', stance: 'Semicolon'
-        },
-        p2: {
             left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
             jump: 'Space', attack: 'KeyF', heal: 'KeyQ', dash: 'KeyE', special: 'KeyR',
             light: 'KeyC', stance: 'KeyT'
+        },
+        p2: {
+            left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown',
+            jump: 'Comma', attack: 'Period', heal: 'KeyK', dash: 'Slash', special: 'Quote',
+            light: 'KeyL', stance: 'Semicolon'
         }
     },
     GAMEPAD: {
@@ -213,6 +213,14 @@ function initControlsFromStorage() {
         if (saved) {
             let parsed = JSON.parse(saved);
             userControls = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CONTROLS)), parsed);
+            if (userControls.DUO_KEYBOARD && userControls.DUO_KEYBOARD.p1 && userControls.DUO_KEYBOARD.p1.left === 'ArrowLeft') {
+                // Auto-migrate inverted Duo Keyboard mapping so P1 is on the left (WASD) and P2 is on the right (Arrows)
+                userControls.DUO_KEYBOARD = JSON.parse(JSON.stringify(DEFAULT_CONTROLS.DUO_KEYBOARD));
+            }
+            if (userControls.SCHEME_2 && (userControls.SCHEME_2.stance === 'KeyT' || !userControls.SCHEME_2.stance)) {
+                userControls.SCHEME_2.stance = 'KeyR';
+                if (userControls.SCHEME_2.light === 'KeyR') userControls.SCHEME_2.light = 'KeyT';
+            }
         } else {
             userControls = JSON.parse(JSON.stringify(DEFAULT_CONTROLS));
         }

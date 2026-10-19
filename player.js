@@ -294,13 +294,29 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         if (p.type === 'STAMINA') p.isCharging = false; 
         playSound('hitPlayer'); 
         if (p.hp <= 0) {
-            let activeAllies = players.filter(pl => pl.id !== p.id && pl.hp > 0 && !pl.isDowned);
-            if (players.length > 1 && activeAllies.length > 0 && !p.isDowned) { 
-                p.isDowned = true; 
-                p.hp = 0.1; 
-                p.downedTimer = 600; // 10 секунд (600 кадров при 60 FPS)
-            } else { 
-                p.hp = 0; 
+            // Story Mode: Связанная сила автоматически спасает от гибели ценой энергии!
+            if (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && storyState.bluePowerUnlocked && typeof sharedHeals !== 'undefined' && sharedHeals > 0) {
+                sharedHeals--;
+                if (typeof sharedHealPoints !== 'undefined') sharedHealPoints = Math.max(0, sharedHealPoints - 4);
+                p.hp = 1.5;
+                p.invuln = 90;
+                if (typeof playSound === 'function') {
+                    playSound('lightChime');
+                    playSound('parry');
+                }
+                if (typeof triggerShake === 'function') triggerShake(5, 12);
+                if (typeof createStoryBondRescueVFX === 'function') {
+                    createStoryBondRescueVFX(p);
+                }
+            } else {
+                let activeAllies = players.filter(pl => pl.id !== p.id && pl.hp > 0 && !pl.isDowned);
+                if (players.length > 1 && activeAllies.length > 0 && !p.isDowned) { 
+                    p.isDowned = true; 
+                    p.hp = 0.1; 
+                    p.downedTimer = 600; // 10 секунд (600 кадров при 60 FPS)
+                } else { 
+                    p.hp = 0; 
+                }
             }
         }
 
@@ -875,7 +891,7 @@ function updatePlayers() {
         let isDuoKeyboard = (typeof p1InputType !== 'undefined' && typeof p2InputType !== 'undefined' && (p1InputType === 'DUO_KEYBOARD_P1' || p2InputType === 'DUO_KEYBOARD_P2')) || (p.inputType === 'DUO_KEYBOARD_P1' || p.inputType === 'DUO_KEYBOARD_P2');
 
         if (p.inputType === 'AI' || p.isAi) {
-            let aiIn = (typeof runAiCompanion === 'function') ? runAiCompanion(p) : {};
+            let aiIn = ((typeof runAiCompanion === 'function') ? runAiCompanion(p) : null) || {};
             kLeft = !!aiIn.left; kRight = !!aiIn.right; kUp = !!aiIn.up; kDown = !!aiIn.down;
             kJump = !!aiIn.jump; kAttack = !!aiIn.attack; kHeal = !!aiIn.heal; kDash = !!aiIn.dash;
             kSpec = !!aiIn.special; kStance = !!aiIn.stance; kLight = !!aiIn.light;
@@ -905,19 +921,34 @@ function updatePlayers() {
             kJump = isKeyPressed(p.keys.jump); kAttack = isKeyPressed(p.keys.attack); kHeal = isKeyPressed(p.keys.heal); kSpec = isKeyPressed(p.keys.special);
             kDash = p.keys.dash ? isKeyPressed(p.keys.dash) : false; 
             kLight = (p.keys && p.keys.light && isKeyPressed(p.keys.light)) || (!isDuoKeyboard && isKeyPressed(['ShiftLeft', 'ShiftRight', 'KeyL'])) || ((p.inputType === 'KEYBOARD_SHOOTER' || p.inputType === 'KEYBOARD_2') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : false);
-            kStance = (p.keys && p.keys.stance && isKeyPressed(p.keys.stance)) || (!isDuoKeyboard && isKeyPressed(['KeyS', 'KeyT', 'KeyV']));
+            kStance = (p.keys && p.keys.stance) ? isKeyPressed(p.keys.stance) : isKeyPressed((p.inputType === 'KEYBOARD_SHOOTER' || p.inputType === 'KEYBOARD_2') ? 'KeyR' : 'KeyS');
         }
 
         let rawHealKey = kHeal;
         if (typeof window !== 'undefined' && window.isStoryMode) {
             kHeal = false;
             kDash = false;
+            if (p.id === 1 && typeof storyState !== 'undefined') {
+                if (!storyState.jumpUnlocked) kJump = false;
+                if (!storyState.attackUnlocked) kAttack = false;
+                if (!storyState.comboUnlocked) kSpec = false;
+                if (!storyState.stanceUnlocked) kStance = false;
+            }
             if (p.type === 'AIR' || p.type === 'EARTH') {
                 if (!(typeof storyState !== 'undefined' && storyState.trialsWeaponGranted)) {
                     kSpec = false;
                     kStance = false;
                     kAttack = false;
                 }
+            }
+            // Freeze all movement and actions during dialogue or ritual cutscenes
+            if (typeof storyDialogue !== 'undefined' && storyDialogue.active) {
+                kLeft = false; kRight = false; kUp = false; kDown = false;
+                kJump = false; kAttack = false; kSpec = false; kStance = false;
+            }
+            if (typeof storyRitual !== 'undefined' && storyRitual.active && storyRitual.phase !== 'IDLE') {
+                kLeft = false; kRight = false; kUp = false; kDown = false;
+                kJump = false; kAttack = false; kSpec = false; kStance = false;
             }
         }
 
@@ -1317,7 +1348,7 @@ function updatePlayers() {
                 usingReserve = true;
             }
 
-            if (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && storyState.inTrials) {
+            if (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && storyState.inTrials && (!storyTrials || !storyTrials.trialsCleared)) {
                 canAffordHeal = false;
                 if (kHeal && !p.prevHealKey && !p.isAi) {
                     if (typeof showStoryTrialNotice === 'function') {
@@ -1666,9 +1697,22 @@ function updatePlayers() {
                     p.vx = 0;
                 }
 
-                let dropHitBox = { x: p.waterDrop.x - 12, y: p.waterDrop.y - 12, width: 24, height: 24 };
+                let dropHitBox = { x: p.waterDrop.x - 14, y: p.waterDrop.y - 14, width: 28, height: 28 };
                 let storyBonus = (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && storyState.waterDropBonusDmg) ? storyState.waterDropBonusDmg : 0;
-                if (window.isStoryMode && typeof storyState !== 'undefined' && storyState.inTrials && typeof checkStoryTrialWaterDropHit === 'function') {
+
+                // 1. First priority: heal any damaged ally, or heal self if damaged after 15-frame launch delay
+                let injuredTarget = players.find(pl => pl && pl.id !== p.id && !pl.isDowned && pl.hp > 0 && pl.hp < pl.maxHp && rectIntersect(dropHitBox, pl));
+                if (!injuredTarget && p.hp < p.maxHp && p.waterDrop.timer < 285 && rectIntersect(dropHitBox, p)) {
+                    injuredTarget = p;
+                }
+                if (injuredTarget) {
+                    injuredTarget.hp = Math.min(injuredTarget.maxHp, injuredTarget.hp + 0.5);
+                    playSound('heal');
+                    playSound('waterSplash');
+                    voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 18, isWhite: true, isOrange: false, r: 30 });
+                    p.waterDropActive = false;
+                    p.waterDrop = null;
+                } else if (window.isStoryMode && typeof storyState !== 'undefined' && storyState.inTrials && typeof checkStoryTrialWaterDropHit === 'function') {
                     if (checkStoryTrialWaterDropHit(p.waterDrop, p, dropHitBox)) {
                         p.waterDropActive = false;
                         p.waterDrop = null;
@@ -1694,21 +1738,16 @@ function updatePlayers() {
                     voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 18, isWhite: false, isOrange: false, r: 35 });
                     p.waterDropActive = false;
                     p.waterDrop = null;
-                } else if (numPlayers === 2 || players.length > 1) {
-                    let ally = players.find(pl => pl.id !== p.id && !pl.isDowned && pl.hp > 0 && rectIntersect(dropHitBox, pl));
-                    if (ally) {
-                        ally.hp = Math.min(ally.maxHp, ally.hp + 0.5);
-                        playSound('heal');
-                        playSound('waterSplash');
-                        voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 18, isWhite: true, isOrange: false, r: 30 });
-                        p.waterDropActive = false;
-                        p.waterDrop = null;
-                    }
                 }
                 let dropExpired = false;
                 if (p.waterDrop) {
                     if (window.isStoryMode) {
-                        dropExpired = (p.waterDrop.timer <= 0 || p.waterDrop.y > 950 || p.waterDrop.x < -550 || p.waterDrop.x > 4600);
+                        let inTrials = (typeof storyState !== 'undefined' && storyState.inTrials) || (typeof storyTrials !== 'undefined' && storyTrials.active) || (p.waterDrop.x > 4750 && p.waterDrop.x < 6350);
+                        if (inTrials) {
+                            dropExpired = (p.waterDrop.timer <= 0 || p.waterDrop.y > 900 || p.waterDrop.y < 420 || p.waterDrop.x < 4780 || p.waterDrop.x > 6320);
+                        } else {
+                            dropExpired = (p.waterDrop.timer <= 0 || p.waterDrop.y > 950 || p.waterDrop.x < -550 || p.waterDrop.x > 6200);
+                        }
                     } else {
                         dropExpired = (p.waterDrop.y >= FLOOR || p.waterDrop.x <= 0 || p.waterDrop.x >= ARENA_W || p.waterDrop.timer <= 0);
                     }
@@ -2631,34 +2670,41 @@ function updatePlayers() {
                 if (canAttackNow) {
                     if (p.type === 'AIR') {
                         p.attackTimer = 12;
-                        p.attackCooldown = 22; 
+                        p.attackCooldown = 20; 
                         playSound('throw'); 
-                        let tx = p.x + (p.facingRight ? 220 : -220);
+                        let tx = p.x + (p.facingRight ? 260 : -260);
                         let ty = p.y + 15;
                         if (typeof window !== 'undefined' && window.isStoryMode && typeof getNearestStoryTrialTarget === 'function') {
                             let tgt = getNearestStoryTrialTarget(p);
-                            if (tgt) { tx = tgt.x; ty = tgt.y; }
+                            if (tgt) {
+                                tx = tgt.x;
+                                ty = tgt.y;
+                                p.facingRight = (tx > p.x);
+                            }
                         } else if (boss && boss.x > -1000) {
                             tx = boss.x + boss.width / 2;
                             ty = boss.y + boss.height / 2;
+                            p.facingRight = (tx > p.x);
                         }
                         let dx = tx - (p.x + p.width/2); 
                         let dy = ty - (p.y + p.height/2); 
                         let dist = Math.hypot(dx, dy) || 1;
-                        let vx = (dx / dist) * 14;
-                        let vy = (dy / dist) * 14;
+                        let vx = (dx / dist) * 15;
+                        let vy = (dy / dist) * 15;
                         // Timur: "у воздуха он иногда будет мазать своими ловушками (потому что еще не очень опытный)"
-                        if (typeof window !== 'undefined' && window.isStoryMode && Math.random() < 0.36) {
-                            let missAngle = (Math.random() < 0.5 ? 1 : -1) * (0.34 + Math.random() * 0.24);
+                        // Slight realistic graze deviation only 14% of the time (never wild 90-degree misses)
+                        if (typeof window !== 'undefined' && window.isStoryMode && Math.random() < 0.14) {
+                            let missAngle = (Math.random() < 0.5 ? 1 : -1) * 0.10;
                             let cosA = Math.cos(missAngle), sinA = Math.sin(missAngle);
                             let rvx = vx * cosA - vy * sinA;
                             let rvy = vx * sinA + vy * cosA;
                             vx = rvx;
                             vy = rvy;
-                            p.storyMissedTrapTimer = 45;
+                            p.storyMissedTrapTimer = 35;
                         }
                         airTraps.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: vx, vy: vy, pId: p.id });
-                        swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - 75, y: p.y + 6, width: 75, height: 28 };
+                        // Point-blank razor wind gust: Air ALWAYS repels and hits enemies touching him!
+                        swordHitbox = { x: p.facingRight ? p.x : p.x - 45, y: p.y - 10, width: p.width + 45, height: p.height + 20 };
                         p.attackType = "NORMAL";
                     } else {
                         p.attackTimer = 12; 
@@ -2980,7 +3026,7 @@ function updatePlayers() {
         } else if (window.isStoryMode) {
             // Горизонтальная коллизия с твёрдыми платформами и стенами в сюжете
             for (let plat of platforms) {
-                if (!plat.solid && !plat.isWall) continue;
+                if (!plat.solid) continue;
                 let platH = plat.h || 18;
                 if (p.y + p.height > plat.y + 8 && p.y < plat.y + platH - 6) {
                     if (p.vx > 0 && p.x + p.width > plat.x && (p.x - p.vx + p.width) <= plat.x + 14) {
@@ -2993,8 +3039,20 @@ function updatePlayers() {
                 }
             }
             if (p.y < -2000) { p.y = -2000; if (p.vy < 0) p.vy = 0; }
-            if (p.x < -480) { p.x = -480; if (p.vx < 0) p.vx = 0; }
-            if (p.x > ARENA_W - p.width) { p.x = ARENA_W - p.width; if (p.vx > 0) p.vx = 0; }
+            if (typeof storyState !== 'undefined' && storyState.inTrials) {
+                if (p.x < 4810) { p.x = 4810; if (p.vx < 0) p.vx = 0; }
+                let rightBound = (typeof storyTrials !== 'undefined' && storyTrials && storyTrials.trialsCleared) ? (ARENA_W - p.width) : (6290 - p.width);
+                if (p.x > rightBound) { p.x = rightBound; if (p.vx > 0) p.vx = 0; }
+            } else {
+                if (p.x < -480) { p.x = -480; if (p.vx < 0) p.vx = 0; }
+                if (p.x > ARENA_W - p.width) { p.x = ARENA_W - p.width; if (p.vx > 0) p.vx = 0; }
+            }
+            if (p.y > 1100) {
+                p.x = p.lastSafeX || (typeof storyState !== 'undefined' && storyState.inTrials ? ((typeof storyTrials !== 'undefined' && storyTrials && storyTrials.trialsCleared) ? 6400 : 4960) : 120);
+                p.y = p.lastSafeY || 800;
+                p.vx = 0;
+                p.vy = 0;
+            }
         } else {
             let ceilingLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) ? -2000 : 0;
             if (p.y < ceilingLimit) { p.y = ceilingLimit; if (p.vy < 0) p.vy = 0; } 
@@ -3286,28 +3344,45 @@ function drawStickmanWeaponStrike(p, shX, shY, facing, atkProg, patternColor, bo
         ctx.fill();
 
     } else if (p.type === 'AIR') {
-        // Air Hero: Wind blade materialized from air currents
-        let swingAng = -Math.PI * 0.45 + atkProg * Math.PI * 0.85;
-        let hX = shX + facing * Math.cos(swingAng) * 15;
-        let hY = shY + Math.sin(swingAng) * 15;
+        // Air Hero: Кидает ветряные ловушки! Меча у него нет!
+        // Динамичная поза броска руки с закрученной ветряной ловушкой
+        let throwAng = -Math.PI * 0.35 + atkProg * Math.PI * 0.65;
+        let armReach = 16 + Math.sin(atkProg * Math.PI) * 4;
+        let elX = shX + facing * Math.cos(throwAng - 0.2) * (armReach * 0.55);
+        let elY = shY + Math.sin(throwAng - 0.2) * (armReach * 0.55);
+        let handX = shX + facing * Math.cos(throwAng) * armReach;
+        let handY = shY + Math.sin(throwAng) * armReach;
 
+        // Front Arm
         ctx.beginPath();
         ctx.moveTo(shX, shY);
-        ctx.lineTo(shX + facing * 8, shY - 4);
-        ctx.lineTo(hX, hY);
+        ctx.lineTo(elX, elY);
+        ctx.lineTo(handX, handY);
         ctx.stroke();
 
-        // Aerodynamic Cyan Wind Blade
-        let tipX = hX + facing * Math.cos(swingAng) * 30;
-        let tipY = hY + Math.sin(swingAng) * 30;
-        ctx.strokeStyle = "#00ffff";
-        ctx.lineWidth = 3;
-        ctx.shadowColor = "#00e5ff";
-        ctx.shadowBlur = 10;
+        // Spinning Wind Trap Orb / Vortex released from hand
+        ctx.save();
+        let trapDist = atkProg * 28;
+        let trapX = handX + facing * trapDist;
+        let trapY = handY + (atkProg * 4) - 2;
+        ctx.translate(trapX, trapY);
+        let spin = Date.now() * 0.02 + atkProg * 8;
+        ctx.rotate(spin);
+        // Classic original golden spinning triangle caltrop
         ctx.beginPath();
-        ctx.moveTo(hX, hY);
-        ctx.lineTo(tipX, tipY);
+        ctx.moveTo(0, -9);
+        ctx.lineTo(7, 7);
+        ctx.lineTo(-7, 7);
+        ctx.closePath();
+        ctx.fillStyle = "#ffdd00";
+        ctx.shadowColor = "#ffdd00";
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.8;
         ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
 
     } else if (p.type === 'EARTH') {
         // Earth Hero: Она, 2 кинжала, бьет быстро!
@@ -3458,11 +3533,11 @@ function drawStickmanWeaponStrike(p, shX, shY, facing, atkProg, patternColor, bo
         }
 
     } else {
-        // Water Hero (Default): Katana Slash
+        // Water Hero (Default): Sword Slash (Меч)
         let swingAng = -Math.PI * 0.4 + atkProg * Math.PI * 0.75;
         let armReach = 14;
-        let elX = shX + facing * Math.cos(swingAng - 0.2) * (armReach * 0.6);
-        let elY = shY + Math.sin(swingAng - 0.2) * (armReach * 0.6);
+        let elX = shX + facing * Math.cos(swingAng - 0.2) * (armReach * 0.55);
+        let elY = shY + Math.sin(swingAng - 0.2) * (armReach * 0.55);
         let handX = shX + facing * Math.cos(swingAng) * armReach;
         let handY = shY + Math.sin(swingAng) * armReach;
 
@@ -3473,7 +3548,7 @@ function drawStickmanWeaponStrike(p, shX, shY, facing, atkProg, patternColor, bo
         ctx.lineTo(handX, handY);
         ctx.stroke();
 
-        // Katana Blade
+        // Sword Blade (Стальной меч)
         let bladeLen = 28;
         let tipX = handX + facing * Math.cos(swingAng) * bladeLen;
         let tipY = handY + Math.sin(swingAng) * bladeLen;
@@ -3485,7 +3560,7 @@ function drawStickmanWeaponStrike(p, shX, shY, facing, atkProg, patternColor, bo
         ctx.lineTo(tipX, tipY);
         ctx.stroke();
 
-        // Katana Edge Glow (Cyan or Demon Purple)
+        // Sword Edge Glow (Cyan or Demon Purple)
         ctx.strokeStyle = (p.type === 'WATER' && p.stance === 'DEMON') ? "#d000ff" : "#00f0ff";
         ctx.lineWidth = 1.5;
         ctx.shadowColor = ctx.strokeStyle;
@@ -4311,100 +4386,121 @@ function drawPlayer(p) {
 
     // --- TRANSLUCENT SWORD SLASH ARCS & WEAPONS ---
     if (p.attackTimer > 0 && p.lightCharge === 0) {
-        let atkProgress = 1 - (p.attackTimer / 12); 
-        let currentRange = (p.type === 'WATER' && p.stance === 'DEMON') ? 55 : p.atkRange;
-        let slashColor = p.color;
-        
-        if (p.attackType === "LIGHT") {
-            slashColor = "#00ffff";
-            currentRange = Math.max(p.atkRange, 125);
-        }
-        else if (p.attackType === "TIDAL_SURGE") {
-            slashColor = "#00ffff";
-            currentRange = 160;
-        }
-        else if (p.attackType === "CRUSHING_STRIKE") {
-            slashColor = "#00e5ff";
-            currentRange = 110;
-        }
-        else if (p.type === 'WATER') slashColor = (p.stance === 'DEMON') ? "#d000ff" : "#00d4ff";
-        else if (p.type === 'EARTH') slashColor = "#33ff55";
-        else if (p.type === 'AIR') slashColor = "#00ffff";
-        else if (p.type === 'STAMINA') slashColor = (p.weaponMode === 'BLUE') ? "#44d4ff" : "#ff0077";
-        else if (p.type === 'FIRE') slashColor = (p.heatBladeTimer > 0) ? "#ff3300" : "#ffaa00";
-        else if (p.type === 'FIRE_HALBERD') slashColor = (p.halberdBuffTimer > 0) ? "#ff2200" : (p.heatBladeTimer > 0 ? "#ff4400" : "#ff5500");
-        else if (p.type === 'WATER_ROPE') slashColor = "#00f0ff";
-
-        ctx.save();
-        let flip = p.facingRight ? 1 : -1;
-        let originX = p.x + 15;
-        let originY = p.y + 25;
-
-        if (p.attackType === "UP") {
-            // Sweeping overhead vertical arc
+        if (p.type === 'AIR') {
+            // Air Hero throws wind traps, not sword slashes!
+            let atkProgress = 1 - (p.attackTimer / 12);
+            let flip = p.facingRight ? 1 : -1;
+            let originX = p.x + 15 + flip * (8 + atkProgress * 22);
+            let originY = p.y + 22;
+            ctx.save();
+            ctx.strokeStyle = "rgba(0, 240, 255, " + (0.85 - atkProgress * 0.65) + ")";
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = "#00ffff";
+            ctx.shadowBlur = 8;
             ctx.beginPath();
-            let startAng = -Math.PI * 0.85;
-            let endAng = -Math.PI * 0.15;
-            ctx.arc(originX, originY, currentRange, startAng, endAng);
-            ctx.strokeStyle = slashColor;
-            ctx.lineWidth = 14;
-            ctx.globalAlpha = 0.5;
+            ctx.arc(originX, originY, 8 + atkProgress * 16, -Math.PI * 0.45, Math.PI * 0.45);
             ctx.stroke();
-            // Core white line
+            ctx.strokeStyle = "rgba(255, 255, 255, " + (0.8 - atkProgress * 0.6) + ")";
+            ctx.lineWidth = 1.2;
             ctx.beginPath();
-            ctx.arc(originX, originY, currentRange, startAng, endAng);
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 4;
-            ctx.globalAlpha = 0.9;
+            ctx.arc(originX, originY, 4 + atkProgress * 10, -Math.PI * 0.3, Math.PI * 0.3);
             ctx.stroke();
-        } else if (p.attackType === "DOWN" || p.attackType === "DIVE") {
-            // Sweeping downwards arc
-            ctx.beginPath();
-            let startAng = Math.PI * 0.15;
-            let endAng = Math.PI * 0.85;
-            ctx.arc(originX, originY, currentRange, startAng, endAng);
-            ctx.strokeStyle = slashColor;
-            ctx.lineWidth = 14;
-            ctx.globalAlpha = 0.5;
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(originX, originY, currentRange, startAng, endAng);
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 4;
-            ctx.globalAlpha = 0.9;
-            ctx.stroke();
+            ctx.restore();
         } else {
-            // Forward horizontal sweeping crescent arc
-            ctx.translate(originX, originY);
-            ctx.scale(flip, 1);
-            let sweepAngle = -Math.PI * 0.35 + (atkProgress * Math.PI * 0.7);
+            let atkProgress = 1 - (p.attackTimer / 12); 
+            let currentRange = (p.type === 'WATER' && p.stance === 'DEMON') ? 55 : p.atkRange;
+            let slashColor = p.color;
             
-            ctx.beginPath();
-            ctx.arc(0, 0, currentRange, -Math.PI * 0.35, sweepAngle);
-            ctx.strokeStyle = slashColor;
-            ctx.lineWidth = 16;
-            ctx.globalAlpha = 0.55;
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.arc(0, 0, currentRange, -Math.PI * 0.35, sweepAngle);
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 5;
-            ctx.globalAlpha = 0.9;
-            ctx.stroke();
-
-            // Additional blade trail / dagger flourish
-            if (p.type === 'EARTH' || (p.type === 'STAMINA' && p.weaponMode === 'BLUE')) {
-                // Secondary dagger trail
-                ctx.beginPath();
-                ctx.arc(0, 5, currentRange * 0.7, -Math.PI * 0.25, sweepAngle);
-                ctx.strokeStyle = slashColor;
-                ctx.lineWidth = 8;
-                ctx.globalAlpha = 0.4;
-                ctx.stroke();
+            if (p.attackType === "LIGHT") {
+                slashColor = "#00ffff";
+                currentRange = Math.max(p.atkRange, 125);
             }
+            else if (p.attackType === "TIDAL_SURGE") {
+                slashColor = "#00ffff";
+                currentRange = 160;
+            }
+            else if (p.attackType === "CRUSHING_STRIKE") {
+                slashColor = "#00e5ff";
+                currentRange = 110;
+            }
+            else if (p.type === 'WATER') slashColor = (p.stance === 'DEMON') ? "#d000ff" : "#00d4ff";
+            else if (p.type === 'EARTH') slashColor = "#33ff55";
+            else if (p.type === 'STAMINA') slashColor = (p.weaponMode === 'BLUE') ? "#44d4ff" : "#ff0077";
+            else if (p.type === 'FIRE') slashColor = (p.heatBladeTimer > 0) ? "#ff3300" : "#ffaa00";
+            else if (p.type === 'FIRE_HALBERD') slashColor = (p.halberdBuffTimer > 0) ? "#ff2200" : (p.heatBladeTimer > 0 ? "#ff4400" : "#ff5500");
+            else if (p.type === 'WATER_ROPE') slashColor = "#00f0ff";
+
+            ctx.save();
+            let flip = p.facingRight ? 1 : -1;
+            let originX = p.x + 15;
+            let originY = p.y + 25;
+
+            if (p.attackType === "UP") {
+                // Sweeping overhead vertical arc
+                ctx.beginPath();
+                let startAng = -Math.PI * 0.85;
+                let endAng = -Math.PI * 0.15;
+                ctx.arc(originX, originY, currentRange, startAng, endAng);
+                ctx.strokeStyle = slashColor;
+                ctx.lineWidth = 14;
+                ctx.globalAlpha = 0.5;
+                ctx.stroke();
+                // Core white line
+                ctx.beginPath();
+                ctx.arc(originX, originY, currentRange, startAng, endAng);
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 4;
+                ctx.globalAlpha = 0.9;
+                ctx.stroke();
+            } else if (p.attackType === "DOWN" || p.attackType === "DIVE") {
+                // Sweeping downwards arc
+                ctx.beginPath();
+                let startAng = Math.PI * 0.15;
+                let endAng = Math.PI * 0.85;
+                ctx.arc(originX, originY, currentRange, startAng, endAng);
+                ctx.strokeStyle = slashColor;
+                ctx.lineWidth = 14;
+                ctx.globalAlpha = 0.5;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(originX, originY, currentRange, startAng, endAng);
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 4;
+                ctx.globalAlpha = 0.9;
+                ctx.stroke();
+            } else {
+                // Forward horizontal sweeping crescent arc
+                ctx.translate(originX, originY);
+                ctx.scale(flip, 1);
+                let sweepAngle = -Math.PI * 0.35 + (atkProgress * Math.PI * 0.7);
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, currentRange, -Math.PI * 0.35, sweepAngle);
+                ctx.strokeStyle = slashColor;
+                ctx.lineWidth = 16;
+                ctx.globalAlpha = 0.55;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(0, 0, currentRange, -Math.PI * 0.35, sweepAngle);
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 5;
+                ctx.globalAlpha = 0.9;
+                ctx.stroke();
+
+                // Additional blade trail / dagger flourish
+                if (p.type === 'EARTH' || (p.type === 'STAMINA' && p.weaponMode === 'BLUE')) {
+                    // Secondary dagger trail
+                    ctx.beginPath();
+                    ctx.arc(0, 5, currentRange * 0.7, -Math.PI * 0.25, sweepAngle);
+                    ctx.strokeStyle = slashColor;
+                    ctx.lineWidth = 8;
+                    ctx.globalAlpha = 0.4;
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
         }
-        ctx.restore();
     }
 
     // --- V74 VISUAL OVERLAYS FOR PLAYER ---

@@ -93,10 +93,6 @@ function runAiCompanion(p) {
         waterDrop: false
     };
 
-    if (typeof boss === 'undefined' || !boss || gameState !== "PLAYING") {
-        return inp;
-    }
-
     if (aiInternalState.doubleJumpDelay > 0) aiInternalState.doubleJumpDelay--;
 
     // Variable jump: hold jump key so jump is not prematurely truncated by p.vy *= 0.5
@@ -116,6 +112,19 @@ function runAiCompanion(p) {
         aiInternalState.jumpHoldTimer = frames;
         aiInternalState.doubleJumpDelay = 999; // Двойной прыжок совершен
     };
+
+    // --- STORY MODE AUTONOMOUS COMPANIONS ---
+    if (typeof window !== 'undefined' && window.isStoryMode) {
+        // Dedicated Trials AI
+        if (typeof storyState !== 'undefined' && storyState.inTrials && typeof runStoryTrialsCompanionAI === 'function') {
+            let res = runStoryTrialsCompanionAI(p, inp, requestJump);
+            return res || inp;
+        }
+    }
+
+    if (typeof boss === 'undefined' || !boss || gameState !== "PLAYING") {
+        return inp;
+    }
 
     // Final tie cinematic:
     if (boss.state === "CINEMATIC_TIE_WAIT") {
@@ -179,7 +188,8 @@ function runAiCompanion(p) {
     if (typeof window !== 'undefined' && window.isStoryMode) {
         // 0. If inside the 4-Stage Trials Arena, run dedicated Trials Combat & Puzzle AI!
         if (typeof storyState !== 'undefined' && storyState.inTrials && typeof runStoryTrialsCompanionAI === 'function') {
-            return runStoryTrialsCompanionAI(p, inp, requestJump);
+            let res = runStoryTrialsCompanionAI(p, inp, requestJump);
+            return res || inp;
         }
 
         // 1. Revive downed ally first if anyone is hurt
@@ -258,8 +268,8 @@ function runAiCompanion(p) {
             if (p.y < 50 && leader.y < 50 && leader.x > -110) {
                 desiredX = Math.max(-95, desiredX);
             }
-            // Keep Lower Tier AI near the Gates/Bench without running into closed walls
-            if (p.y > 600) {
+            // Keep Lower Tier AI near the Gates/Bench without running into closed walls (only outside trials arena)
+            if (p.y > 600 && !(typeof storyState !== 'undefined' && storyState.inTrials)) {
                 desiredX = Math.min(1820, Math.max(-440, desiredX));
             }
 

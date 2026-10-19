@@ -1232,9 +1232,9 @@ window.addEventListener('beforeunload', () => {
 // Хелпер отображения имен героев
 function getHeroDisplayName(h) {
     let map = {
-        'WATER': '💧 Вода (Катана)',
+        'WATER': '💧 Вода (Меч)',
         'FIRE': '🔥 Огонь (Рапира)',
-        'AIR': '🌪️ Воздух (Клинки)',
+        'AIR': '🌪️ Воздух (Ловушки)',
         'EARTH': '🌿 Земля (Тяжёлый)',
         'STAMINA': '🩸 4-й Герой (Стамина)',
         'FIRE_HALBERD': '⚡ Огненная Алебарда',
