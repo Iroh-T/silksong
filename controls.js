@@ -823,7 +823,8 @@ function openScreen(screenId, pushHistory = true) {
 
     if (screenId === 'play-type-select') {
         let cur = getCurrentUser();
-        if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
+        let allowed = (typeof isFullGameAllowed === 'function') ? isFullGameAllowed(cur) : (typeof isCreatorUser === 'function' && isCreatorUser(cur));
+        if (!allowed) {
             screenId = 'mode-select';
         }
     }
@@ -924,7 +925,8 @@ window.openScreen = openScreen;
 
 function handlePlayButtonClick() {
     let cur = getCurrentUser();
-    if (typeof isCreatorUser === 'function' && isCreatorUser(cur)) {
+    let canFull = (typeof isFullGameAllowed === 'function') ? isFullGameAllowed(cur) : (typeof isCreatorUser === 'function' && isCreatorUser(cur));
+    if (canFull) {
         openScreen('play-type-select');
     } else {
         openScreen('mode-select');
@@ -946,7 +948,8 @@ function menuGoBack() {
         let prev = menuHistory.pop();
         if (prev === 'play-type-select') {
             let cur = getCurrentUser();
-            if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
+            let canFull = (typeof isFullGameAllowed === 'function') ? isFullGameAllowed(cur) : (typeof isCreatorUser === 'function' && isCreatorUser(cur));
+            if (!canFull) {
                 prev = 'root-menu';
             }
         }
@@ -1404,9 +1407,10 @@ window.storyPlayerCount = 1;
 
 async function openStorySlotsScreen() {
     let cur = getCurrentUser();
-    if (typeof isCreatorUser === 'function' && !isCreatorUser(cur)) {
+    let canFull = (typeof isFullGameAllowed === 'function') ? isFullGameAllowed(cur) : (typeof isCreatorUser === 'function' && isCreatorUser(cur));
+    if (!canFull) {
         if (typeof showTutorialAlert === 'function') {
-            showTutorialAlert("🔒 Режим «Полная игра» пока находится в эксклюзивной разработке Создателя!");
+            showTutorialAlert("🔒 Режим «Полная игра» доступен Создателю (РЫБа) и друзьям (Ярослав, Даша)!");
         }
         openScreen('mode-select');
         return;

@@ -207,6 +207,49 @@ function runAiCompanion(p) {
             return inp;
         }
 
+        // 1.5 Combat engagement in Story Mode if an active enemy is nearby!
+        let activeStoryEnemy = null;
+        if (typeof storyState !== 'undefined' && storyState.guardian && storyState.guardian.hp > 0) {
+            activeStoryEnemy = storyState.guardian;
+        } else if (typeof storyTrials !== 'undefined' && storyTrials.demon && storyTrials.demon.hp > 0) {
+            activeStoryEnemy = storyTrials.demon;
+        } else if (typeof boss !== 'undefined' && boss && boss.hp > 0 && boss.x > -1000 && Math.abs(boss.x - p.x) < 700) {
+            activeStoryEnemy = boss;
+        }
+
+        if (activeStoryEnemy) {
+            let eX = activeStoryEnemy.x + (activeStoryEnemy.width ? activeStoryEnemy.width / 2 : 0);
+            let eY = activeStoryEnemy.y + (activeStoryEnemy.height ? activeStoryEnemy.height / 2 : 0);
+            let dxE = eX - (p.x + p.width / 2);
+            let dyE = eY - (p.y + p.height / 2);
+            let distE = Math.hypot(dxE, dyE);
+
+            if (p.type === 'AIR') {
+                if (distE < 150) {
+                    if (dxE > 0) inp.left = true; else inp.right = true;
+                    if (p.onGround && Math.random() < 0.2) requestJump(15);
+                } else if (distE > 360) {
+                    if (dxE > 0) inp.right = true; else inp.left = true;
+                }
+                p.facingRight = (dxE > 0);
+                if (distE <= 600 && p.attackCooldown <= 0) {
+                    inp.attack = true;
+                }
+                return inp;
+            } else if (p.type === 'EARTH') {
+                if (Math.abs(dxE) > 45) {
+                    if (dxE > 0) inp.right = true; else inp.left = true;
+                    if (Math.abs(dxE) > 100) inp.dash = true;
+                }
+                if (dyE < -30 && p.onGround) requestJump(14);
+                p.facingRight = (dxE > 0);
+                if (distE <= 75 && p.attackCooldown <= 0) {
+                    inp.attack = true;
+                }
+                return inp;
+            }
+        }
+
         // 2. Initialize per-companion autonomous brain state
         if (!p.storyAi) {
             p.storyAi = {

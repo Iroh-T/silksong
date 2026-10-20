@@ -68,8 +68,8 @@ function createPlayer(id, type, keysObj, inputType, startX) {
     let isFireDuel = (typeof isFireBossMode !== 'undefined' && !!isFireBossMode) || (typeof window !== 'undefined' && !!window.isFireBossMode);
     let baseHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : (isFireDuel ? 8 : (isL ? 8 : 6));
     if (type === 'WATER') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#3366ff", atkCdBase: 24, atkRange: 95, jumpPowerBase: -12, type: 'WATER', dmgMulti: 1 }); } 
-    else if (type === 'EARTH') { Object.assign(p, { speed: 5.6, hp: baseHp, maxHp: baseHp, color: "#33cc33", atkCdBase: 8, atkRange: 65, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.7 }); } 
-    else if (type === 'AIR') { Object.assign(p, { speed: 5.5, hp: baseHp, maxHp: baseHp, color: "#ffdd00", atkCdBase: 20, atkRange: 80, jumpPowerBase: -13, type: 'AIR', dmgMulti: 0.8 }); } 
+    else if (type === 'EARTH') { Object.assign(p, { speed: 5.6, hp: baseHp, maxHp: baseHp, color: "#33cc33", atkCdBase: 8, atkRange: 65, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.75 }); } 
+    else if (type === 'AIR') { Object.assign(p, { speed: 5.5, hp: baseHp, maxHp: baseHp, color: "#ffdd00", atkCdBase: 60, atkRange: 80, jumpPowerBase: -13, type: 'AIR', dmgMulti: 1.0 }); } 
     else if (type === 'STAMINA') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#b35959", atkCdBase: 24, atkRange: 95, jumpPowerBase: -12, type: 'STAMINA', dmgMulti: 1.5, stamina: 5, maxStamina: 9, isCharging: false, chargeTimer: 0, chargeProjectiles: [] }); }
     else if (type === 'FIRE') { Object.assign(p, { speed: 5.25, hp: baseHp, maxHp: baseHp, color: "#ff5500", atkCdBase: 18, atkRange: 80, jumpPowerBase: -12.5, type: 'FIRE', dmgMulti: 1.25, isParrying: false, parryTimer: 0, orangeHp: 0, orangeHpTimer: 0, isFieryHealing: false, fireDashTimer: 0 }); }
     else if (type === 'FIRE_HALBERD') { Object.assign(p, { speed: 5.1, hp: baseHp, maxHp: baseHp, color: "#ff3322", atkCdBase: 28, atkRange: 130, jumpPowerBase: -12.2, type: 'FIRE_HALBERD', dmgMulti: 1.0, halberdBuffTimer: 0, halberdVampiricReady: false, halberdCombos: 0, halberdComboTimer: 0, whirlwindTimer: 0 }); }
@@ -294,29 +294,13 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         if (p.type === 'STAMINA') p.isCharging = false; 
         playSound('hitPlayer'); 
         if (p.hp <= 0) {
-            // Story Mode: Связанная сила автоматически спасает от гибели ценой энергии!
-            if (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && storyState.bluePowerUnlocked && typeof sharedHeals !== 'undefined' && sharedHeals > 0) {
-                sharedHeals--;
-                if (typeof sharedHealPoints !== 'undefined') sharedHealPoints = Math.max(0, sharedHealPoints - 4);
-                p.hp = 1.5;
-                p.invuln = 90;
-                if (typeof playSound === 'function') {
-                    playSound('lightChime');
-                    playSound('parry');
-                }
-                if (typeof triggerShake === 'function') triggerShake(5, 12);
-                if (typeof createStoryBondRescueVFX === 'function') {
-                    createStoryBondRescueVFX(p);
-                }
-            } else {
-                let activeAllies = players.filter(pl => pl.id !== p.id && pl.hp > 0 && !pl.isDowned);
-                if (players.length > 1 && activeAllies.length > 0 && !p.isDowned) { 
-                    p.isDowned = true; 
-                    p.hp = 0.1; 
-                    p.downedTimer = 600; // 10 секунд (600 кадров при 60 FPS)
-                } else { 
-                    p.hp = 0; 
-                }
+            let activeAllies = players.filter(pl => pl.id !== p.id && pl.hp > 0 && !pl.isDowned);
+            if (players.length > 1 && activeAllies.length > 0 && !p.isDowned) { 
+                p.isDowned = true; 
+                p.hp = 0.1; 
+                p.downedTimer = 600; // 10 секунд (600 кадров при 60 FPS)
+            } else { 
+                p.hp = 0; 
             }
         }
 
@@ -933,13 +917,6 @@ function updatePlayers() {
                 if (!storyState.attackUnlocked) kAttack = false;
                 if (!storyState.comboUnlocked) kSpec = false;
                 if (!storyState.stanceUnlocked) kStance = false;
-            }
-            if (p.type === 'AIR' || p.type === 'EARTH') {
-                if (!(typeof storyState !== 'undefined' && storyState.trialsWeaponGranted)) {
-                    kSpec = false;
-                    kStance = false;
-                    kAttack = false;
-                }
             }
             // Freeze all movement and actions during dialogue or ritual cutscenes
             if (typeof storyDialogue !== 'undefined' && storyDialogue.active) {
@@ -2661,46 +2638,37 @@ function updatePlayers() {
                 let nearRopeForAttack = (p.type === 'WATER_ROPE' && p.ropeActive && p.ropeA && p.ropeB && distToSegment({ x: p.x + p.width/2, y: p.y + p.height/2 }, p.ropeA, p.ropeB) < 95);
 
                 let canAttackNow = kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && p.lightCharge === 0 && p.overheatTimer <= 0 && !p.isRopeSliding && !nearRopeForAttack && !p.holdingBossRope;
-                if (typeof window !== 'undefined' && window.isStoryMode && !(typeof storyState !== 'undefined' && storyState.trialsWeaponGranted)) {
-                    // До начала Испытаний оружия у героев ещё нет (кроме удара Воды в режиме Демона или комбо X+F)
-                    if (p.type !== 'WATER' || p.stance === 'LIGHT') {
-                        canAttackNow = false;
-                    }
-                }
                 if (canAttackNow) {
                     if (p.type === 'AIR') {
                         p.attackTimer = 12;
-                        p.attackCooldown = 20; 
+                        p.attackCooldown = 60; 
                         playSound('throw'); 
-                        let tx = p.x + (p.facingRight ? 260 : -260);
-                        let ty = p.y + 15;
-                        if (typeof window !== 'undefined' && window.isStoryMode && typeof getNearestStoryTrialTarget === 'function') {
-                            let tgt = getNearestStoryTrialTarget(p);
-                            if (tgt) {
-                                tx = tgt.x;
-                                ty = tgt.y;
-                                p.facingRight = (tx > p.x);
+                        let facing = p.facingRight ? 1 : -1;
+                        let vx = facing * 15;
+                        let vy = 0;
+                        if (kUp && !kDown) {
+                            vy = -12;
+                            vx = facing * 9;
+                        } else if (kDown && !onFloor) {
+                            vy = 12;
+                            vx = facing * 9;
+                        } else {
+                            let tx = null, ty = null;
+                            if (typeof window !== 'undefined' && window.isStoryMode && typeof getNearestStoryTrialTarget === 'function') {
+                                let tgt = getNearestStoryTrialTarget(p);
+                                if (tgt) { tx = tgt.x; ty = tgt.y; }
+                            } else if (typeof boss !== 'undefined' && boss && boss.x > -1000) {
+                                tx = boss.x + boss.width / 2;
+                                ty = boss.y + boss.height / 2;
                             }
-                        } else if (boss && boss.x > -1000) {
-                            tx = boss.x + boss.width / 2;
-                            ty = boss.y + boss.height / 2;
-                            p.facingRight = (tx > p.x);
-                        }
-                        let dx = tx - (p.x + p.width/2); 
-                        let dy = ty - (p.y + p.height/2); 
-                        let dist = Math.hypot(dx, dy) || 1;
-                        let vx = (dx / dist) * 15;
-                        let vy = (dy / dist) * 15;
-                        // Timur: "у воздуха он иногда будет мазать своими ловушками (потому что еще не очень опытный)"
-                        // Slight realistic graze deviation only 14% of the time (never wild 90-degree misses)
-                        if (typeof window !== 'undefined' && window.isStoryMode && Math.random() < 0.14) {
-                            let missAngle = (Math.random() < 0.5 ? 1 : -1) * 0.10;
-                            let cosA = Math.cos(missAngle), sinA = Math.sin(missAngle);
-                            let rvx = vx * cosA - vy * sinA;
-                            let rvy = vx * sinA + vy * cosA;
-                            vx = rvx;
-                            vy = rvy;
-                            p.storyMissedTrapTimer = 35;
+                            if (tx !== null && ty !== null) {
+                                p.facingRight = (tx > p.x);
+                                let dx = tx - (p.x + p.width/2);
+                                let dy = ty - (p.y + p.height/2);
+                                let dist = Math.hypot(dx, dy) || 1;
+                                vx = (dx / dist) * 15;
+                                vy = (dy / dist) * 15;
+                            }
                         }
                         airTraps.push({ x: p.x + p.width/2, y: p.y + p.height/2, vx: vx, vy: vy, pId: p.id });
                         // Point-blank razor wind gust: Air ALWAYS repels and hits enemies touching him!
@@ -2825,23 +2793,38 @@ function updatePlayers() {
                                 }
 
                                 
-                                if (p.type === 'WATER' && p.stance === 'DEMON') {
-                                    if (secretMode) dmgToDeal = 0.75;
-                                    if (p.demonRageTimer > 0) dmgToDeal *= 1.25;
-                                }
-                                if (p.type === 'STAMINA') {
-                                    if (p.weaponMode === 'PINK') {
-                                        dmgToDeal = 2.5; // Colossal damage!
+                                let isStory = (typeof window !== 'undefined' && window.isStoryMode);
+                                let blueUnlocked = isStory && (typeof storyState !== 'undefined' && storyState.bluePowerUnlocked);
+                                let isPreBlueStory = isStory && !blueUnlocked;
+
+                                let isTargetDemon = (typeof window.isDemonTarget === 'function')
+                                    ? window.isDemonTarget(boss)
+                                    : (boss && (boss.isDemon || boss.demonAura || (typeof storyState !== 'undefined' && storyState.inTrials)));
+
+                                if (p.type === 'WATER') {
+                                    if (p.stance === 'DEMON') {
+                                        if (secretMode) dmgToDeal = 0.75;
+                                        if (p.demonRageTimer > 0) dmgToDeal *= 1.25;
+                                    } else if (isPreBlueStory) {
+                                        dmgToDeal = 0.75;
                                     } else {
-                                        dmgToDeal = 1.0;
+                                        dmgToDeal = isTargetDemon ? 1.2 : 1.0;
                                     }
-                                }
-                                if (p.type === 'FIRE' && p.heatBladeTimer > 0) {
-                                    dmgToDeal *= 1.5; // 1.5x Heat Blade buff!
-                                }
-                                if (p.type === 'EARTH') {
-                                    if (p.attackType === "EARTH_SPRINT_STRIKE") {
-                                        dmgToDeal = 1.25;
+                                } else if (p.type === 'AIR') {
+                                    if (isPreBlueStory) {
+                                        dmgToDeal = 0.75;
+                                    } else {
+                                        dmgToDeal = isTargetDemon ? 1.35 : 1.0;
+                                    }
+                                } else if (p.type === 'EARTH') {
+                                    if (isPreBlueStory) {
+                                        dmgToDeal = (p.attackType === "EARTH_SPRINT_STRIKE") ? 0.75 : 0.5;
+                                    } else {
+                                        if (p.attackType === "EARTH_SPRINT_STRIKE") {
+                                            dmgToDeal = isTargetDemon ? 1.5 : 1.25;
+                                        } else {
+                                            dmgToDeal = isTargetDemon ? 1.0 : 0.75;
+                                        }
                                     }
                                     let critChance = 0;
                                     if (sharedHeals >= 5) critChance = 0.15;

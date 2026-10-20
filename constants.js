@@ -127,7 +127,7 @@ window.megaDamageActive = false;
 let phase2Hp = 18;
 let phase3Hp = 22;
 let boss = { 
-    x: 750, y: 300, width: 30, height: 50, vx: 0, vy: 0, speed: 6.5, 
+    x: 750, y: 300, width: 30, height: 50, vx: 0, vy: 0, speed: 6.5, isDemon: true,
     hp: 30, maxHp: 30, phase: 1, damageBonus: 0, state: "IDLE", stateTimer: 60, flashTimer: 0,
     invuln: 0, color: "#e6c800", attackDir: 1, targetY: 150, climbSaTimer: 0,
     isHorizontal: false, facingRight: false, missCount: 0, directAttackActive: false, 
@@ -2454,6 +2454,28 @@ function isCreatorUser(name) {
     return n === 'рыба' || n === 'admin';
 }
 window.isCreatorUser = isCreatorUser;
+
+function isFullGameAllowed(name) {
+    if (!name) return false;
+    let n = name.toLowerCase().trim();
+    if (isCreatorUser(n) || n === 'тимур' || n === 'creator' || n === '降卋神通') return true;
+    if (typeof isCarrotsUser === 'function' && isCarrotsUser(n)) return true;
+    if (n.includes('ярослав') || n.includes('carrots')) return true;
+    if (typeof isDashaUser === 'function' && isDashaUser(n)) return true;
+    if (n.includes('даша') || n.includes('dasha')) return true;
+    return false;
+}
+window.isFullGameAllowed = isFullGameAllowed;
+
+function isDemonTarget(target) {
+    if (!target) return false;
+    if (target.isDemon === true) return true;
+    if (typeof storyTrials !== 'undefined' && storyTrials.demon && target === storyTrials.demon) return true;
+    if (typeof storyState !== 'undefined' && storyState.guardian && target === storyState.guardian) return true;
+    if (typeof boss !== 'undefined' && target === boss) return true;
+    return false;
+}
+window.isDemonTarget = isDemonTarget;
 
 function isBananaSkinAllowed() {
     try {

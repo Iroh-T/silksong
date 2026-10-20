@@ -1044,10 +1044,25 @@ function updateProjectiles() {
                 continue;
             }
         }
+        let blueUnlocked = isStory && (typeof storyState !== 'undefined' && storyState.bluePowerUnlocked);
+        let isPreBlue = isStory && !blueUnlocked;
+
+        if (typeof storyState !== 'undefined' && storyState.guardian && rectIntersect({x: t.x-8, y: t.y-8, width: 16, height: 16}, storyState.guardian)) {
+            let caster = players.find(pl => pl.id === t.pId);
+            let trapDmg = isPreBlue ? 0.75 : 1.35;
+            storyState.guardian.hp -= trapDmg;
+            storyState.guardian.hitFlash = 16;
+            playSound('hitBoss');
+            playSound('trap');
+            airTraps.splice(i, 1);
+            continue;
+        }
         if (rectIntersect({x: t.x-8, y: t.y-8, width: 16, height: 16}, boss) && boss.state !== "TRANSITION") {
             let caster = players.find(pl => pl.id === t.pId);
             let stateBefore = boss.state;
-            if (tryDamageBoss(1, caster)) {
+            let isDemonEnemy = (typeof isDemonTarget === 'function') ? isDemonTarget(boss) : (boss && boss.isDemon);
+            let trapDmg = isPreBlue ? 0.75 : (isDemonEnemy ? 1.35 : 1.0);
+            if (tryDamageBoss(trapDmg, caster)) {
                 if (stateBefore !== "PARRY_STANCE" && stateBefore !== "VULN_STANCE" && stateBefore !== "VULN_LATE") {
                     boss.state = "TIED"; boss.color = "blue"; boss.stateTimer = 60; boss.vx = 0;
                 }

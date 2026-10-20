@@ -68,7 +68,7 @@ let storyState = {
     inTrials: false,
     trialsStage: 0,
     trialsWarnings: 0,
-    trialsWeaponGranted: false,
+    trialsWeaponGranted: true,
     trialsGateY: 420,
     trialsGateOpen: false,
     explored: {
@@ -506,111 +506,6 @@ function triggerTetyaFollowupDialogue() {
     let currentLines = dialogues[tetyaTalkCycle % dialogues.length];
     tetyaTalkCycle++;
     startStoryDialogue(currentLines);
-}
-
-// Emergency Bond Rescue Effects
-let storyBondRescueEffects = [];
-function createStoryBondRescueVFX(p) {
-    storyBondRescueEffects.push({
-        x: p.x + p.width / 2,
-        y: p.y + p.height / 2,
-        timer: 45,
-        maxTimer: 45
-    });
-}
-window.createStoryBondRescueVFX = createStoryBondRescueVFX;
-
-function updateAndDrawStoryBondRescueEffects() {
-    if (storyBondRescueEffects.length === 0) return;
-    ctx.save();
-    for (let i = storyBondRescueEffects.length - 1; i >= 0; i--) {
-        let eff = storyBondRescueEffects[i];
-        eff.timer--;
-        if (eff.timer <= 0) {
-            storyBondRescueEffects.splice(i, 1);
-            continue;
-        }
-        let p = 1 - (eff.timer / eff.maxTimer);
-        let radius = 10 + p * 55;
-
-        // Expanding cyan shockwave ring
-        ctx.strokeStyle = `rgba(0, 229, 255, ${1 - p})`;
-        ctx.lineWidth = 3.5 * (1 - p);
-        ctx.shadowColor = "#00e5ff";
-        ctx.shadowBlur = 15;
-        ctx.beginPath();
-        ctx.arc(eff.x, eff.y, radius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Rising text: СВЯЗАННАЯ СИЛА СПАСЛА!
-        ctx.fillStyle = `rgba(224, 242, 254, ${1 - p * 0.5})`;
-        ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-        ctx.textAlign = "center";
-        ctx.shadowBlur = 10;
-        ctx.fillText("✨ СВЯЗАННАЯ СИЛА СПАСЛА! ✨", eff.x, eff.y - 25 - p * 30);
-    }
-    ctx.restore();
-}
-
-// Draw subtle, gentle cyan thread linking hearts of living party members
-function drawStoryHeroBondThreads() {
-    if (!storyState.bluePowerUnlocked) return;
-    let living = players.filter(pl => pl && pl.hp > 0 && !pl.isDowned);
-    if (living.length < 2) return;
-
-    ctx.save();
-    let now = Date.now();
-    for (let i = 0; i < living.length - 1; i++) {
-        let pA = living[i];
-        let pB = living[i + 1];
-        let ax = pA.x + pA.width / 2;
-        let ay = pA.y + pA.height * 0.45;
-        let bx = pB.x + pB.width / 2;
-        let by = pB.y + pB.height * 0.45;
-        let dist = Math.hypot(bx - ax, by - ay);
-
-        // Render bond thread when heroes are within proximity (< 350px)
-        if (dist < 350) {
-            let proximityAlpha = Math.max(0.12, 1 - dist / 350);
-            let isLowHp = (pA.hp <= 1.5 || pB.hp <= 1.5);
-            let pulseSpeed = isLowHp ? 0.015 : 0.005;
-            let pulse = 0.5 + 0.5 * Math.sin(now * pulseSpeed);
-            let waveAmt = 4 * Math.sin(now * 0.006 + i * 2);
-
-            let midX = (ax + bx) / 2;
-            let midY = (ay + by) / 2 + 5 + waveAmt;
-
-            // Outer cyan bloom
-            ctx.shadowColor = "#00e5ff";
-            ctx.shadowBlur = isLowHp ? 16 : 8;
-            ctx.strokeStyle = isLowHp 
-                ? `rgba(56, 189, 248, ${0.4 + pulse * 0.5})` 
-                : `rgba(56, 189, 248, ${proximityAlpha * (0.35 + pulse * 0.25)})`;
-            ctx.lineWidth = isLowHp ? 2.5 : 1.6;
-
-            ctx.beginPath();
-            ctx.moveTo(ax, ay);
-            ctx.quadraticCurveTo(midX, midY, bx, by);
-            ctx.stroke();
-
-            // Inner white core
-            ctx.strokeStyle = `rgba(255, 255, 255, ${proximityAlpha * (0.5 + pulse * 0.3)})`;
-            ctx.lineWidth = 1.0;
-            ctx.stroke();
-
-            // Traveling starlight sparkle along the thread
-            let travel = ((now * 0.001 * (isLowHp ? 1.8 : 0.8) + i * 0.33) % 1);
-            let spX = Math.pow(1 - travel, 2) * ax + 2 * (1 - travel) * travel * midX + Math.pow(travel, 2) * bx;
-            let spY = Math.pow(1 - travel, 2) * ay + 2 * (1 - travel) * travel * midY + Math.pow(travel, 2) * by;
-
-            ctx.fillStyle = "#ffffff";
-            ctx.shadowBlur = 10;
-            ctx.beginPath();
-            ctx.arc(spX, spY, isLowHp ? 2.5 : 1.8, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-    ctx.restore();
 }
 
 // World-Space Cutscene Rendering (Draws in world coordinates inside camera transform)
@@ -2241,6 +2136,9 @@ function updateStoryMode() {
     if (storyState.step !== 'BENCH_REST') {
         updatePlayers();
     }
+    if (typeof updateProjectiles === 'function') {
+        updateProjectiles();
+    }
 
     // 4. Update Forest Atmospheric Effects
     updateForestAtmosphere();
@@ -3080,11 +2978,28 @@ function drawStoryMode() {
     // 10b. Ancient Power Ritual Animation in World Space (thread rising, waving, splitting in 3, infusing heroes)
     drawAncientRitualWorld();
 
-    // 10c. Gentle glowing cyan bond threads linking party members
-    drawStoryHeroBondThreads();
-
-    // 10d. Emergency rescue shockwave effects
-    updateAndDrawStoryBondRescueEffects();
+    // 10c. Air Traps Projectiles in Story Mode
+    if (typeof airTraps !== 'undefined' && airTraps.length > 0) {
+        for (let t of airTraps) {
+            ctx.save();
+            ctx.translate(t.x, t.y);
+            let rot = Date.now() / 50;
+            ctx.rotate(rot);
+            ctx.beginPath();
+            ctx.moveTo(0, -9);
+            ctx.lineTo(7, 7);
+            ctx.lineTo(-7, 7);
+            ctx.closePath();
+            ctx.fillStyle = "#ffdd00";
+            ctx.shadowColor = "#ffdd00";
+            ctx.shadowBlur = 8;
+            ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
 
     // 11. Flying Forest Leaves
     ctx.save();
@@ -5207,21 +5122,25 @@ function updateStoryTrials() {
 function checkStoryTrialHitbox(swordHitbox, attacker) {
     if (!storyTrials.active) return;
 
-    // Timur: "вода - 0.75, воздух - 0.75, земля - 0.5"
-    let dmg = 0.75;
+    let isBlue = (typeof storyState !== 'undefined' && storyState.bluePowerUnlocked);
+    let normalDmg = 0.75;
+    let demonDmg = 0.75;
     if (attacker.type === 'EARTH') {
-        dmg = (attacker.attackType === 'EARTH_SPRINT_STRIKE') ? 0.75 : 0.5;
+        normalDmg = isBlue ? ((attacker.attackType === 'EARTH_SPRINT_STRIKE') ? 1.25 : 0.75) : ((attacker.attackType === 'EARTH_SPRINT_STRIKE') ? 0.75 : 0.5);
+        demonDmg = isBlue ? ((attacker.attackType === 'EARTH_SPRINT_STRIKE') ? 1.5 : 1.0) : ((attacker.attackType === 'EARTH_SPRINT_STRIKE') ? 0.75 : 0.5);
     } else if (attacker.type === 'AIR') {
-        dmg = 0.75;
+        normalDmg = isBlue ? 1.0 : 0.75;
+        demonDmg = isBlue ? 1.35 : 0.75;
     } else if (attacker.type === 'WATER') {
-        dmg = 0.75;
+        normalDmg = isBlue ? 1.0 : 0.75;
+        demonDmg = isBlue ? 1.2 : 0.75;
     }
 
     // 1. Mannequins
     for (let m of storyTrials.mannequins) {
         let mBox = { x: m.x - 18, y: m.y - 50, width: 36, height: 50 };
         if (rectIntersect(swordHitbox, mBox)) {
-            m.hp -= dmg;
+            m.hp -= normalDmg;
             m.hitFlash = 16;
             m.vx = (attacker.x < m.x ? 5 : -5);
             playSound('hitBoss');
@@ -5302,7 +5221,7 @@ function checkStoryTrialHitbox(swordHitbox, attacker) {
         let d = storyTrials.demon;
         let dBox = { x: d.x - 30, y: d.y, width: 60, height: 85 };
         if (rectIntersect(swordHitbox, dBox)) {
-            d.hp -= dmg;
+            d.hp -= demonDmg;
             d.hitFlash = 16;
             playSound('hitBoss');
             triggerShake(4, 8);
@@ -5397,7 +5316,8 @@ function checkStoryTrialWaterDropHit(drop, p, hitBox) {
         let d = storyTrials.demon;
         let dBox = { x: d.x - 30, y: d.y, width: 60, height: 85 };
         if (rectIntersect(hitBox, dBox)) {
-            d.hp -= 0.75;
+            let isBlue = (typeof storyState !== 'undefined' && storyState.bluePowerUnlocked);
+            d.hp -= isBlue ? 1.2 : 0.75;
             d.hitFlash = 16;
             playSound('hitBoss');
             playSound('waterSplash');
@@ -5447,7 +5367,8 @@ function checkStoryTrialProjectileHit(proj, type) {
     for (let m of storyTrials.mannequins) {
         let mBox = { x: m.x - 18, y: m.y - 50, width: 36, height: 50 };
         if (rectIntersect(pBox, mBox)) {
-            m.hp -= 0.75;
+            let isBlue = (typeof storyState !== 'undefined' && storyState.bluePowerUnlocked);
+            m.hp -= isBlue ? 1.0 : 0.75;
             m.hitFlash = 16;
             // BIND THE MANNEQUIN WITH AIR TRAP!
             m.state = 'TIED';
@@ -5513,7 +5434,8 @@ function checkStoryTrialProjectileHit(proj, type) {
         // 2. Air trap hits Demon: INTERRUPTS WINDUP & BINDS!
         let dBox = { x: d.x - 30, y: d.y, width: 60, height: 85 };
         if (rectIntersect(pBox, dBox) && d.state !== 'TELEPORT_IN') {
-            d.hp -= 0.75;
+            let isBlue = (typeof storyState !== 'undefined' && storyState.bluePowerUnlocked);
+            d.hp -= isBlue ? 1.35 : 0.75;
             d.hitFlash = 16;
 
             // INTERRUPT ATTACK / TELEPORT WINDUP!
@@ -5824,7 +5746,7 @@ function runStoryTrialsCompanionAI(p, inp, requestJump) {
                 let dist = Math.hypot(dx, airTgt.y - p.y);
                 if (dist <= 650 && st.attackCooldown <= 0) {
                     inp.attack = true;
-                    st.attackCooldown = 22 + Math.floor(Math.random() * 8);
+                    st.attackCooldown = 60 + Math.floor(Math.random() * 15);
                 }
             }
             return inp;
@@ -5859,7 +5781,7 @@ function runStoryTrialsCompanionAI(p, inp, requestJump) {
             // Rapid-fire binding traps: Air relentlessly peppers the Demon!
             if (dist <= 650 && st.attackCooldown <= 0) {
                 inp.attack = true;
-                st.attackCooldown = 18 + Math.floor(Math.random() * 6);
+                st.attackCooldown = 60 + Math.floor(Math.random() * 15);
             }
             return inp;
         }

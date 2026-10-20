@@ -149,9 +149,8 @@ function tryDamageBoss(dmg, sourcePlayer) {
 
     let finalDmg = dmg * (sourcePlayer ? sourcePlayer.dmgDealtMod : 1);
     if (sourcePlayer && sourcePlayer.isMobile) finalDmg += 0.5;
-    // Строгое минимальное деление ХП босса: 0.25 HP
-    finalDmg = Math.round(finalDmg * 4) / 4;
-    boss.hp = Math.max(0, Math.round((boss.hp - finalDmg) * 4) / 4);
+    finalDmg = Math.round(finalDmg * 100) / 100;
+    boss.hp = Math.max(0, Math.round((boss.hp - finalDmg) * 100) / 100);
     boss.invuln = 10;
     playSound('hitBoss');
     if (sourcePlayer) recordHit(sourcePlayer);
