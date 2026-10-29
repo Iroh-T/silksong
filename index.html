@@ -36,10 +36,11 @@
             </div>
 
             <!-- Discreet Corner Version Tag -->
-            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v76.0</div>
+            <div class="game-version-display" style="position: absolute; bottom: 5px; right: 8px; font-size: 10px; color: rgba(255, 255, 255, 0.22); font-family: monospace; pointer-events: none; z-index: 5; user-select: none;">v84.7</div>
         </div>
         <div id="mobile-ui">
             <div id="joy-base"><div id="joy-stick"></div></div>
+            <div class="m-btn" id="m-backpack" style="position: absolute; top: 12px; right: 16px; border-color: #38bdf8; color: #38bdf8; width: 44px; height: 44px; border-radius: 50%; font-size: 20px; display: none; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.88); box-shadow: 0 0 12px rgba(56, 189, 248, 0.35); pointer-events: auto; z-index: 100;" onclick="openStoryBackpackModal()">🎒</div>
             <div class="m-btn-group">
                 <div class="m-btn" id="m-dash" style="border-color: #f59e0b; color: #fbbf24;">DASH</div>
                 <div class="m-btn" id="m-spec" style="border-color: #eab308; color: #fde047;">SPEC</div>
@@ -907,6 +908,65 @@
         </div>
     </div>
 
+    <!-- Scroll Activation Hero Choice Modal (on Bench) -->
+    <div id="story-scroll-hero-modal" style="display: none; position: fixed; inset: 0; background: rgba(3, 6, 20, 0.95); backdrop-filter: blur(12px); z-index: 1300; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
+        <div style="background: linear-gradient(150deg, #091a32 0%, #10264b 100%); border: 2.5px solid #00e5ff; box-shadow: 0 0 65px rgba(0, 229, 255, 0.45); border-radius: 18px; max-width: 650px; width: 100%; padding: 24px; color: #e2e8f0; max-height: 94vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(0, 229, 255, 0.3); padding-bottom: 10px;">
+                <div>
+                    <div style="font-size: 21px; font-weight: 900; color: #00e5ff; letter-spacing: 1px;">📜 АКТИВАЦИЯ СВИТКА РЫВКА</div>
+                    <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Кто из героев воткнет оружие в свиток? (Не обязательно играть за него)</div>
+                </div>
+                <button class="menu-btn" style="margin: 0; padding: 7px 14px; font-size: 12px; border-color: #64748b; color: #cbd5e1;" onclick="closeStoryScrollHeroModal()">✕ Отмена</button>
+            </div>
+
+            <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin-bottom: 16px; background: rgba(0, 229, 255, 0.08); border-left: 3px solid #00e5ff; padding: 8px 12px; border-radius: 6px;">
+                ✨ <b>Сила связи:</b> Все трое персонажей получат базовый <b>Рывок [C]</b>, но тот, кто вонзит оружие, получит <b>+20% к скорости и дальности</b> и уникальный перк Мастера!
+            </div>
+
+            <div id="story-scroll-hero-cards" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px;">
+                <!-- Water Option -->
+                <div class="scroll-hero-opt" onclick="selectScrollHeroForRitual('WATER')" style="background: rgba(15, 23, 42, 0.85); border: 2px solid #38bdf8; border-radius: 12px; padding: 14px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-weight: 900; color: #38bdf8; font-size: 16px;">💧 ВОДА (Меч Света)</div>
+                        <span style="font-size: 11px; background: rgba(56, 189, 248, 0.2); color: #7dd3fc; padding: 3px 8px; border-radius: 12px; font-weight: 700;">Стойкость</span>
+                    </div>
+                    <div style="font-size: 12px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                        🛡️ <b>Перк Мастера:</b> При получении урона во время рывка он будет <b>на 0.5 меньше</b> (урон -0.5)!<br>
+                        ⚡ <b>Бонус:</b> +20% к скорости и дистанции рывка.
+                    </div>
+                </div>
+
+                <!-- Air Option -->
+                <div class="scroll-hero-opt" onclick="selectScrollHeroForRitual('AIR')" style="background: rgba(15, 23, 42, 0.85); border: 2px solid #facc15; border-radius: 12px; padding: 14px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-weight: 900; color: #facc15; font-size: 16px;">💨 ВОЗДУХ (Клинок и Ловушки)</div>
+                        <span style="font-size: 11px; background: rgba(250, 204, 21, 0.2); color: #fef08a; padding: 3px 8px; border-radius: 12px; font-weight: 700;">Воздушная волна</span>
+                    </div>
+                    <div style="font-size: 12px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                        🌪️ <b>Перк Мастера:</b> Выпускает <b>воздушную волну</b> в сторону рывка, отбрасывающую врагов перед собой!<br>
+                        ⚡ <b>Бонус:</b> +20% к скорости и дистанции рывка.
+                    </div>
+                </div>
+
+                <!-- Earth Option -->
+                <div class="scroll-hero-opt" onclick="selectScrollHeroForRitual('EARTH')" style="background: rgba(15, 23, 42, 0.85); border: 2px solid #4ade80; border-radius: 12px; padding: 14px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-weight: 900; color: #4ade80; font-size: 16px;">🌿 ЗЕМЛЯ (Парные Кинжалы)</div>
+                        <span style="font-size: 11px; background: rgba(74, 222, 128, 0.2); color: #bbf7d0; padding: 3px 8px; border-radius: 12px; font-weight: 700;">Теневой шаг</span>
+                    </div>
+                    <div style="font-size: 12px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                        🗡️ <b>Перк Мастера:</b> При наличии врага впереди совершает <b>рывок за спину врага</b> для удара в тыл!<br>
+                        ⚡ <b>Бонус:</b> +20% к скорости и дистанции рывка.
+                    </div>
+                </div>
+            </div>
+
+            <button class="menu-btn" style="margin: 0; width: 100%; padding: 11px; font-size: 13px; border-color: #64748b; color: #94a3b8;" onclick="closeStoryScrollHeroModal()">
+                ✕ ВЕРНУТЬСЯ В РЮКЗАК
+            </button>
+        </div>
+    </div>
+
     <!-- Story Hero Selection Modal ([Space] on Bench) -->
     <div id="story-hero-select-modal" style="display: none; position: fixed; inset: 0; background: rgba(4, 6, 18, 0.94); backdrop-filter: blur(10px); z-index: 1250; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;">
         <div style="background: linear-gradient(150deg, #131129 0%, #1d183b 100%); border: 2px solid #a855f7; box-shadow: 0 0 55px rgba(168, 85, 247, 0.4); border-radius: 16px; max-width: 620px; width: 100%; padding: 22px; color: #e2e8f0; max-height: 92vh; overflow-y: auto;">
@@ -930,16 +990,16 @@
     </div>
 
     <!-- Modular Game Scripts-->
-    <script src="constants.js?v=77.2"></script>
-    <script src="audio.js?v=77.2"></script>
-    <script src="controls.js?v=77.2"></script>
-    <script src="ai.js?v=77.2"></script>
-    <script src="player.js?v=77.2"></script>
-    <script src="story.js?v=77.2"></script>
-    <script src="boss.js?v=77.2"></script>
-    <script src="game.js?v=77.2"></script>
+    <script src="constants.js?v=84.4"></script>
+    <script src="audio.js?v=84.4"></script>
+    <script src="controls.js?v=84.4"></script>
+    <script src="ai.js?v=84.4"></script>
+    <script src="player.js?v=84.4"></script>
+    <script src="story.js?v=84.4"></script>
+    <script src="boss.js?v=84.4"></script>
+    <script src="game.js?v=84.4"></script>
 
     <!-- Pure Firebase Online Multiplayer Module -->
-    <script src="network.js?v=77.2"></script>
+    <script src="network.js?v=84.4"></script>
 </body>
 </html>

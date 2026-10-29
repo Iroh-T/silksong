@@ -113,13 +113,209 @@ function runAiCompanion(p) {
         aiInternalState.doubleJumpDelay = 999; // Двойной прыжок совершен
     };
 
-    // --- STORY MODE AUTONOMOUS COMPANIONS ---
+    // Cooldown decrements
+    if (aiInternalState.attackCooldown > 0) aiInternalState.attackCooldown--;
+    if (aiInternalState.dashCooldown > 0) aiInternalState.dashCooldown--;
+    if (aiInternalState.specCooldown > 0) aiInternalState.specCooldown--;
+    if (aiInternalState.jumpCooldown > 0) aiInternalState.jumpCooldown--;
+    if (aiInternalState.ultCooldown > 0) aiInternalState.ultCooldown--;
+    if (aiInternalState.comboTimer > 0) aiInternalState.comboTimer--;
+    else aiInternalState.comboStep = 0;
+
+    // --- STORY MODE AUTONOMOUS & LIVELY COMPANION AI ---
     if (typeof window !== 'undefined' && window.isStoryMode) {
-        // Dedicated Trials AI
+        // 0. If inside the 4-Stage Trials Arena, run dedicated Trials Combat & Puzzle AI!
         if (typeof storyState !== 'undefined' && storyState.inTrials && typeof runStoryTrialsCompanionAI === 'function') {
             let res = runStoryTrialsCompanionAI(p, inp, requestJump);
             return res || inp;
         }
+
+        // 1. Revive downed ally first if anyone is hurt
+        let downedAlly = players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0);
+        if (downedAlly && p.hp > 0.5) {
+            let dxA = (downedAlly.x + downedAlly.width / 2) - (p.x + p.width / 2);
+            let dyA = (downedAlly.y + downedAlly.height / 2) - (p.y + p.height / 2);
+            if (Math.hypot(dxA, dyA) <= 68) {
+                inp.heal = true;
+            } else {
+                if (dxA > 0) inp.right = true;
+                else inp.left = true;
+                if (dyA < -35 && (p.onGround || p.inStoryWater)) requestJump(15);
+            }
+            return inp;
+        }
+
+        // 1.5 Combat engagement in Story Mode if an active enemy is nearby!
+        let activeStoryEnemy = null;
+        if (typeof storyState !== 'undefined' && storyState.guardian && storyState.guardian.hp > 0) {
+            activeStoryEnemy = storyState.guardian;
+        } else if (typeof storyTrials !== 'undefined' && storyTrials.demon && storyTrials.demon.hp > 0) {
+            activeStoryEnemy = storyTrials.demon;
+        } else if (typeof boss !== 'undefined' && boss && boss.hp > 0 && boss.x > -1000 && Math.abs(boss.x - p.x) < 700) {
+            activeStoryEnemy = boss;
+        }
+
+        if (activeStoryEnemy) {
+            let eX = activeStoryEnemy.x + (activeStoryEnemy.width ? activeStoryEnemy.width / 2 : 0);
+            let eY = activeStoryEnemy.y + (activeStoryEnemy.height ? activeStoryEnemy.height / 2 : 0);
+            let dxE = eX - (p.x + p.width / 2);
+            let dyE = eY - (p.y + p.height / 2);
+            let distE = Math.hypot(dxE, dyE);
+
+            let enemyAttacking = !!(activeStoryEnemy.isAttacking || (activeStoryEnemy.state && (activeStoryEnemy.state.includes("WINDUP") || activeStoryEnemy.state.includes("ATTACK"))));
+            let dashCanBeUsed = (typeof storyState !== 'undefined' && storyState.dashUnlocked);
+
+            // Reactive dodge backwards if enemy is striking nearby
+            if (enemyAttacking && distE < 125 && dashCanBeUsed) {
+                if (dxE > 0) inp.left = true; else inp.right = true;
+                inp.dash = true;
+                return inp;
+            }
+
+            if (p.type === 'AIR') {
+                if (distE < 150) {
+                    if (dxE > 0) inp.left = true; else inp.right = true;
+                    if (distE < 100 && dashCanBeUsed) inp.dash = true;
+                    if (p.onGround && Math.random() < 0.2) requestJump(15);
+                } else if (distE > 360) {
+                    if (dxE > 0) inp.right = true; else inp.left = true;
+                    if (distE > 440 && dashCanBeUsed) inp.dash = true;
+                }
+                p.facingRight = (dxE > 0);
+                if (distE <= 600 && p.attackCooldown <= 0) {
+                    inp.attack = true;
+                }
+                return inp;
+            } else if (p.type === 'EARTH') {
+                if (Math.abs(dxE) > 45) {
+                    if (dxE > 0) inp.right = true; else inp.left = true;
+                    if (Math.abs(dxE) > 100 && dashCanBeUsed) inp.dash = true;
+                }
+                if (dyE < -30 && p.onGround) requestJump(14);
+                p.facingRight = (dxE > 0);
+                if (distE <= 75 && p.attackCooldown <= 0) {
+                    inp.attack = true;
+                }
+                return inp;
+            }
+        }
+
+        // 2. Initialize per-companion autonomous brain state
+        if (!p.storyAi) {
+            p.storyAi = {
+                timer: 0,
+                action: 'SCOUT', // 'SCOUT', 'WANDER_LEFT', 'WANDER_RIGHT', 'LOOK_AROUND', 'HOP'
+                targetOffset: (p.type === 'AIR') ? 115 : -85,
+                lookDir: 1
+            };
+        }
+        let brain = p.storyAi;
+        brain.timer--;
+
+        let leader = players.find(pl => !pl.isAi && !pl.isDowned && pl.hp > 0) || players[0];
+        if (leader && leader !== p) {
+            let leaderMoving = Math.abs(leader.vx) > 0.4;
+            let storyGoalDir = (p.y < 50) ? -1 : 1;
+
+            if (brain.timer <= 0) {
+                let roll = Math.random();
+                if (leaderMoving) {
+                    brain.action = 'SCOUT';
+                    if (p.type === 'AIR') {
+                        brain.targetOffset = (roll < 0.68) ? (85 + Math.random() * 75) : (-45 - Math.random() * 50);
+                    } else {
+                        brain.targetOffset = (roll < 0.52) ? (65 + Math.random() * 60) : (-65 - Math.random() * 55);
+                    }
+                    brain.timer = 45 + Math.floor(Math.random() * 45);
+                } else {
+                    if (roll < 0.34) {
+                        brain.action = 'WANDER_GOAL';
+                        brain.targetOffset = storyGoalDir * (70 + Math.random() * 95);
+                        brain.timer = 40 + Math.floor(Math.random() * 40);
+                    } else if (roll < 0.62) {
+                        brain.action = 'WANDER_OPPOSITE';
+                        brain.targetOffset = -storyGoalDir * (45 + Math.random() * 75);
+                        brain.timer = 35 + Math.floor(Math.random() * 40);
+                    } else if (roll < 0.85) {
+                        brain.action = 'LOOK_AROUND';
+                        brain.lookDir = (Math.random() < 0.65) ? storyGoalDir : -storyGoalDir;
+                        brain.timer = 35 + Math.floor(Math.random() * 45);
+                    } else {
+                        brain.action = 'HOP';
+                        brain.timer = 28;
+                    }
+                }
+            }
+
+            // Compute desired X position
+            let moveDir = leaderMoving ? (leader.vx >= 0 ? 1 : -1) : storyGoalDir;
+            let desiredX = leader.x + (brain.action === 'SCOUT' ? moveDir * brain.targetOffset : brain.targetOffset);
+
+            // Keep Upper Tier AI from falling off the cliff at X = -150 until the player actually jumps down!
+            if (p.y < 50 && leader.y < 50 && leader.x > -110) {
+                desiredX = Math.max(-95, desiredX);
+            }
+            // Keep Lower Tier AI near the Gates/Bench without running into closed walls (only in Bench corridor)
+            if (p.y > 600 && p.y <= 920 && leader.x < 1960 && !(typeof storyState !== 'undefined' && (storyState.inTrials || storyState.currentRoom === 2))) {
+                desiredX = Math.min(1820, Math.max(-440, desiredX));
+            } else if (leader.x >= 8200) {
+                // Room 2 bounds
+                desiredX = Math.min(9520, Math.max(8250, desiredX));
+            } else if (leader.x >= 1040 && leader.y > 900) {
+                // Room 1 bounds
+                desiredX = Math.min(2420, Math.max(1060, desiredX));
+            }
+
+            // Parkour climb logic if near the Water Pond / Mossy Platforms (X > 3800, Y between 0 and 450)
+            if (leader.y < p.y - 45 && p.x > 3760 && typeof platforms !== 'undefined') {
+                let nextPlat = null;
+                for (let plObj of platforms) {
+                    if (plObj.mossy && plObj.y < p.y + 10 && plObj.y > p.y - 170) {
+                        if (!nextPlat || plObj.y > nextPlat.y) nextPlat = plObj;
+                    }
+                }
+                if (nextPlat) {
+                    desiredX = nextPlat.x + nextPlat.w * 0.5;
+                }
+            }
+
+            let dxTarget = desiredX - p.x;
+            let dyLeader = leader.y - p.y;
+
+            if (brain.action === 'LOOK_AROUND' && Math.abs(leader.x - p.x) < 165) {
+                p.facingRight = (brain.lookDir > 0);
+                if (Math.random() < 0.04) brain.lookDir *= -1;
+            } else if (Math.abs(dxTarget) > 18) {
+                if (dxTarget > 0) inp.right = true;
+                else inp.left = true;
+
+                // Dash / sprint when falling behind leader if dash is unlocked
+                let distToLeader = Math.abs(leader.x - p.x);
+                let dashUnlocked = (typeof storyState !== 'undefined' && storyState.dashUnlocked);
+                if (dashUnlocked && distToLeader > 130 && Math.abs(dxTarget) > 75) {
+                    inp.dash = true;
+                }
+            } else {
+                p.facingRight = (storyGoalDir > 0);
+            }
+
+            // Playful or obstacle jumps
+            if (brain.action === 'HOP' && p.onGround) {
+                requestJump(10);
+                brain.action = 'LOOK_AROUND';
+            } else if ((dyLeader < -42 || p.inStoryWater || (leader.vy < -5.5 && Math.abs(leader.x - p.x) < 140 && Math.random() < 0.35)) && (p.onGround || p.inStoryWater)) {
+                requestJump(p.type === 'AIR' ? 16 : 14);
+            }
+
+            // Only catch up if separated across completely different tiers/screens
+            if (Math.abs(leader.x - p.x) > 680 || Math.abs(leader.y - p.y) > 460) {
+                p.x = leader.x + (storyGoalDir * -60);
+                p.y = leader.y;
+                p.vx = 0;
+                p.vy = 0;
+            }
+        }
+        return inp;
     }
 
     if (typeof boss === 'undefined' || !boss || gameState !== "PLAYING") {
@@ -184,183 +380,6 @@ function runAiCompanion(p) {
         }
     }
 
-    // --- STORY MODE AUTONOMOUS & LIVELY COMPANION AI ---
-    if (typeof window !== 'undefined' && window.isStoryMode) {
-        // 0. If inside the 4-Stage Trials Arena, run dedicated Trials Combat & Puzzle AI!
-        if (typeof storyState !== 'undefined' && storyState.inTrials && typeof runStoryTrialsCompanionAI === 'function') {
-            let res = runStoryTrialsCompanionAI(p, inp, requestJump);
-            return res || inp;
-        }
-
-        // 1. Revive downed ally first if anyone is hurt
-        let downedAlly = players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0);
-        if (downedAlly && p.hp > 0.5) {
-            let dxA = (downedAlly.x + downedAlly.width / 2) - (p.x + p.width / 2);
-            let dyA = (downedAlly.y + downedAlly.height / 2) - (p.y + p.height / 2);
-            if (Math.hypot(dxA, dyA) <= 68) {
-                inp.heal = true;
-            } else {
-                if (dxA > 0) inp.right = true;
-                else inp.left = true;
-                if (dyA < -35 && (p.onGround || p.inStoryWater)) requestJump(15);
-            }
-            return inp;
-        }
-
-        // 1.5 Combat engagement in Story Mode if an active enemy is nearby!
-        let activeStoryEnemy = null;
-        if (typeof storyState !== 'undefined' && storyState.guardian && storyState.guardian.hp > 0) {
-            activeStoryEnemy = storyState.guardian;
-        } else if (typeof storyTrials !== 'undefined' && storyTrials.demon && storyTrials.demon.hp > 0) {
-            activeStoryEnemy = storyTrials.demon;
-        } else if (typeof boss !== 'undefined' && boss && boss.hp > 0 && boss.x > -1000 && Math.abs(boss.x - p.x) < 700) {
-            activeStoryEnemy = boss;
-        }
-
-        if (activeStoryEnemy) {
-            let eX = activeStoryEnemy.x + (activeStoryEnemy.width ? activeStoryEnemy.width / 2 : 0);
-            let eY = activeStoryEnemy.y + (activeStoryEnemy.height ? activeStoryEnemy.height / 2 : 0);
-            let dxE = eX - (p.x + p.width / 2);
-            let dyE = eY - (p.y + p.height / 2);
-            let distE = Math.hypot(dxE, dyE);
-
-            if (p.type === 'AIR') {
-                if (distE < 150) {
-                    if (dxE > 0) inp.left = true; else inp.right = true;
-                    if (p.onGround && Math.random() < 0.2) requestJump(15);
-                } else if (distE > 360) {
-                    if (dxE > 0) inp.right = true; else inp.left = true;
-                }
-                p.facingRight = (dxE > 0);
-                if (distE <= 600 && p.attackCooldown <= 0) {
-                    inp.attack = true;
-                }
-                return inp;
-            } else if (p.type === 'EARTH') {
-                if (Math.abs(dxE) > 45) {
-                    if (dxE > 0) inp.right = true; else inp.left = true;
-                    if (Math.abs(dxE) > 100) inp.dash = true;
-                }
-                if (dyE < -30 && p.onGround) requestJump(14);
-                p.facingRight = (dxE > 0);
-                if (distE <= 75 && p.attackCooldown <= 0) {
-                    inp.attack = true;
-                }
-                return inp;
-            }
-        }
-
-        // 2. Initialize per-companion autonomous brain state
-        if (!p.storyAi) {
-            p.storyAi = {
-                timer: 0,
-                action: 'SCOUT', // 'SCOUT', 'WANDER_LEFT', 'WANDER_RIGHT', 'LOOK_AROUND', 'HOP'
-                targetOffset: (p.type === 'AIR') ? 115 : -85,
-                lookDir: 1
-            };
-        }
-        let brain = p.storyAi;
-        brain.timer--;
-
-        let leader = players.find(pl => !pl.isAi && !pl.isDowned && pl.hp > 0) || players[0];
-        if (leader && leader !== p) {
-            let leaderMoving = Math.abs(leader.vx) > 0.4;
-            // Determine natural story progression direction on each tier:
-            // Upper Tier (Y < 50): objective is to the LEFT (-1) toward the cliff shaft
-            // Middle & Lower Tiers: objective is to the RIGHT (+1)
-            let storyGoalDir = (p.y < 50) ? -1 : 1;
-
-            if (brain.timer <= 0) {
-                let roll = Math.random();
-                if (leaderMoving) {
-                    // When the player is moving, AI companions often scout AHEAD in the direction of travel
-                    // or run alongside at varying distances instead of sticking behind the player's back!
-                    brain.action = 'SCOUT';
-                    if (p.type === 'AIR') {
-                        brain.targetOffset = (roll < 0.68) ? (85 + Math.random() * 75) : (-45 - Math.random() * 50);
-                    } else {
-                        brain.targetOffset = (roll < 0.52) ? (65 + Math.random() * 60) : (-65 - Math.random() * 55);
-                    }
-                    brain.timer = 45 + Math.floor(Math.random() * 45);
-                } else {
-                    // When the player stops, AI companions autonomously explore nearby, pace, look toward the goal, or hop!
-                    if (roll < 0.34) {
-                        brain.action = 'WANDER_GOAL';
-                        brain.targetOffset = storyGoalDir * (70 + Math.random() * 95);
-                        brain.timer = 40 + Math.floor(Math.random() * 40);
-                    } else if (roll < 0.62) {
-                        brain.action = 'WANDER_OPPOSITE';
-                        brain.targetOffset = -storyGoalDir * (45 + Math.random() * 75);
-                        brain.timer = 35 + Math.floor(Math.random() * 40);
-                    } else if (roll < 0.85) {
-                        brain.action = 'LOOK_AROUND';
-                        brain.lookDir = (Math.random() < 0.65) ? storyGoalDir : -storyGoalDir;
-                        brain.timer = 35 + Math.floor(Math.random() * 45);
-                    } else {
-                        brain.action = 'HOP';
-                        brain.timer = 28;
-                    }
-                }
-            }
-
-            // Compute desired X position
-            let moveDir = leaderMoving ? (leader.vx >= 0 ? 1 : -1) : storyGoalDir;
-            let desiredX = leader.x + (brain.action === 'SCOUT' ? moveDir * brain.targetOffset : brain.targetOffset);
-
-            // Keep Upper Tier AI from falling off the cliff at X = -150 until the player actually jumps down!
-            if (p.y < 50 && leader.y < 50 && leader.x > -110) {
-                desiredX = Math.max(-95, desiredX);
-            }
-            // Keep Lower Tier AI near the Gates/Bench without running into closed walls (only outside trials arena)
-            if (p.y > 600 && !(typeof storyState !== 'undefined' && storyState.inTrials)) {
-                desiredX = Math.min(1820, Math.max(-440, desiredX));
-            }
-
-            // Parkour climb logic if near the Water Pond / Mossy Platforms (X > 3800, Y between 0 and 450)
-            if (leader.y < p.y - 45 && p.x > 3760 && typeof platforms !== 'undefined') {
-                // Find the lowest mossy platform above the AI
-                let nextPlat = null;
-                for (let plObj of platforms) {
-                    if (plObj.mossy && plObj.y < p.y + 10 && plObj.y > p.y - 170) {
-                        if (!nextPlat || plObj.y > nextPlat.y) nextPlat = plObj;
-                    }
-                }
-                if (nextPlat) {
-                    desiredX = nextPlat.x + nextPlat.w * 0.5;
-                }
-            }
-
-            let dxTarget = desiredX - p.x;
-            let dyLeader = leader.y - p.y;
-
-            if (brain.action === 'LOOK_AROUND' && Math.abs(leader.x - p.x) < 165) {
-                p.facingRight = (brain.lookDir > 0);
-                if (Math.random() < 0.04) brain.lookDir *= -1;
-            } else if (Math.abs(dxTarget) > 18) {
-                if (dxTarget > 0) inp.right = true;
-                else inp.left = true;
-            } else {
-                p.facingRight = (storyGoalDir > 0);
-            }
-
-            // Playful or obstacle jumps
-            if (brain.action === 'HOP' && p.onGround) {
-                requestJump(10);
-                brain.action = 'LOOK_AROUND';
-            } else if ((dyLeader < -42 || p.inStoryWater || (leader.vy < -5.5 && Math.abs(leader.x - p.x) < 140 && Math.random() < 0.35)) && (p.onGround || p.inStoryWater)) {
-                requestJump(p.type === 'AIR' ? 16 : 14);
-            }
-
-            // Only catch up if separated across completely different tiers/screens
-            if (Math.abs(leader.x - p.x) > 680 || Math.abs(leader.y - p.y) > 460) {
-                p.x = leader.x + (storyGoalDir * -60);
-                p.y = leader.y;
-                p.vx = 0;
-                p.vy = 0;
-            }
-        }
-        return inp;
-    }
 
     // --- 1. TOP PRIORITY: REVIVING DOWNED TEAMMATES ---
     if (downedTeammates.length > 0) {

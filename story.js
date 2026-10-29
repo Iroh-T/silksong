@@ -20,7 +20,7 @@ if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D
 }
 
 const STORY_CONFIG = {
-    ARENA_W: 7700,
+    ARENA_W: 9650,
     ARENA_H: 400,
     FLOOR: 350,
     UPPER_FLOOR: -25,
@@ -94,6 +94,29 @@ let storyState = {
     grassBlades: [],
     stars: [],
     campfireFlames: [],
+    backpackSlots: 6,
+    backpack: [],
+    backpackSelectedIndex: 0,
+    dashUnlocked: false,
+    dashMaster: null, // 'WATER', 'AIR', 'EARTH'
+    flaskDewCollected: false,
+    dashScrollCollected: false,
+    room1VinesBroken: false,
+    room1SecretWallHp: 2,
+    room1SecretWallBroken: false,
+    secretRoomAnnounce: 0,
+    room2OneWayWallHp: 2,
+    room2OneWayBroken: false,
+    currentRoom: 1, // 1 = Descent & Spikes, 2 = Scroll Cavern
+    roomTransitioning: false,
+    roomFadeAlpha: 0.0,
+    room2BannerTimer: 0,
+    deathFadeAlpha: 0.0,
+    deathTimer: 0,
+    hazardFlash: 0,
+    scrollRitual: null, // { active: false, stage: 'PROMPT_ATTACK', hero: null, timer: 0 }
+    mossCrawlers: [],
+    mossCrawlerDefeated: false,
     restMenuOpen: false,
     backpackOpen: false,
     heroSelectOpen: false,
@@ -121,9 +144,100 @@ function setupStoryPlatforms() {
         // 4. Far-Left Shaft Wall (X = -520) guiding the drop down to the Underground Tier
         { x: -520, y: -380, w: 40, h: 1290, solid: true, isWall: true },
 
-        // 5. Lower Underground Tier (Floor 3: X = -480..3200, Y = 850) - open corridor past gates
-        { x: -480, y: STORY_CONFIG.LOWER_FLOOR, w: 3680, h: 65, solid: true, tier: 3 },
-        { x: 3200, y: 460, w: 40, h: 460, solid: true, isWall: true },
+        // 5. Lower Underground Tier (Floor 3: X = -480..1960, Y = 850) - Bench 2 & Trials Gate Corridor
+        { x: -480, y: STORY_CONFIG.LOWER_FLOOR, w: 2440, h: 65, solid: true, tier: 3 },
+
+        // --- ROOM 1: 3-TIER PARKOUR DESCENT & SPIKES (Screen-Height Tiers matching user sketches!) ---
+        // Left boundary wall of Middle & Bottom Tier (X = 1040, Y = 960..2020)
+        { x: 1040, y: 960, w: 40, h: 1060, solid: true, isWall: true },
+        // Right boundary wall of Room 1 (X = 2440, Y = 850..2020)
+        { x: 2440, y: 850, w: 40, h: 1170, solid: true, isWall: true },
+
+        // Shaft 1: Top Tier (Bench 2 at Y=850) <-> Middle Tier (Y=1400) - Bidirectional Staggered Steps
+        // Semi-solid (canJumpThrough: true) allows upward parkour without head bonking or side blocking!
+        { x: 1940, y: 890,  w: 90,  h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom1: true }, // Transition hop onto Floor 3!
+        { x: 1980, y: 930,  w: 160, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 2240, y: 1030, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 2040, y: 1120, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 2240, y: 1210, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 2040, y: 1305, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+
+        // Middle Tier (Y = 1400) - Path moves RIGHT to LEFT!
+        // Solid landing floor right of center spikes (X: 1960..2380)
+        { x: 1960, y: 1400, w: 420, h: 40, solid: true, mossy: true, isRoom1: true },
+        // Floating rock ledge directly over center sunken spike pit (Sketch 1 🟢 - comfortable 50px hop!)
+        { x: 1730, y: 1350, w: 180, h: 24, solid: true, mossy: true, isRoom1: true },
+        // Solid floor left of center spikes (X: 1420..1680)
+        { x: 1420, y: 1400, w: 260, h: 40, solid: true, mossy: true, isRoom1: true },
+        // Hanging Vine Barrier (Sketch 1 Red Arrow 🌿: X = 1420, Y = 960..1400) - slashed with attack
+        { x: 1420, y: 960,  w: 30,  h: 440, solid: !storyState.room1VinesBroken, isVineBarrier: true, isRoom1: true },
+        // Solid floor past vines leading to left drop-off (X: 1200..1420)
+        { x: 1200, y: 1400, w: 220, h: 40, solid: true, mossy: true, isRoom1: true },
+
+        // Shaft 2: Middle Tier left side (Y=1400) <-> Bottom Tier (Y=1950) - Bidirectional Staggered Steps
+        { x: 1160, y: 1445, w: 90,  h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom1: true }, // Transition hop onto Middle Tier floor!
+        { x: 1080, y: 1490, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 1240, y: 1580, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 1080, y: 1670, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 1240, y: 1760, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 1100, y: 1855, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+
+        // Bottom Tier (Y = 1950) - Path moves LEFT to RIGHT!
+        // Main bottom walking floor (X: 1120..2320, ending at the drop pit at X = 2320)
+        { x: 1120, y: 1950, w: 1200, h: 60, solid: true, mossy: true, tier: 3, isRoom1: true },
+
+        // High Path Steps to Secret Room (Sketch 1 White Line): jumps UP to Secret Room (comfortable 90-100px hops!)
+        { x: 1680, y: 1850, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 1840, y: 1750, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        { x: 2000, y: 1650, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+
+        // Secret Room (Sketch 1 Pink Arrow 🧱: X = 2120..2480, Y = 1520..1650)
+        { x: 2120, y: 1520, w: 30,  h: 130, solid: !storyState.room1SecretWallBroken, isSecretWall: true, isRoom1: true },
+        { x: 2120, y: 1650, w: 340, h: 30,  solid: true, mossy: true, isRoom1: true },
+        { x: 2120, y: 1500, w: 340, h: 24,  solid: true, isWall: true, isRoom1: true },
+        { x: 2440, y: 1500, w: 30,  h: 180, solid: true, isWall: true, isRoom1: true },
+
+        // --- ROOM 2: SCROLL CAVERN & ONE-WAY SHORTCUT WALL (X: 8200..9580, Y: 700..1860) ---
+        // Ceiling with top-right entrance drop shaft (Sketch 2 Purple Circle: shaft at X = 9320..9460)
+        { x: 8200, y: 700,  w: 1120, h: 30, solid: true, isWall: true, isRoom2: true },
+        { x: 9460, y: 700,  w: 120,  h: 30, solid: true, isWall: true, isRoom2: true },
+        { x: 9320, y: 480,  w: 24,   h: 220, solid: true, isWall: true, isRoom2: true },
+        // Shaft right wall extends all the way down to chamber roof (Y: 480..1360) so player CANNOT fall right!
+        { x: 9460, y: 480,  w: 24,   h: 880, solid: true, isWall: true, isRoom2: true },
+        // Solid rock mass blocking the right side above scroll tunnel entrance (X: 9460..9580, Y: 700..1540)
+        { x: 9460, y: 700,  w: 120,  h: 840, solid: true, isWall: true, isRoom2: true },
+
+        // Left boundary wall of Room 2 with Archway opening at Y: 1360..1520
+        { x: 8170, y: 700,  w: 30,  h: 660,  solid: true, isWall: true, isRoom2: true }, // Upper wall: Y = 700..1360
+        { x: 8170, y: 1520, w: 30,  h: 340,  solid: true, isWall: true, isRoom2: true }, // Lower wall: Y = 1520..1860
+        { x: 9550, y: 700,  w: 30,  h: 1160, solid: true, isWall: true, isRoom2: true },
+
+        // Central Raised Chamber Roof (X = 8680..9460, Y = 1360)
+        // Solid walkable roof slab where player lands after dropping from shaft!
+        // No isWall flag so you walk on top of it cleanly without falling through!
+        { x: 8680, y: 1360, w: 780, h: 30, solid: true, mossy: true, isRoom2: true },
+
+        // Exit Archway Ledge (threshold of the portal leading back to Bench 2: X = 8170..8320, Y = 1520)
+        { x: 8170, y: 1520, w: 150, h: 24, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+
+        // Stepping Stones between Chamber (X = 8680, Y = 1540) and Exit Archway (X = 8320, Y = 1520)
+        { x: 8370, y: 1525, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+        { x: 8520, y: 1530, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+
+        // Left climbable steps from Bottom Floor (Y = 1800) back up to Exit Platform (Y = 1520)
+        // Comfortable ~70px hops so any player / Water jumps up effortlessly!
+        { x: 8440, y: 1730, w: 110, h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+        { x: 8340, y: 1660, w: 110, h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+        { x: 8420, y: 1590, w: 110, h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+
+        // Bottom Floor (X: 8340..9480, Y = 1800)
+        { x: 8340, y: 1800, w: 1140, h: 60, solid: true, tier: 3, isRoom2: true },
+        // Bottom-Right Steps leading up into central chamber (Sketch 2 bottom right 🟢): 1800 -> 1715 -> 1628 -> 1540
+        { x: 9230, y: 1715, w: 120, h: 24, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+        { x: 9362, y: 1628, w: 110, h: 24, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+        // Central Raised Chamber Floor & One-Way Wall
+        { x: 8680, y: 1540, w: 660, h: 30, solid: true, mossy: true, isRoom2: true },
+        { x: 8680, y: 1360, w: 35,  h: 180, solid: !storyState.room2OneWayBroken, isOneWayWall: true, isRoom2: true },
 
         // Dedicated Isolated Trials Arena Chamber (X = 4800..6300, Y = 430..870)
         // Hidden from corridor view; accessible ONLY via Arch Gate teleport!
@@ -1416,6 +1530,23 @@ function initStoryPrologue(slotData) {
         camY = 0;
     }
 
+    // Restore Metroidvania progression, backpack items, abilities, and broken walls from saved slot
+    if (slotData) {
+        if (slotData.backpack && Array.isArray(slotData.backpack)) {
+            storyState.backpack = slotData.backpack.map(it => Object.assign({}, it));
+        }
+        if (slotData.dashUnlocked) {
+            storyState.dashUnlocked = true;
+            storyState.dashMaster = slotData.dashMaster || 'WATER';
+        }
+        if (slotData.dashScrollCollected) storyState.dashScrollCollected = true;
+        if (slotData.flaskDewCollected) storyState.flaskDewCollected = true;
+        if (slotData.room1VinesBroken) storyState.room1VinesBroken = true;
+        if (slotData.room1SecretWallBroken) storyState.room1SecretWallBroken = true;
+        if (slotData.room2OneWayBroken) storyState.room2OneWayBroken = true;
+        setupStoryPlatforms(); // Refresh platform solidities with restored broken wall flags!
+    }
+
     // Boss of arena is deactivated during story
     boss.hp = 0;
     boss.maxHp = 10;
@@ -1442,12 +1573,15 @@ function updateStoryTouchUIVisibility() {
     let btnDash = document.getElementById("m-dash");
     let btnHeal = document.getElementById("m-heal");
 
+    let btnBackpack = document.getElementById("m-backpack");
+
     if (btnJmp) btnJmp.style.display = storyState.jumpUnlocked ? "flex" : "none";
     if (btnAtk) btnAtk.style.display = storyState.attackUnlocked ? "flex" : "none";
     if (btnSpec) btnSpec.style.display = storyState.comboUnlocked ? "flex" : "none";
     if (btnStance) btnStance.style.display = storyState.stanceUnlocked ? "flex" : "none";
-    if (btnDash) btnDash.style.display = "none";
-    if (btnHeal) btnHeal.style.display = "none"; // Heal is disabled during prologue
+    if (btnDash) btnDash.style.display = storyState.dashUnlocked ? "flex" : "none";
+    if (btnHeal) btnHeal.style.display = (storyState.scrollRitual && storyState.scrollRitual.stage === 'PROMPT_HEAL') ? "flex" : (storyState.healUnlocked ? "flex" : "none");
+    if (btnBackpack) btnBackpack.style.display = (storyState.activeBenchId >= 1 || (storyState.backpack && storyState.backpack.length > 0) || storyState.earthMet) ? "flex" : "none";
 }
 
 // Get player-friendly control hint depending on selected layout
@@ -1935,7 +2069,7 @@ function updateStoryMode() {
                 }
             }
 
-            if (storyTrials.trialsCleared && !storyState.bluePowerUnlocked && !storyRitual.active && !storyDialogue.active && p1 && p1.x >= 6680 && p1.y > 600) {
+            if (storyTrials.trialsCleared && !storyState.bluePowerUnlocked && !storyRitual.active && !storyDialogue.active && p1 && p1.x >= 6680 && p1.x <= 7720 && p1.y > 600 && p1.y < 900) {
                 storyState.tetyaSceneStarted = true;
                 let earthPl = players.find(pl => pl && pl.type === 'EARTH');
                 let airPl = players.find(pl => pl && pl.type === 'AIR');
@@ -1963,7 +2097,7 @@ function updateStoryMode() {
             }
 
             // 7. Return portal at X = 7520 in Chamber of Ancient Power
-            if (storyState.bluePowerUnlocked && p1 && p1.x >= 7480 && p1.y > 600) {
+            if (storyState.bluePowerUnlocked && p1 && p1.x >= 7480 && p1.x <= 7720 && p1.y > 600 && p1.y < 900) {
                 if (typeof playSound === 'function') playSound('lightChime');
                 if (typeof playSound === 'function') playSound('parry');
                 if (typeof triggerShake === 'function') triggerShake(5, 10);
@@ -2051,6 +2185,14 @@ function updateStoryMode() {
                 pl.y = by - 24;
             }
 
+            // If dying fade-out was active, gradually clear the blackness on the bench
+            if (storyState.deathFadeAlpha > 0) {
+                storyState.deathFadeAlpha = Math.max(0, storyState.deathFadeAlpha - 0.025);
+                if (storyState.deathFadeAlpha > 0.25) {
+                    break;
+                }
+            }
+
             // If Backpack [Tab] or Hero Select [Space] modal is open, do not stand up on random keys
             if (storyState.backpackOpen || storyState.heroSelectOpen || storyState.restMenuOpen) {
                 break;
@@ -2115,13 +2257,23 @@ function updateStoryMode() {
             }
             break;
         }
+
+        case 'SCROLL_RITUAL': {
+            updateStoryScrollRitual();
+            break;
+        }
+
+        case 'DEATH_FADE_OUT': {
+            updateStoryDeathFadeOut();
+            break;
+        }
     }
 
     if (storyState.airDialogueTimer > 0) storyState.airDialogueTimer--;
     if (storyState.earthDialogueTimer > 0) storyState.earthDialogueTimer--;
 
     // Lock controls during cutscenes
-    if (storyState.step === 'LIGHTNING_WINDUP' || storyState.step === 'LIGHTNING' || storyState.step.startsWith('TITLE')) {
+    if (storyState.step === 'LIGHTNING_WINDUP' || storyState.step === 'LIGHTNING' || storyState.step.startsWith('TITLE') || storyState.step === 'SCROLL_RITUAL') {
         p1.vx = 0;
         p1.vy = 0;
         clearKeyInput(p1.keys, 'left');
@@ -2132,8 +2284,8 @@ function updateStoryMode() {
         }
     }
 
-    // 3. Update Normal Player Physics & Actions (skip when sitting on bench)
-    if (storyState.step !== 'BENCH_REST') {
+    // 3. Update Normal Player Physics & Actions (skip when sitting on bench, ritual, death, or room transitioning)
+    if (storyState.step !== 'BENCH_REST' && storyState.step !== 'SCROLL_RITUAL' && storyState.step !== 'DEATH_FADE_OUT' && !storyState.roomTransitioning) {
         updatePlayers();
     }
     if (typeof updateProjectiles === 'function') {
@@ -2143,7 +2295,10 @@ function updateStoryMode() {
     // 4. Update Forest Atmospheric Effects
     updateForestAtmosphere();
 
-    // 5. Smooth 2D Camera Tracking (X and Y across all 3 tiers!)
+    // 4b. Update Room 1 & 2 Gameplay Systems (Spikes, Crawlers, Breakable Walls, Pickups, Transitions)
+    updateStoryGameplayEntities();
+
+    // 5. Smooth 2D Camera Tracking (X and Y across all 3 tiers & Rooms!)
     let focusX = p1.x;
     let focusY = p1.y;
     if (players.length > 1 && !players[1].isAi) {
@@ -2152,19 +2307,28 @@ function updateStoryMode() {
         focusY = p1.y * 0.65 + players[1].y * 0.35;
     }
     let minCamX = (focusX < 40 || focusY > 420) ? -480 : 0;
-    let targetCamX = Math.max(minCamX, Math.min(STORY_CONFIG.ARENA_W - GAME_WIDTH, focusX - GAME_WIDTH * 0.38));
+    let targetCamX = Math.max(minCamX, Math.min(STORY_CONFIG.ARENA_W - GAME_WIDTH, focusX - GAME_WIDTH * 0.46));
     let targetCamY = 0;
 
     if (focusY < 160) {
         targetCamY = Math.max(-280, focusY - 220);
-    } else if (focusY > 410) {
-        targetCamY = Math.min(540, focusY - 290);
+    } else if (focusX >= 8200) {
+        // Room 2 (Scroll Cavern): Smooth continuous vertical tracking
+        targetCamX = Math.max(8200, Math.min(9560 - GAME_WIDTH, focusX - GAME_WIDTH * 0.5));
+        targetCamY = Math.max(500, Math.min(1450, focusY - GAME_HEIGHT * 0.52));
+    } else if (focusX >= 1040 && focusX <= 2600 && focusY > 500) {
+        // Room 1 (3-Tier Cavern): Smooth continuous vertical tracking without discrete snap cliffs
+        targetCamX = Math.max(1040, Math.min(2460 - GAME_WIDTH, focusX - GAME_WIDTH * 0.46));
+        targetCamY = Math.max(500, Math.min(1600, focusY - GAME_HEIGHT * 0.52));
+    } else if (focusY > 410 && focusX < 4800) {
+        // Lower Underground Bench 2 & corridor: Smooth vertical entrance glide
+        targetCamY = Math.max(0, Math.min(500, focusY - GAME_HEIGHT * 0.52));
     } else {
         targetCamY = 0;
     }
 
     // When inside Trials or Chamber of Ancient Power, smoothly track the party
-    if ((typeof storyTrials !== 'undefined' && storyTrials.active) || focusX >= 4800) {
+    if ((typeof storyTrials !== 'undefined' && storyTrials.active) || (focusX >= 4800 && focusX < 8000)) {
         let focusHero = (players[0] && players[0].hp > 0) ? players[0] : (players.find(pl => pl && pl.hp > 0) || { x: 5550 });
         let targetX = focusHero.x || 5550;
 
@@ -2178,13 +2342,27 @@ function updateStoryMode() {
         targetCamY = 470;
     }
 
-    camX += (targetCamX - camX) * 0.15;
-    camY += (targetCamY - camY) * 0.15;
+    // Silky smooth camera lerp (0.08 / 0.07): completely eliminates harsh snapping!
+    let lerpX = 0.08;
+    let lerpY = 0.07;
+    camX += (targetCamX - camX) * lerpX;
+    camY += (targetCamY - camY) * lerpY;
 
-    // 6. Party Wipe / Death Respawn at Checkpoint
-    let anyAlive = players.some(pl => pl && pl.hp > 0 && !pl.isDowned);
-    if (!anyAlive) {
-        respawnPlayerAtStoryCheckpoint();
+    // 6. Party Wipe / Death Respawn: If ANY hero dies, the party wipes and wakes up on the bench!
+    if (storyState.step !== 'DEATH_FADE_OUT' && storyState.step !== 'BENCH_REST' && storyState.step !== 'SCROLL_RITUAL') {
+        let anyDead = players.some(pl => pl && (pl.hp <= 0 || pl.isDowned));
+        if (anyDead && players.length > 0) {
+            storyState.step = 'DEATH_FADE_OUT';
+            storyState.deathTimer = 0;
+            storyState.deathFadeAlpha = 0.05;
+            for (let pl of players) {
+                if (pl) {
+                    pl.vx = 0;
+                    pl.vy = 0;
+                }
+            }
+            if (typeof playSound === 'function') playSound('defeat');
+        }
     }
 }
 window.updateStoryMode = updateStoryMode;
@@ -2335,11 +2513,13 @@ function respawnPlayerAtStoryCheckpoint() {
     storyState.inTrials = false;
 
     // When blue power is unlocked or bench is active, respawn seated peacefully at the campfire bench!
-    if (storyState.bluePowerUnlocked || (storyState.checkpoint && storyState.checkpoint.benchId)) {
-        let bId = (storyState.checkpoint && storyState.checkpoint.benchId) || storyState.activeBenchId || 2;
+    if (storyState.bluePowerUnlocked || storyState.activeBenchId || storyState.earthMet || (storyState.checkpoint && storyState.checkpoint.benchId)) {
+        let bId = (storyState.checkpoint && storyState.checkpoint.benchId) || storyState.activeBenchId || (storyState.earthMet ? 2 : 1);
         storyState.activeBenchId = bId;
         storyState.step = 'BENCH_REST';
         storyState.stepTimer = 0;
+        storyState.mossCrawlerDefeated = false;
+        storyState.currentRoom = 1;
         let bx = (bId === 2) ? STORY_CONFIG.BENCH_2_X : STORY_CONFIG.BENCH_X;
         let by = (bId === 2) ? STORY_CONFIG.BENCH_2_Y : STORY_CONFIG.FLOOR;
         for (let idx = 0; idx < players.length; idx++) {
@@ -2448,6 +2628,14 @@ function restAtCampfire(benchId = 1) {
         heroAssignments: storyState.heroAssignments,
         currentStance: p.stance || "LIGHT",
         checkpointId: (benchId === 2) ? "bench_2_underground" : "forest_bench_campfire",
+        backpack: (storyState.backpack || []).map(it => Object.assign({}, it)),
+        dashUnlocked: !!storyState.dashUnlocked,
+        dashMaster: storyState.dashMaster || null,
+        dashScrollCollected: !!storyState.dashScrollCollected,
+        flaskDewCollected: !!storyState.flaskDewCollected,
+        room1VinesBroken: !!storyState.room1VinesBroken,
+        room1SecretWallBroken: !!storyState.room1SecretWallBroken,
+        room2OneWayBroken: !!storyState.room2OneWayBroken,
         updatedAt: Date.now(),
         version: GAME_VERSION
     };
@@ -2457,6 +2645,50 @@ function restAtCampfire(benchId = 1) {
     if (typeof playSound === 'function') playSound('lightChime');
 }
 window.restAtCampfire = restAtCampfire;
+
+function autoSaveStoryProgress() {
+    if (!window.isStoryMode || !storyState.active) return;
+    let p = players[0] || { type: 'WATER', stance: 'LIGHT' };
+    let curUser = (typeof getCurrentUser === 'function') ? getCurrentUser() : 'guest';
+    let bId = storyState.activeBenchId || (storyState.currentRoom === 2 ? 2 : 1);
+    let unlockedHeroes = ['WATER'];
+    if (storyState.airMet) unlockedHeroes.push('AIR');
+    if (storyState.earthMet) unlockedHeroes.push('EARTH');
+
+    let slotData = {
+        slot: storyState.slotNum || 1,
+        location: (bId === 2) ? "Подземелье (Костер у Врат Испытаний)" : "Лес (Костер у опушки)",
+        locationSub: (bId === 2) ? "Отряд в сборе: Вода 💧, Воздух 💨, Земля 🌿" : "Отдых у теплого огня",
+        hero: p.type || "WATER",
+        maxHp: 5,
+        currentHp: 5,
+        demonUnlocked: true,
+        stealthUnlocked: true,
+        waterDropBonusDmg: storyState.waterDropBonusDmg || 0.5,
+        airMet: !!storyState.airMet,
+        earthMet: !!storyState.earthMet,
+        bluePowerUnlocked: !!storyState.bluePowerUnlocked,
+        explored: storyState.explored,
+        unlockedHeroes: unlockedHeroes,
+        heroAssignments: storyState.heroAssignments,
+        currentStance: p.stance || "LIGHT",
+        checkpointId: (bId === 2) ? "bench_2_underground" : "forest_bench_campfire",
+        backpack: (storyState.backpack || []).map(it => Object.assign({}, it)),
+        dashUnlocked: !!storyState.dashUnlocked,
+        dashMaster: storyState.dashMaster || null,
+        dashScrollCollected: !!storyState.dashScrollCollected,
+        flaskDewCollected: !!storyState.flaskDewCollected,
+        room1VinesBroken: !!storyState.room1VinesBroken,
+        room1SecretWallBroken: !!storyState.room1SecretWallBroken,
+        room2OneWayBroken: !!storyState.room2OneWayBroken,
+        updatedAt: Date.now(),
+        version: GAME_VERSION
+    };
+    if (typeof saveStorySlot === 'function') {
+        saveStorySlot(storyState.slotNum || 1, slotData, curUser);
+    }
+}
+window.autoSaveStoryProgress = autoSaveStoryProgress;
 
 function closeCampfireModal() {
     storyState.restMenuOpen = false;
@@ -2555,9 +2787,76 @@ function openStoryBackpackModal() {
         `;
     }
 
-    // Render Backpack Items & Unlocked Abilities
+    // Render 6-Slot Backpack Grid & Unlocked Abilities
     let itemsEl = document.getElementById('story-backpack-items');
     if (itemsEl) {
+        let slotsHtml = '';
+        let maxSlots = storyState.backpackSlots || 6;
+        let bp = storyState.backpack || [];
+        let isAtBench = (storyState.step === 'BENCH_REST' || (storyState.activeBenchId && storyState.activeBenchId >= 1));
+
+        for (let s = 0; s < maxSlots; s++) {
+            let item = bp[s];
+            if (item) {
+                if (item.id === 'flask_dew') {
+                    slotsHtml += `
+                        <div style="background: rgba(15, 23, 42, 0.9); border: 2px solid #22c55e; box-shadow: 0 0 14px rgba(34, 197, 94, 0.25); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <div style="font-weight: 900; color: #4ade80; font-size: 13.5px; margin-bottom: 4px;">🧪 ${item.name}</div>
+                                <div style="font-size: 11px; color: #cbd5e1; line-height: 1.35;">${item.desc}</div>
+                            </div>
+                            <button onclick="useStoryBackpackDewFlask()" style="margin-top: 10px; padding: 6px 10px; font-size: 11.5px; font-weight: 800; background: rgba(34, 197, 94, 0.2); border: 1.5px solid #22c55e; border-radius: 8px; color: #86efac; cursor: pointer;">
+                                ✓ ВЫПИТЬ РОСУ (+2 ❤️)
+                            </button>
+                        </div>
+                    `;
+                } else if (item.id === 'dash_scroll') {
+                    let actionBtn = isAtBench
+                        ? `<button onclick="openStoryScrollHeroModal()" style="margin-top: 10px; padding: 6px 10px; font-size: 11.5px; font-weight: 900; background: linear-gradient(90deg, rgba(0, 229, 255, 0.25), rgba(56, 189, 248, 0.35)); border: 1.5px solid #00e5ff; border-radius: 8px; color: #e0f2fe; cursor: pointer; box-shadow: 0 0 10px rgba(0,229,255,0.4);">
+                                ⚡ ВОНЗИТЬ ОРУЖИЕ У КОСТРА
+                           </button>`
+                        : `<div style="margin-top: 10px; padding: 6px; font-size: 10.5px; text-align: center; color: #94a3b8; background: rgba(15, 23, 42, 0.6); border: 1px dashed #64748b; border-radius: 8px;">
+                                (Отнесите к костру на скамейке)
+                           </div>`;
+                    slotsHtml += `
+                        <div style="background: rgba(15, 23, 42, 0.95); border: 2px solid #00e5ff; box-shadow: 0 0 16px rgba(0, 229, 255, 0.35); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <div style="font-weight: 900; color: #00e5ff; font-size: 13.5px; margin-bottom: 4px;">📜 ${item.name}</div>
+                                <div style="font-size: 11px; color: #e0f2fe; line-height: 1.35;">${item.desc}</div>
+                            </div>
+                            ${actionBtn}
+                        </div>
+                    `;
+                } else {
+                    slotsHtml += `
+                        <div style="background: rgba(15, 23, 42, 0.85); border: 1.5px solid #38bdf8; border-radius: 12px; padding: 12px;">
+                            <div style="font-weight: 900; color: #38bdf8; font-size: 13px;">${item.icon || '📦'} ${item.name}</div>
+                            <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">${item.desc || ''}</div>
+                        </div>
+                    `;
+                }
+            } else {
+                slotsHtml += `
+                    <div style="background: rgba(15, 23, 42, 0.5); border: 1.5px dashed rgba(56, 189, 248, 0.25); border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 75px; color: #64748b; font-size: 11px; font-weight: 700;">
+                        <span>📦 Ячейка ${s + 1}</span>
+                        <span style="font-size: 10px; color: #475569; margin-top: 3px;">[Пусто]</span>
+                    </div>
+                `;
+            }
+        }
+
+        let dashCard = '';
+        if (storyState.dashUnlocked) {
+            let mHero = storyState.dashMaster || 'WATER';
+            let mName = (mHero === 'WATER' ? '💧 Вода (Урон во время рывка -0.5)' : (mHero === 'AIR' ? '💨 Воздух (Воздушная волна)' : '🌿 Земля (Теневой рывок за спину)'));
+            dashCard = `
+                <div style="background: rgba(15, 23, 42, 0.85); border: 1.5px solid #facc15; box-shadow: 0 0 14px rgba(250, 204, 21, 0.3); border-radius: 10px; padding: 10px 12px;">
+                    <div style="font-weight: 900; color: #facc15; font-size: 13px; margin-bottom: 4px;">💨 Рывок [Клавиша C]</div>
+                    <div style="font-size: 11.5px; color: #fef08a; line-height: 1.4;">Стремительный рывок вперед с лазурным шлейфом (+20% скорости и дальности).<br>⭐ <b>Мастер:</b> ${mName}</div>
+                </div>
+            `;
+        }
+
         let bonusText = storyState.waterDropBonusDmg > 0
             ? `<span style="color: #4ade80; font-weight: bold;">+0.5 урона (Усилено после Стража!)</span>`
             : `<span style="color: #94a3b8;">Базовый урон</span>`;
@@ -2569,6 +2868,13 @@ function openStoryBackpackModal() {
         ` : '';
 
         itemsEl.innerHTML = `
+            <div style="grid-column: 1 / -1; margin-bottom: 6px;">
+                <div style="font-size: 13px; font-weight: 900; color: #38bdf8; margin-bottom: 8px;">🎒 СЛОТЫ В РЮКЗАКЕ (6 МЕСТ):</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+                    ${slotsHtml}
+                </div>
+            </div>
+            <div style="grid-column: 1 / -1; font-size: 13px; font-weight: 900; color: #a855f7; margin-top: 10px; margin-bottom: 6px;">✨ РАЗБЛОКИРОВАННЫЕ СПОСОБНОСТИ:</div>
             <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid #38bdf8; border-radius: 10px; padding: 10px 12px;">
                 <div style="font-weight: 900; color: #38bdf8; font-size: 13px; margin-bottom: 4px;">💧 Водяная Капля [X + F]</div>
                 <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.4;">Скрытная водяная атака (не раскрывает Демона). Статус: ${bonusText}</div>
@@ -2579,8 +2885,9 @@ function openStoryBackpackModal() {
             </div>
             <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid #4ade80; border-radius: 10px; padding: 10px 12px;">
                 <div style="font-weight: 900; color: #4ade80; font-size: 13px; margin-bottom: 4px;">🤝 Спасение союзников [A]</div>
-                <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.4;">Тяжело раненый ждёт 10 сек. Подойдите вплотную и нажмите [A], чтобы отдать 1 HP (или 0.5 HP при 1 HP).</div>
+                <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.4;">Тяжело раненый ждёт 10 сек. Подойдите вплотную и нажмите [A], чтобы отдать 1 HP.</div>
             </div>
+            ${dashCard}
             ${bluePowerCard}
         `;
     }
@@ -2593,6 +2900,125 @@ function closeStoryBackpackModal() {
     if (modal) modal.style.display = 'none';
 }
 window.closeStoryBackpackModal = closeStoryBackpackModal;
+
+function addStoryBackpackItem(item) {
+    if (!storyState.backpack) storyState.backpack = [];
+    if (storyState.backpack.length >= (storyState.backpackSlots || 6)) {
+        return false;
+    }
+    storyState.backpack.push(item);
+    autoSaveStoryProgress();
+    return true;
+}
+window.addStoryBackpackItem = addStoryBackpackItem;
+
+function useStoryBackpackDewFlask() {
+    if (!storyState.backpack) return;
+    let idx = storyState.backpack.findIndex(it => it && it.id === 'flask_dew');
+    if (idx === -1) return;
+    storyState.backpack.splice(idx, 1);
+    autoSaveStoryProgress();
+    for (let pl of players) {
+        if (pl) {
+            pl.hp = Math.min(pl.maxHp || 5, pl.hp + 2);
+            pl.isDowned = false;
+        }
+    }
+    if (typeof playSound === 'function') playSound('lightChime');
+    if (typeof playSound === 'function') playSound('absorb');
+    flashAlpha = 0.4;
+    openStoryBackpackModal();
+}
+window.useStoryBackpackDewFlask = useStoryBackpackDewFlask;
+
+function openStoryScrollHeroModal() {
+    let modal = document.getElementById('story-scroll-hero-modal');
+    if (modal) modal.style.display = 'flex';
+}
+window.openStoryScrollHeroModal = openStoryScrollHeroModal;
+
+function closeStoryScrollHeroModal() {
+    let modal = document.getElementById('story-scroll-hero-modal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeStoryScrollHeroModal = closeStoryScrollHeroModal;
+
+function selectScrollHeroForRitual(heroType) {
+    closeStoryScrollHeroModal();
+    closeStoryBackpackModal();
+    startScrollRitualCutscene(heroType);
+}
+window.selectScrollHeroForRitual = selectScrollHeroForRitual;
+
+function startScrollRitualCutscene(heroType) {
+    let bx = STORY_CONFIG.BENCH_2_X;
+    let by = STORY_CONFIG.BENCH_2_Y;
+    storyState.step = 'SCROLL_RITUAL';
+    storyState.stepTimer = 0;
+    storyState.scrollRitual = {
+        active: true,
+        stage: 'PROMPT_ATTACK',
+        hero: heroType,
+        timer: 0,
+        stuckWeapon: false,
+        flashTimer: 0
+    };
+
+    let chosenPl = players.find(pl => pl && pl.type === heroType) || players[0];
+    let companions = players.filter(pl => pl && pl !== chosenPl);
+
+    if (chosenPl) {
+        chosenPl.x = 1465;
+        chosenPl.y = by - 50;
+        chosenPl.vx = 0;
+        chosenPl.vy = 0;
+        chosenPl.facingRight = true;
+    }
+    if (companions[0]) {
+        companions[0].x = 1410;
+        companions[0].y = by - 50;
+        companions[0].vx = 0;
+        companions[0].vy = 0;
+        companions[0].facingRight = true;
+    }
+    if (companions[1]) {
+        companions[1].x = 1555;
+        companions[1].y = by - 50;
+        companions[1].vx = 0;
+        companions[1].vy = 0;
+        companions[1].facingRight = false;
+    }
+
+    camX = 1485 - GAME_WIDTH / 2;
+    camY = 470;
+}
+window.startScrollRitualCutscene = startScrollRitualCutscene;
+
+function finishScrollRitual() {
+    if (storyState.scrollRitual) {
+        storyState.scrollRitual.active = false;
+        storyState.scrollRitual = null;
+    }
+    storyState.activeBenchId = 2;
+    storyState.step = 'BENCH_REST';
+    storyState.stepTimer = 0;
+    let bx = STORY_CONFIG.BENCH_2_X;
+    let by = STORY_CONFIG.BENCH_2_Y;
+    for (let idx = 0; idx < players.length; idx++) {
+        let pl = players[idx];
+        if (pl) {
+            pl.x = bx - 22 + idx * 20;
+            pl.y = by - 24;
+            pl.vx = 0;
+            pl.vy = 0;
+            pl.hp = 5;
+            pl.isDowned = false;
+        }
+    }
+    if (typeof playSound === 'function') playSound('lightChime');
+    autoSaveStoryProgress();
+}
+window.finishScrollRitual = finishScrollRitual;
 
 // --- [Space] BENCH HERO SELECTION MODAL ---
 // Rules:
@@ -2754,6 +3180,46 @@ if (typeof window !== 'undefined' && !window._storyBenchKeysBound) {
             }
         }
 
+        // Energy Scroll Ritual key progression (accepts [A], [Q], [F], Cyrillic 'а'/'ф', [Space], [Enter], or any action key)
+        if (storyState.step === 'SCROLL_RITUAL' && storyState.scrollRitual) {
+            let r = storyState.scrollRitual;
+            if (r.stage === 'PROMPT_ATTACK' && r.timer > 5) {
+                e.preventDefault();
+                e.stopPropagation();
+                r.stuckWeapon = true;
+                r.stage = 'PROMPT_HEAL';
+                r.timer = 0;
+                updateStoryTouchUIVisibility();
+                if (typeof playSound === 'function') {
+                    playSound('slash');
+                    playSound('parry');
+                }
+                if (typeof triggerShake === 'function') triggerShake(6, 12);
+                if (typeof voidExplosions !== 'undefined') {
+                    voidExplosions.push({ x: 1500, y: 848, timer: 20, isWhite: true, r: 40 });
+                }
+                return;
+            } else if (r.stage === 'PROMPT_HEAL' && r.timer > 5) {
+                e.preventDefault();
+                e.stopPropagation();
+                r.stage = 'LIGHT_ERUPTION';
+                r.timer = 0;
+                flashAlpha = 1.0;
+                updateStoryTouchUIVisibility();
+                if (typeof playSound === 'function') {
+                    playSound('lightChime');
+                    playSound('absorb');
+                }
+                if (typeof triggerShake === 'function') triggerShake(8, 16);
+                return;
+            } else if (r.stage === 'ANNOUNCEMENT' && r.timer > 10) {
+                e.preventDefault();
+                e.stopPropagation();
+                finishScrollRitual();
+                return;
+            }
+        }
+
         if (storyState.step !== 'BENCH_REST') return;
         if (e.code === 'Tab') {
             e.preventDefault();
@@ -2791,6 +3257,7 @@ function updateForestAtmosphere() {
     }
 
     // Campfire sparks from logs at Bench 1 (3600, 350) and Bench 2 (1450, 850)
+    if (!storyState.campfireFlames) storyState.campfireFlames = [];
     if (Math.random() < 0.45) {
         storyState.campfireFlames.push({
             x: STORY_CONFIG.BENCH_X + 65 + (Math.random() * 16 - 8),
@@ -3075,8 +3542,336 @@ function drawStoryMode() {
 
     // 16. Screen-Space Story HUD & Objective Prompts
     drawStoryScreenHUD();
+
+    // 17. Room Transitions, Death Blackout, & Scroll Ritual UI Overlays
+    drawStoryOverlaysAndRitualUI();
 }
 window.drawStoryMode = drawStoryMode;
+
+// --- SCREEN-SPACE OVERLAYS (DEATH, TRANSITION, SCROLL RITUAL) ---
+function drawStoryOverlaysAndRitualUI() {
+    if (!ctx || !canvas) return;
+
+    // 0. Hazard Vignette Flash (Metroidvania hazard respawn shadow pulse)
+    if (storyState.hazardFlash > 0) {
+        ctx.save();
+        let a = (storyState.hazardFlash / 16) * 0.65;
+        let grad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 70, canvas.width / 2, canvas.height / 2, canvas.width * 0.7);
+        grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        grad.addColorStop(1, `rgba(0, 0, 0, ${a})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+        storyState.hazardFlash--;
+    }
+
+    // 1. Full Screen Black Fade for Room Transitions (Room 1 <-> Room 2)
+    if (storyState.roomFadeAlpha > 0) {
+        ctx.save();
+        ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1.0, storyState.roomFadeAlpha)})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+    }
+
+    // 2. Full Screen Black Fade for Death & Bench Respawn
+    if (storyState.deathFadeAlpha > 0) {
+        ctx.save();
+        ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1.0, storyState.deathFadeAlpha)})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // When deep in blackness, show the whisper of the campfire
+        if (storyState.deathFadeAlpha > 0.65) {
+            let textAlpha = Math.min(1.0, (storyState.deathFadeAlpha - 0.65) / 0.35);
+            ctx.textAlign = "center";
+            ctx.fillStyle = `rgba(251, 191, 36, ${textAlpha * 0.95})`;
+            ctx.font = "bold 20px 'Segoe UI', Arial, sans-serif";
+            ctx.shadowColor = "#f59e0b";
+            ctx.shadowBlur = 18;
+            ctx.fillText("🔥 Огонь костра возвращает силы...", canvas.width / 2, canvas.height / 2);
+        }
+        ctx.restore();
+    }
+
+    // 3. Energy Scroll Ritual UI Prompts & Cards
+    if (storyState.step === 'SCROLL_RITUAL' && storyState.scrollRitual) {
+        let r = storyState.scrollRitual;
+        let heroTitle = (r.hero === 'WATER') ? 'Вода 💧' : (r.hero === 'AIR') ? 'Воздух 💨' : 'Земля 🌿';
+        let heroColor = (r.hero === 'WATER') ? '#38bdf8' : (r.hero === 'AIR') ? '#facc15' : '#4ade80';
+        let isTouch = (typeof p1InputType !== 'undefined' && p1InputType === 'TOUCH');
+
+        if (r.stage === 'PROMPT_ATTACK') {
+            ctx.save();
+            let bw = Math.min(680, canvas.width - 36);
+            let bh = 58;
+            let bx = canvas.width / 2 - bw / 2;
+            let by = canvas.height - 96;
+            let pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.008);
+
+            ctx.fillStyle = "rgba(15, 23, 42, 0.94)";
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = "#ef4444";
+            ctx.shadowBlur = 20 * pulse;
+            ctx.beginPath();
+            ctx.roundRect(bx, by, bw, bh, 14);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "900 17px 'Segoe UI', Arial, sans-serif";
+            let atkText = isTouch 
+                ? "⚔️ НАЖМИТЕ [ATK] (ИЛИ КОСНИТЕСЬ ЭКРАНА) — ВОНЗИТЬ ОРУЖИЕ!" 
+                : "⚔️ НАЖМИТЕ [X] (АТАКА) / [ПРОБЕЛ] / КЛИК — ВОНЗИТЬ ОРУЖИЕ В СВИТОК!";
+            ctx.fillText(atkText, canvas.width / 2, by + 27);
+
+            ctx.fillStyle = heroColor;
+            ctx.font = "bold 13px sans-serif";
+            ctx.fillText(`${heroTitle} готовится поглотить энергию свитка и связать узы`, canvas.width / 2, by + 48);
+            ctx.restore();
+        } else if (r.stage === 'PROMPT_HEAL') {
+            ctx.save();
+            let bw = Math.min(680, canvas.width - 36);
+            let bh = 58;
+            let bx = canvas.width / 2 - bw / 2;
+            let by = canvas.height - 96;
+            let pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.01);
+
+            ctx.fillStyle = "rgba(15, 23, 42, 0.94)";
+            ctx.strokeStyle = "#00e5ff";
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = "#00e5ff";
+            ctx.shadowBlur = 22 * pulse;
+            ctx.beginPath();
+            ctx.roundRect(bx, by, bw, bh, 14);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "900 17px 'Segoe UI', Arial, sans-serif";
+            let healText = isTouch 
+                ? "✨ НАЖМИТЕ [HEAL] (ИЛИ КОСНИТЕСЬ ЭКРАНА) — ВЛИТЬ СВЕТ!" 
+                : "✨ НАЖМИТЕ [A] (ХИЛ) / [ПРОБЕЛ] / КЛИК — ВЛИТЬ СВЕТ И СОЕДИНИТЬ УЗЫ!";
+            ctx.fillText(healText, canvas.width / 2, by + 27);
+
+            ctx.fillStyle = "#7dd3fc";
+            ctx.font = "bold 13px sans-serif";
+            ctx.fillText(`Свет озарит всю команду и разблокирует Рывок [C]`, canvas.width / 2, by + 48);
+            ctx.restore();
+        } else if (r.stage === 'ANNOUNCEMENT') {
+            ctx.save();
+            // Dim world background
+            ctx.fillStyle = "rgba(2, 6, 23, 0.82)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            let cw = Math.min(590, canvas.width - 32);
+            let ch = 350;
+            let cx = canvas.width / 2 - cw / 2;
+            let cy = canvas.height / 2 - ch / 2;
+
+            let grad = ctx.createLinearGradient(cx, cy, cx, cy + ch);
+            grad.addColorStop(0, "#0f172a");
+            grad.addColorStop(1, "#020617");
+            ctx.fillStyle = grad;
+            ctx.strokeStyle = "#00e5ff";
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = "#00e5ff";
+            ctx.shadowBlur = 24;
+            ctx.beginPath();
+            ctx.roundRect(cx, cy, cw, ch, 18);
+            ctx.fill();
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            ctx.textAlign = "center";
+
+            // Title
+            ctx.fillStyle = "#00e5ff";
+            ctx.shadowColor = "#00e5ff";
+            ctx.shadowBlur = 16;
+            ctx.font = "900 24px 'Segoe UI', Arial, sans-serif";
+            ctx.fillText("⚡ РЫВОК ПОЛУЧЕН! ⚡", canvas.width / 2, cy + 42);
+            ctx.shadowBlur = 0;
+
+            // Button prompt
+            ctx.fillStyle = "#fef08a";
+            ctx.font = "bold 15px 'Segoe UI', Arial, sans-serif";
+            ctx.fillText("Кнопка [C] — Рывок (уклонение и стремительное движение)", canvas.width / 2, cy + 72);
+
+            // Divider
+            ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(cx + 30, cy + 92);
+            ctx.lineTo(cx + cw - 30, cy + 92);
+            ctx.stroke();
+
+            // Master Hero
+            ctx.fillStyle = "#e2e8f0";
+            ctx.font = "bold 15px sans-serif";
+            ctx.fillText(`Мастер Свитка: ${heroTitle}`, canvas.width / 2, cy + 122);
+
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "13px sans-serif";
+            ctx.fillText("✦ Бонус мастера: +20% к дальности и скорости рывка", canvas.width / 2, cy + 148);
+
+            // Hero-specific perk box
+            let perkBoxY = cy + 172;
+            ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+            ctx.strokeStyle = heroColor;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(cx + 25, perkBoxY, cw - 50, 80, 12);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = heroColor;
+            ctx.font = "bold 14px sans-serif";
+            if (r.hero === 'WATER') {
+                ctx.fillText("💧 Особый навык Мастера Воды:", canvas.width / 2, perkBoxY + 30);
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "13px sans-serif";
+                ctx.fillText("Во время рывка получаемый урон уменьшается на 0.5!", canvas.width / 2, perkBoxY + 54);
+            } else if (r.hero === 'AIR') {
+                ctx.fillText("💨 Особый навык Мастера Воздуха:", canvas.width / 2, perkBoxY + 30);
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "13px sans-serif";
+                ctx.fillText("Выпускает мощную воздушную волну вперед, отталкивая врагов!", canvas.width / 2, perkBoxY + 54);
+            } else {
+                ctx.fillText("🌿 Особый навык Мастера Земли:", canvas.width / 2, perkBoxY + 30);
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "13px sans-serif";
+                ctx.fillText("При рывке к врагу совершает теневой шаг за его спину!", canvas.width / 2, perkBoxY + 54);
+            }
+
+            // Dismiss prompt
+            let pulseCont = 0.7 + 0.3 * Math.sin(Date.now() * 0.007);
+            ctx.fillStyle = `rgba(254, 240, 138, ${pulseCont})`;
+            ctx.font = "bold 13px sans-serif";
+            ctx.fillText("[Пробел] / [Enter] / [Клик] — Продолжить приключение", canvas.width / 2, cy + ch - 22);
+
+            ctx.restore();
+        }
+    }
+
+    // 4. Secret Room Discovery Banner
+    if (storyState.secretRoomAnnounce > 0) {
+        storyState.secretRoomAnnounce--;
+        ctx.save();
+        let bw = Math.min(540, canvas.width - 40);
+        let bh = 44;
+        let bx = canvas.width / 2 - bw / 2;
+        let by = 90;
+        ctx.fillStyle = "rgba(10, 24, 18, 0.95)";
+        ctx.strokeStyle = "#4ade80";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#22c55e";
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, bw, bh, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#86efac";
+        ctx.font = "900 16px 'Segoe UI', Arial, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("✨ СЕКРЕТНАЯ КОМНАТА ОБНАРУЖЕНА! ✨", canvas.width / 2, by + 27);
+        ctx.restore();
+    }
+
+    // 4b. Dash Locked / Instructions Notice Banner
+    if (storyState.dashPromptNotice && storyState.dashPromptNotice.timer > 0) {
+        storyState.dashPromptNotice.timer--;
+        ctx.save();
+        let bw = Math.min(680, canvas.width - 32);
+        let bh = 46;
+        let bx = canvas.width / 2 - bw / 2;
+        let by = 90;
+        let col = storyState.dashPromptNotice.color || "#00e5ff";
+        ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2.2;
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, bw, bh, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "900 14px 'Segoe UI', Arial, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(storyState.dashPromptNotice.text, canvas.width / 2, by + 28);
+        ctx.restore();
+    }
+
+    // 5. Metroidvania Location Title Card when entering Room 2 (Scroll Cavern)
+    if (storyState.room2BannerTimer > 0) {
+        storyState.room2BannerTimer--;
+        let t = storyState.room2BannerTimer;
+        let alpha = 1.0;
+        if (t > 190) {
+            alpha = (220 - t) / 30; // Smooth fade-in
+        } else if (t < 40) {
+            alpha = t / 40; // Smooth fade-out
+        }
+        ctx.save();
+        ctx.textAlign = "center";
+
+        let cy = 110;
+        // Subtle dark translucent background vignette behind title
+        let grad = ctx.createRadialGradient(canvas.width / 2, cy, 20, canvas.width / 2, cy, 260);
+        grad.addColorStop(0, `rgba(3, 7, 18, ${alpha * 0.7})`);
+        grad.addColorStop(1, "rgba(3, 7, 18, 0)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(canvas.width / 2 - 280, cy - 50, 560, 100);
+
+        // Elegant ornamental divider lines
+        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 0.65})`;
+        ctx.lineWidth = 1.2;
+        // Left line
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2 - 190, cy - 14);
+        ctx.lineTo(canvas.width / 2 - 50, cy - 14);
+        ctx.stroke();
+        // Right line
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2 + 50, cy - 14);
+        ctx.lineTo(canvas.width / 2 + 190, cy - 14);
+        ctx.stroke();
+
+        // Center heraldic diamond
+        ctx.fillStyle = `rgba(56, 189, 248, ${alpha * 0.85})`;
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, cy - 18);
+        ctx.lineTo(canvas.width / 2 + 5, cy - 14);
+        ctx.lineTo(canvas.width / 2, cy - 10);
+        ctx.lineTo(canvas.width / 2 - 5, cy - 14);
+        ctx.closePath();
+        ctx.fill();
+
+        // Main Location Title
+        ctx.font = "bold 22px 'Trajan Pro', 'Cinzel', 'Times New Roman', serif, sans-serif";
+        ctx.fillStyle = `rgba(240, 249, 255, ${alpha * 0.95})`;
+        ctx.shadowColor = "#38bdf8";
+        ctx.shadowBlur = 12;
+        ctx.fillText("ПЕЩЕРА ДРЕВНЕГО СВИТКА", canvas.width / 2, cy + 12);
+        ctx.shadowBlur = 0;
+
+        // Subtitle
+        ctx.font = "italic 13px 'Segoe UI', Arial, sans-serif";
+        ctx.fillStyle = `rgba(148, 163, 184, ${alpha * 0.85})`;
+        ctx.fillText("— Покинутые глубины святилища —", canvas.width / 2, cy + 34);
+
+        ctx.restore();
+    }
+}
+window.drawStoryOverlaysAndRitualUI = drawStoryOverlaysAndRitualUI;
 
 // Draw Swimmable Water Pond right of Bench 1 (X: 3820..4500, Y: 355..445)
 function drawStoryWaterPond() {
@@ -3119,39 +3914,82 @@ function drawStoryWaterPond() {
     ctx.restore();
 }
 
-// Draw the 3 Solid Green Mossy Platforms and the Upper Tier Roof (Floor 2)
+// Draw Organic Mossy Earth Ledges and Cavern Floors
 function drawStoryMossyPlatformsAndRoof() {
     if (!platforms) return;
     ctx.save();
+    let now = Date.now();
     for (let plat of platforms) {
         if (!plat.mossy) continue;
-        // Solid stone core
-        ctx.fillStyle = "#14261c";
-        ctx.strokeStyle = "#166534";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.roundRect(plat.x, plat.y, plat.w, plat.h, 6);
-        ctx.fill();
-        ctx.stroke();
 
-        // Lush emerald moss top layer
-        ctx.fillStyle = "#22c55e";
-        ctx.shadowColor = "#22c55e";
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.roundRect(plat.x, plat.y, plat.w, 6, [6, 6, 0, 0]);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // Hanging moss vines under the platform
-        ctx.strokeStyle = "#15803d";
-        ctx.lineWidth = 1.5;
-        for (let vx = plat.x + 12; vx < plat.x + plat.w - 10; vx += 28) {
-            let vh = 6 + ((vx * 7) % 9);
+        if (plat.w < 200) {
+            // --- FLOATING SOLID MOSSY ROCK LEDGES (Natural stone slabs, NO table legs!) ---
+            // 1. Chiseled dark ancient slate rock body
+            let rGrad = ctx.createLinearGradient(plat.x, plat.y, plat.x, plat.y + plat.h);
+            rGrad.addColorStop(0, "#131f2b");
+            rGrad.addColorStop(0.5, "#0b121c");
+            rGrad.addColorStop(1, "#05080e");
+            ctx.fillStyle = rGrad;
             ctx.beginPath();
-            ctx.moveTo(vx, plat.y + plat.h);
-            ctx.lineTo(vx, plat.y + plat.h + vh);
+            ctx.roundRect(plat.x, plat.y + 4, plat.w, plat.h - 4, [0, 0, 8, 8]);
+            ctx.fill();
+
+            // Slate stone edge outline
+            ctx.strokeStyle = "rgba(45, 68, 92, 0.55)";
+            ctx.lineWidth = 1.2;
             ctx.stroke();
+
+            // 2. Thick organic velvety moss cushion on top
+            ctx.fillStyle = "#14532d";
+            ctx.beginPath();
+            ctx.roundRect(plat.x - 2, plat.y, plat.w + 4, 7, 4);
+            ctx.fill();
+
+            // Lush emerald moss crest with soft glow
+            ctx.fillStyle = "#22c55e";
+            ctx.shadowColor = "#16a34a";
+            ctx.shadowBlur = 6;
+            ctx.beginPath();
+            ctx.roundRect(plat.x, plat.y, plat.w, 3, [3, 3, 0, 0]);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Waving tiny grass fronds along the ledge surface
+            ctx.fillStyle = "#4ade80";
+            for (let gx = plat.x + 8; gx < plat.x + plat.w - 6; gx += 16) {
+                let lean = Math.sin(now / 400 + gx * 0.1) * 2;
+                ctx.beginPath();
+                ctx.moveTo(gx, plat.y);
+                ctx.lineTo(gx + lean, plat.y - 4);
+                ctx.lineTo(gx + 2, plat.y);
+                ctx.fill();
+            }
+        } else {
+            // --- WIDE CAVERN CEILINGS & FLOORS (Thick solid earth & rock) ---
+            ctx.fillStyle = "#070c16";
+            ctx.fillRect(plat.x, plat.y, plat.w, plat.h);
+            ctx.strokeStyle = "#1e293b";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(plat.x, plat.y, plat.w, plat.h);
+
+            // Emerald grass turf along the surface
+            ctx.strokeStyle = "#22c55e";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(plat.x, plat.y);
+            ctx.lineTo(plat.x + plat.w, plat.y);
+            ctx.stroke();
+
+            // Soft grass tufts waving on ground
+            ctx.fillStyle = "#4ade80";
+            for (let gx = plat.x + 15; gx < plat.x + plat.w - 15; gx += 32) {
+                let lean = Math.sin(now / 450 + gx * 0.08) * 2;
+                ctx.beginPath();
+                ctx.moveTo(gx, plat.y);
+                ctx.lineTo(gx + lean, plat.y - 4.5);
+                ctx.lineTo(gx + 2.5, plat.y);
+                ctx.fill();
+            }
         }
     }
     ctx.restore();
@@ -3160,6 +3998,8 @@ function drawStoryMossyPlatformsAndRoof() {
 // Draw Left Cliff Shaft and Lower Underground Tier (Floor 3 at Y = 850)
 function drawStoryUndergroundTier() {
     ctx.save();
+    let now = Date.now();
+
     // Far-left shaft wall (X = -520..-480)
     ctx.fillStyle = "#090f1d";
     ctx.strokeStyle = "#1e293b";
@@ -3176,15 +4016,1353 @@ function drawStoryUndergroundTier() {
     ctx.lineTo(3200, 535);
     ctx.stroke();
 
-    // Lower Underground Floor 3 (X = -480..3200, Y = 850)
+    // Lower Underground Floor 3 (X = -480..1960, Y = 850) - Bench 2 & Trials Gate Corridor
+    // Continuous solid rock foundation extending from X = -480 to 1960 and Y = 850 down to 960!
     ctx.fillStyle = "#080f1a";
-    ctx.fillRect(-480, STORY_CONFIG.LOWER_FLOOR, 3680, 90);
+    ctx.fillRect(-480, STORY_CONFIG.LOWER_FLOOR, 2440, 110);
     ctx.strokeStyle = "#22c55e";
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(-480, STORY_CONFIG.LOWER_FLOOR);
-    ctx.lineTo(3200, STORY_CONFIG.LOWER_FLOOR);
+    ctx.lineTo(1960, STORY_CONFIG.LOWER_FLOOR);
     ctx.stroke();
+
+    // Natural stone cliff edge at X = 1960, Y = 850..960
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(1960, STORY_CONFIG.LOWER_FLOOR);
+    ctx.lineTo(1960, 960);
+    ctx.stroke();
+
+    // --- SKETCH 1 TOP-LEFT ANCIENT RUIN PYLON (Matching diagonal stripes in Sketch 1!) ---
+    ctx.fillStyle = "#0b121e";
+    ctx.fillRect(980, 535, 75, 315);
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(980, 535, 75, 315);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(980, 535, 75, 315);
+    ctx.clip();
+    ctx.strokeStyle = "rgba(226, 232, 240, 0.32)";
+    ctx.lineWidth = 3.5;
+    for (let dy = 500; dy < 920; dy += 28) {
+        ctx.beginPath();
+        ctx.moveTo(960, dy);
+        ctx.lineTo(1080, dy + 55);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    // --- ROOM 1 BOUNDARY WALLS ---
+    // Outer Left Boundary Wall of Middle & Bottom Tier (X = 1040, Y = 960..2020)
+    ctx.fillStyle = "#060a14";
+    ctx.fillRect(1040, 960, 40, 1060);
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 1.8;
+    ctx.strokeRect(1040, 960, 40, 1060);
+
+    // Outer Right Boundary Wall of Room 1 (X = 2440, Y = 850..2020)
+    ctx.fillRect(2440, 850, 40, 1170);
+    ctx.strokeRect(2440, 850, 40, 1170);
+
+    // Middle Tier Cavern Ceiling line at Y = 960 (X = 1040..1960) with hanging moss vines
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(1040, 960);
+    ctx.lineTo(1960, 960);
+    ctx.stroke();
+
+    ctx.lineWidth = 1.4;
+    for (let vx = 1100; vx < 1940; vx += 36) {
+        let vh = 10 + ((vx * 11) % 16);
+        let sway = Math.sin(now / 500 + vx * 0.05) * 4;
+        ctx.strokeStyle = "#15803d";
+        ctx.beginPath();
+        ctx.moveTo(vx, 960);
+        ctx.quadraticCurveTo(vx + sway * 0.5, 960 + vh * 0.5, vx + sway, 960 + vh);
+        ctx.stroke();
+    }
+
+    // --- MIDDLE TIER FLOOR (Y = 1400: Screen-Height Cavern!) ---
+    // Left solid floor section (X: 1200..1680)
+    ctx.fillStyle = "#080f1a";
+    ctx.fillRect(1200, 1400, 480, 45);
+    // Right solid floor section (X: 1960..2380)
+    ctx.fillRect(1960, 1400, 420, 45);
+    ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(1200, 1400); ctx.lineTo(1680, 1400);
+    ctx.moveTo(1960, 1400); ctx.lineTo(2380, 1400);
+    ctx.stroke();
+
+    // --- DIVIDER 2 (Middle Tier underside: X = 1040..2440, Y = 1445..1500) ---
+    ctx.fillStyle = "#070c17";
+    ctx.fillRect(1040, 1445, 1400, 55);
+    ctx.strokeStyle = "#1e293b";
+    ctx.strokeRect(1040, 1445, 1400, 55);
+
+    // Secret Room Ceiling rock (X: 2120..2460, Y: 1500..1524)
+    ctx.fillStyle = "#070c17";
+    ctx.fillRect(2120, 1500, 340, 24);
+    ctx.strokeStyle = "#1e293b";
+    ctx.strokeRect(2120, 1500, 340, 24);
+
+    // Secret Room Floor rock (X: 2120..2460, Y: 1650..1680)
+    ctx.fillStyle = "#080f1a";
+    ctx.fillRect(2120, 1650, 340, 30);
+    ctx.strokeStyle = "#1e293b";
+    ctx.strokeRect(2120, 1650, 340, 30);
+    ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(2120, 1650); ctx.lineTo(2460, 1650);
+    ctx.stroke();
+
+    // Weeping moss tendrils under Middle Tier (Y = 1500)
+    for (let vx = 1120; vx < 2100; vx += 38) {
+        let vh = 9 + ((vx * 13) % 15);
+        let sway = Math.sin(now / 520 + vx * 0.06) * 3;
+        ctx.strokeStyle = "#15803d";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(vx, 1500);
+        ctx.quadraticCurveTo(vx + sway * 0.5, 1500 + vh * 0.5, vx + sway, 1500 + vh);
+        ctx.stroke();
+    }
+
+    // --- BOTTOM TIER FLOOR OF ROOM 1 (Y = 1950: X = 1120..2320) ---
+    ctx.fillStyle = "#080f1a";
+    ctx.fillRect(1120, 1950, 1200, 80);
+    ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(1120, 1950);
+    ctx.lineTo(2320, 1950);
+    ctx.stroke();
+
+    // Atmospheric Abyss Pit Opening in Room 1 (X = 2320..2440, Y = 1950..2150)
+    let pitGrad = ctx.createLinearGradient(2380, 1950, 2380, 2150);
+    pitGrad.addColorStop(0, "rgba(56, 189, 248, 0.35)");
+    pitGrad.addColorStop(0.3, "rgba(3, 7, 18, 0.85)");
+    pitGrad.addColorStop(1, "#020617");
+    ctx.fillStyle = pitGrad;
+    ctx.fillRect(2320, 1950, 120, 200);
+
+    // Downward air current wisps showing the shaft descends into the depths
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 4; i++) {
+        let wx = 2335 + i * 26;
+        let wy = 1950 + ((now / 15 + i * 40) % 150);
+        ctx.beginPath();
+        ctx.moveTo(wx, wy);
+        ctx.lineTo(wx, wy + 22);
+        ctx.stroke();
+    }
+    // Subtle blue downward particles inside the pit
+    ctx.fillStyle = "#38bdf8";
+    for (let i = 0; i < 4; i++) {
+        let px = 2335 + ((i * 37 + now / 25) % 90);
+        let py = 1960 + ((i * 45 + now / 18) % 130);
+        ctx.beginPath();
+        ctx.arc(px, py, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // --- ROOM 2 WORLD: Ceiling, Shaft, Outer Walls, Bottom Floor, Central Chamber ---
+    // Outer boundary walls (Left: X = 8170..8200 with arch opening at Y = 1360..1520, Right: X = 9550..9580, Y = 700..1860)
+    ctx.fillStyle = "#060a14";
+    ctx.fillRect(8170, 700, 30, 660);   // Upper left wall (Y = 700..1360)
+    ctx.fillRect(8170, 1520, 30, 340);  // Lower left wall (Y = 1520..1860)
+    ctx.fillRect(9550, 700, 30, 1160);  // Right wall
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 1.8;
+    ctx.strokeRect(8170, 700, 30, 660);
+    ctx.strokeRect(8170, 1520, 30, 340);
+    ctx.strokeRect(9550, 700, 30, 1160);
+
+    // Ceiling of Room 2 with top-right vertical drop shaft (Sketch 2 Purple Circle: shaft at X = 9320..9460)
+    // Left ceiling slab: X = 8200..9320, Y = 670..700
+    ctx.fillStyle = "#070c17";
+    ctx.fillRect(8200, 670, 1120, 30);
+    ctx.strokeStyle = "#1e293b";
+    ctx.strokeRect(8200, 670, 1120, 30);
+    // Right ceiling slab: X = 9460..9580, Y = 670..700
+    ctx.fillRect(9460, 670, 120, 30);
+    ctx.strokeRect(9460, 670, 120, 30);
+
+    // Vertical stone shaft walls extending upward (Left: Y = 480..700, Right: Y = 480..1360 down to chamber roof)
+    ctx.fillStyle = "#090f1d";
+    ctx.fillRect(9300, 480, 24, 220);
+    ctx.fillRect(9456, 480, 24, 880); // Extends all the way down to roof Y = 1360!
+    ctx.strokeStyle = "#1e293b";
+    ctx.strokeRect(9300, 480, 24, 220);
+    ctx.strokeRect(9456, 480, 24, 880);
+
+    // Solid rock mass blocking the right side above scroll tunnel entrance (X: 9460..9580, Y: 700..1540)
+    ctx.fillStyle = "#060a14";
+    ctx.fillRect(9460, 700, 120, 840);
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 1.8;
+    ctx.strokeRect(9460, 700, 120, 840);
+
+    // Subtle ancient runic carvings on the shaft walls
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+    ctx.lineWidth = 1.5;
+    for (let sy = 510; sy < 1340; sy += 32) {
+        ctx.beginPath();
+        if (sy < 690) { ctx.moveTo(9304, sy); ctx.lineTo(9320, sy + 14); }
+        ctx.moveTo(9460, sy); ctx.lineTo(9476, sy + 14);
+        ctx.stroke();
+    }
+
+    // Weeping moss hanging from Room 2 ceiling
+    for (let cx = 8280; cx < 9300; cx += 42) {
+        let vh = 8 + ((cx * 13) % 16);
+        let sway = Math.sin(now / 520 + cx * 0.06) * 3;
+        ctx.strokeStyle = "#15803d";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(cx, 700);
+        ctx.quadraticCurveTo(cx + sway * 0.5, 700 + vh * 0.5, cx + sway, 700 + vh);
+        ctx.stroke();
+    }
+
+    // Radiant celestial light beam pouring down from the ceiling shaft into the cavern
+    let shaftBeam = ctx.createLinearGradient(9390, 480, 9390, 1360);
+    shaftBeam.addColorStop(0, "rgba(56, 189, 248, 0.38)");
+    shaftBeam.addColorStop(0.35, "rgba(56, 189, 248, 0.18)");
+    shaftBeam.addColorStop(0.85, "rgba(56, 189, 248, 0.05)");
+    shaftBeam.addColorStop(1, "transparent");
+    ctx.fillStyle = shaftBeam;
+    ctx.beginPath();
+    ctx.moveTo(9320, 480);
+    ctx.lineTo(9460, 480);
+    ctx.lineTo(9460, 1360);
+    ctx.lineTo(9270, 1360);
+    ctx.closePath();
+    ctx.fill();
+
+    // Floating light motes drifting gently in the shaft beam
+    ctx.fillStyle = "rgba(186, 230, 253, 0.8)";
+    for (let i = 0; i < 7; i++) {
+        let mx = 9330 + ((i * 31 + now / 24) % 120);
+        let my = 500 + ((i * 89 + now / 18) % 840);
+        let r = 1.2 + (i % 3) * 0.7;
+        ctx.beginPath();
+        ctx.arc(mx, my, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Bottom Floor of Room 2 (X = 8340..9480, Y = 1800)
+    ctx.fillStyle = "#080f1a";
+    ctx.fillRect(8340, 1800, 1140, 80);
+    ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(8340, 1800);
+    ctx.lineTo(9480, 1800);
+    ctx.stroke();
+
+    // Central Chamber in Room 2 (Floor Y = 1540: X = 8680..9340, Roof Y = 1360: X = 8680..9460)
+    ctx.fillStyle = "#080f1a";
+    ctx.fillRect(8680, 1540, 660, 30);
+    ctx.fillRect(8680, 1360, 780, 30); // Connects to right shaft wall at X = 9460!
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 1.8;
+    ctx.strokeRect(8680, 1540, 660, 30);
+    ctx.strokeRect(8680, 1360, 780, 30);
+    ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(8680, 1540); ctx.lineTo(9340, 1540); // Floor opening at X = 9340
+    ctx.moveTo(8680, 1360); ctx.lineTo(9460, 1360); // Walkable mossy roof all the way to shaft!
+    ctx.stroke();
+
+    // Exit Archway on Left Wall of Room 2 (X = 8170..8260, Y = 1360..1520) -> leads to Bench 2
+    let archGrad = ctx.createLinearGradient(8170, 1360, 8260, 1360);
+    archGrad.addColorStop(0, "rgba(56, 189, 248, 0.65)");
+    archGrad.addColorStop(0.65, "rgba(56, 189, 248, 0.25)");
+    archGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = archGrad;
+    ctx.fillRect(8170, 1360, 80, 160);
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(8170, 1360, 14, 160);
+
+    ctx.restore();
+
+    // Draw Room 1 and Room 2 details (Spikes, Crawlers, Walls, Pickups, Ritual, Darkness Shrouds)
+    drawStoryRoom1AndRoom2World();
+}
+
+// --- SPIKES DEFINITIONS ACROSS ROOM 1 & ROOM 2 (Strictly matching user sketches!) ---
+const STORY_SPIKES = [
+    // Room 1 Middle Tier far-right sunken pit (near right wall)
+    { x: 2380, y: 1392, w: 100, h: 26 },
+    // Room 1 Middle Tier center sunken pit (under Plat 3)
+    { x: 1680, y: 1392, w: 280, h: 26 },
+    // Room 1 Bottom Tier far-left corner sunken pit
+    { x: 1040, y: 1942, w: 80, h: 26 },
+    // Room 2 Bottom Floor far-left corner sunken pit
+    { x: 8220, y: 1792, w: 120, h: 26 }
+];
+
+function isPositionNearSpikes(x, y, w, h) {
+    let pw = w || 30;
+    let ph = h || 45;
+    // 1. Spikes danger zone buffer (at least 35px away horizontally from spike pit opening)
+    for (let sp of STORY_SPIKES) {
+        let bufX = 35;
+        if (x + pw > sp.x - bufX && x < sp.x + sp.w + bufX &&
+            y + ph > sp.y - 15 && y < sp.y + sp.h + 24) {
+            return true;
+        }
+    }
+    // 2. Drop shafts (Room 1 bottom exit pit)
+    if (x + pw > 2290 && x < 2480 && y + ph > 1920) return true;
+    return false;
+}
+window.isPositionNearSpikes = isPositionNearSpikes;
+
+function handleStoryHazardDamage(pl) {
+    if (!pl || pl.isAi || pl.invuln > 0) return;
+
+    // 1. Deal 1 hazard damage (classical metroidvania penalty)
+    damagePlayer(1, pl, false, true);
+
+    // 2. If this damage dropped HP to 0, let the party wipe / bench rest take over
+    if (pl.hp <= 0) return;
+
+    // 3. Classical Metroidvania Hazard Respawn: hero takes 1 damage and returns to last safe ground!
+    let defX = STORY_CONFIG.BENCH_2_X;
+    let defY = STORY_CONFIG.BENCH_2_Y - (pl.height || 45);
+    if (pl.x >= 8000) {
+        // Room 2 (Scroll Cavern): always respawn locally on safe cavern roof or floor, NEVER teleport to Room 1 bench!
+        defX = 8800;
+        defY = (pl.y < 1400 ? 1360 : 1800) - (pl.height || 45);
+    } else if (pl.y > 900 && pl.y < 1550) {
+        defX = (pl.x > 1850 ? 2120 : 1550);
+        defY = 1400 - (pl.height || 45);
+    } else if (pl.y >= 1550) {
+        defX = 1400;
+        defY = 1950 - (pl.height || 45);
+    }
+
+    let respawnX = (pl.lastSafeX !== undefined && pl.lastSafeX !== null) ? pl.lastSafeX : defX;
+    let respawnY = (pl.lastSafeY !== undefined && pl.lastSafeY !== null) ? pl.lastSafeY : defY;
+
+    // Double-check: ensure respawn coordinates are NOT in/near any spike
+    if (isPositionNearSpikes(respawnX, respawnY, pl.width, pl.height)) {
+        respawnX = defX;
+        respawnY = defY;
+    }
+
+    pl.x = respawnX;
+    pl.y = respawnY;
+    pl.vx = 0;
+    pl.vy = 0;
+    pl.invuln = 90; // 1.5 seconds generous invulnerability window
+    storyState.hazardFlash = 16; // Visual dark vignette pulse
+
+    // Audio & particles
+    if (typeof playSound === 'function') {
+        playSound('hitPlayer');
+        playSound('shuriken');
+    }
+    if (typeof triggerShake === 'function') triggerShake(6, 12);
+    if (typeof voidExplosions !== 'undefined') {
+        voidExplosions.push({ x: respawnX + (pl.width || 30) / 2, y: respawnY + (pl.height || 45) / 2, timer: 18, isWhite: true, r: 35 });
+    }
+
+    // Safely relocate AI companions to hero's safe ground
+    for (let comp of players) {
+        if (!comp || comp === pl) continue;
+        comp.x = respawnX + (comp.type === 'AIR' ? -35 : 35);
+        comp.y = respawnY;
+        comp.vx = 0;
+        comp.vy = 0;
+        comp.invuln = 90;
+    }
+}
+window.handleStoryHazardDamage = handleStoryHazardDamage;
+
+let airDashWaves = [];
+
+function triggerAirDashWave(player) {
+    let dir = player.facingRight ? 1 : -1;
+    airDashWaves.push({
+        x: player.facingRight ? player.x + player.width + 10 : player.x - 35,
+        y: player.y + player.height / 2 - 18,
+        dir: dir,
+        speed: 15,
+        timer: 20,
+        w: 36,
+        h: 36
+    });
+    if (typeof playSound === 'function') playSound('bladeSpin');
+    if (typeof applyPhysicsPushToLeaves === 'function') {
+        applyPhysicsPushToLeaves(player.x, player.y, 14);
+    }
+}
+window.triggerAirDashWave = triggerAirDashWave;
+
+function triggerEarthBehindBackDash(player) {
+    let target = null;
+    let minDist = 320;
+    let dir = player.facingRight ? 1 : -1;
+
+    // Check boss in arena
+    if (typeof boss !== 'undefined' && boss && boss.hp > 0 && !boss.state.startsWith('CINEMATIC')) {
+        let dist = (boss.x - player.x) * dir;
+        if (dist > 15 && dist < minDist) {
+            target = { x: boss.x, y: boss.y, w: boss.width, h: boss.height };
+        }
+    }
+    // Check moss crawlers
+    if (!target && storyState.mossCrawlers) {
+        for (let mc of storyState.mossCrawlers) {
+            let dist = (mc.x - player.x) * dir;
+            if (dist > 15 && dist < minDist) {
+                minDist = dist;
+                target = mc;
+            }
+        }
+    }
+
+    if (target) {
+        player.shadowStepCooldown = 90;
+        let behindX = player.facingRight ? target.x + target.w + 14 : target.x - player.width - 14;
+        player.x = behindX;
+        player.y = target.y - 6;
+        player.facingRight = (target.x > player.x);
+        if (typeof playSound === 'function') playSound('teleport');
+        if (typeof triggerShake === 'function') triggerShake(4, 8);
+        if (typeof voidExplosions !== 'undefined') {
+            voidExplosions.push({ x: player.x + 15, y: player.y + 20, timer: 14, isWhite: false, r: 35 });
+        }
+    }
+}
+window.triggerEarthBehindBackDash = triggerEarthBehindBackDash;
+
+function updateStoryGameplayEntities() {
+    if (!storyState.active) return;
+
+    // 1. Air Dash Wave Projectiles update
+    for (let i = airDashWaves.length - 1; i >= 0; i--) {
+        let w = airDashWaves[i];
+        w.x += w.dir * w.speed;
+        w.timer--;
+
+        // Push / damage Moss Crawlers
+        if (storyState.mossCrawlers) {
+            for (let mc of storyState.mossCrawlers) {
+                if (rectIntersect(w, { x: mc.x, y: mc.y, width: mc.w, height: mc.h })) {
+                    mc.hp -= 1.0;
+                    mc.hitTimer = 14;
+                    mc.vx = w.dir * 3.5;
+                    if (typeof playSound === 'function') playSound('bladeSpin');
+                }
+            }
+        }
+
+        if (w.timer <= 0) {
+            airDashWaves.splice(i, 1);
+        }
+    }
+
+    // 2. Spikes & Safe Ground Tracking (Classic Metroidvania Hazard System)
+    for (let pl of players) {
+        if (!pl || pl.isDowned) continue;
+
+        // Solid, non-hazardous ground updates the last safe position
+        if (pl.onGround && !isPositionNearSpikes(pl.x, pl.y, pl.width, pl.height)) {
+            pl.lastSafeX = pl.x;
+            pl.lastSafeY = pl.y;
+        }
+
+        // Only human player triggers hazard damage (AI companions follow safely)
+        if (!pl.isAi && pl.invuln <= 0) {
+            let inSpike = false;
+            for (let sp of STORY_SPIKES) {
+                // Inset hazard hitbox slightly so walking right on the solid edge doesn't trigger damage
+                let spBox = {
+                    x: sp.x + 4,
+                    y: sp.y + 4,
+                    width: Math.max(10, sp.w - 8),
+                    height: Math.max(10, sp.h - 4)
+                };
+                if (rectIntersect(pl, spBox)) {
+                    inSpike = true;
+                    break;
+                }
+            }
+            if (inSpike) {
+                handleStoryHazardDamage(pl);
+            }
+        }
+    }
+
+    // 3. Moss Crawlers (Мховички) update - Patrols Platform 3 over center spike pit!
+    if (!storyState.mossCrawlerDefeated) {
+        if (!storyState.mossCrawlers || storyState.mossCrawlers.length === 0) {
+            storyState.mossCrawlers = [
+                { id: 'mc_1', x: 1820, y: 1350 - 24, w: 36, h: 24, startX: 1750, endX: 1880, vx: 0.5, hp: 2, maxHp: 2, facingRight: true, hitTimer: 0 }
+            ];
+        }
+    } else {
+        storyState.mossCrawlers = [];
+    }
+    for (let i = storyState.mossCrawlers.length - 1; i >= 0; i--) {
+        let mc = storyState.mossCrawlers[i];
+        if (!mc) continue;
+        if (mc.hitTimer > 0) mc.hitTimer--;
+        mc.x += mc.vx;
+        if (mc.x > mc.endX) { mc.vx = -Math.abs(mc.vx); mc.facingRight = false; }
+        else if (mc.x < mc.startX) { mc.vx = Math.abs(mc.vx); mc.facingRight = true; }
+
+        let mcBox = { x: mc.x, y: mc.y, width: mc.w, height: mc.h };
+
+        // Contact with player: 1 damage
+        for (let pl of players) {
+            if (pl && !pl.isDowned && pl.invuln <= 0 && rectIntersect(pl, mcBox)) {
+                damagePlayer(1, pl, false, false);
+                pl.vx = mc.facingRight ? 4 : -4;
+            }
+        }
+
+        // Hit by player melee attacks (including horizontal slashes, jump strikes, and down-pogo!)
+        for (let pl of players) {
+            if (!pl || pl.attackTimer <= 0) continue;
+            let atkRange = pl.atkRange || 80;
+            let isDownAtk = (pl.keys && (pl.keys.down || isKeyPressed(pl.keys.down))) || (pl.attackType === 'DOWN');
+            let atkBox = {
+                x: pl.facingRight ? pl.x - 15 : pl.x - atkRange,
+                y: isDownAtk ? pl.y + 10 : pl.y - 15,
+                width: atkRange + 30,
+                height: pl.height + 35
+            };
+            if (rectIntersect(atkBox, mcBox) && mc.hitTimer <= 0) {
+                let dmg = 1.0;
+                mc.hp -= dmg;
+                mc.hitTimer = 16;
+                // If striking from above (downward attack), bounce the player like in Hollow Knight / Silksong pogo!
+                if (isDownAtk || pl.y + pl.height <= mc.y + 18) {
+                    pl.vy = -10.5;
+                    pl.jumps = 1;
+                    if (typeof playSound === 'function') playSound('bladeSpin');
+                }
+                if (typeof playSound === 'function') playSound('slash');
+                if (typeof triggerShake === 'function') triggerShake(5, 8);
+                if (typeof voidExplosions !== 'undefined') {
+                    voidExplosions.push({ x: mc.x + mc.w/2, y: mc.y + mc.h/2, timer: 16, isWhite: true, r: 30 });
+                }
+                break;
+            }
+        }
+
+        // Hit by Air Traps
+        if (typeof airTraps !== 'undefined' && airTraps.length > 0) {
+            for (let at of airTraps) {
+                if (rectIntersect({ x: at.x - 10, y: at.y - 10, width: 20, height: 20 }, mcBox) && mc.hitTimer <= 0) {
+                    mc.hp -= 1.0;
+                    mc.hitTimer = 14;
+                    if (typeof playSound === 'function') playSound('bladeSpin');
+                    break;
+                }
+            }
+        }
+
+        // Death: Enemy permanently dies until resting at a bench!
+        if (mc.hp <= 0) {
+            storyState.mossCrawlerDefeated = true;
+            if (typeof playSound === 'function') {
+                playSound('rockCrit');
+                playSound('parry');
+            }
+            if (typeof triggerShake === 'function') triggerShake(8, 14);
+            if (typeof voidExplosions !== 'undefined') {
+                voidExplosions.push({ x: mc.x + mc.w/2, y: mc.y + mc.h/2, timer: 24, isWhite: false, isOrange: true, r: 45 });
+            }
+            storyState.mossCrawlers.splice(i, 1);
+        }
+    }
+
+    // 4. Vine Barrier in Room 1 (Sketch 1 Red Arrow 🌿: X = 1440, Y = 960..1400)
+    // 4. Room 1 Vine Barrier (Sketch 1 Red Arrow 🌿: X = 1420, Y = 960..1400)
+    if (!storyState.room1VinesBroken) {
+        let vBox = { x: 1410, y: 960, width: 50, height: 440 };
+        for (let pl of players) {
+            if (pl && pl.attackTimer > 0) {
+                let atkRange = pl.atkRange || 75;
+                let atkBox = {
+                    x: pl.facingRight ? pl.x + pl.width : pl.x - atkRange,
+                    y: pl.y,
+                    width: atkRange,
+                    height: pl.height
+                };
+                if (rectIntersect(atkBox, vBox)) {
+                    storyState.room1VinesBroken = true;
+                    let vPlat = platforms.find(p => p.isVineBarrier);
+                    if (vPlat) vPlat.solid = false;
+                    autoSaveStoryProgress();
+                    if (typeof playSound === 'function') {
+                        playSound('slash');
+                        playSound('bladeSpin');
+                    }
+                    if (typeof triggerShake === 'function') triggerShake(5, 10);
+                    break;
+                }
+            }
+        }
+    }
+
+    // 5. Room 1 Secret Wall (Sketch 1 Pink Arrow 🧱: X = 2120, Y = 1520..1650)
+    if (!storyState.room1SecretWallBroken) {
+        let wBox = { x: 2110, y: 1520, width: 55, height: 130 };
+        for (let pl of players) {
+            if (pl && pl.attackTimer > 0) {
+                let atkRange = pl.atkRange || 75;
+                let atkBox = {
+                    x: pl.facingRight ? pl.x + pl.width : pl.x - atkRange,
+                    y: pl.y,
+                    width: atkRange,
+                    height: pl.height
+                };
+                if (rectIntersect(atkBox, wBox) && (!pl.prevWallHitTime || Date.now() - pl.prevWallHitTime > 300)) {
+                    pl.prevWallHitTime = Date.now();
+                    storyState.room1SecretWallHp = (storyState.room1SecretWallHp || 2) - 1;
+                    if (typeof playSound === 'function') playSound('parry');
+                    if (typeof triggerShake === 'function') triggerShake(5, 10);
+                    if (storyState.room1SecretWallHp <= 0) {
+                        storyState.room1SecretWallBroken = true;
+                        storyState.secretRoomAnnounce = 160;
+                        let wPlat = platforms.find(p => p.isSecretWall);
+                        if (wPlat) wPlat.solid = false;
+                        autoSaveStoryProgress();
+                        if (typeof playSound === 'function') {
+                            playSound('groundSlam');
+                            playSound('lightChime');
+                        }
+                        if (typeof triggerShake === 'function') triggerShake(8, 16);
+                        if (typeof voidExplosions !== 'undefined') {
+                            voidExplosions.push({ x: 2125, y: 1585, timer: 25, isWhite: true, r: 40 });
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // 6. Room 2 One-Way Wall (Sketch 2 Red Arrow: X = 8680, Y = 1360..1540)
+    if (!storyState.room2OneWayBroken) {
+        let owBox = { x: 8660, y: 1360, width: 55, height: 180 };
+        for (let pl of players) {
+            if (pl && pl.attackTimer > 0) {
+                let atkRange = pl.atkRange || 75;
+                let atkBox = {
+                    x: pl.facingRight ? pl.x + pl.width : pl.x - atkRange,
+                    y: pl.y,
+                    width: atkRange,
+                    height: pl.height
+                };
+                if (rectIntersect(atkBox, owBox) && (!pl.prevOneWayHitTime || Date.now() - pl.prevOneWayHitTime > 300)) {
+                    pl.prevOneWayHitTime = Date.now();
+                    if (pl.x < 8680) {
+                        // Attacked from outside (left): impenetrable rock
+                        if (typeof playSound === 'function') playSound('parry');
+                        if (typeof triggerShake === 'function') triggerShake(3, 5);
+                    } else {
+                        // Attacked from inside tunnel (right): breaks!
+                        storyState.room2OneWayWallHp = (storyState.room2OneWayWallHp || 2) - 1;
+                        if (typeof playSound === 'function') playSound('parry');
+                        if (typeof triggerShake === 'function') triggerShake(5, 10);
+                        if (storyState.room2OneWayWallHp <= 0) {
+                            storyState.room2OneWayBroken = true;
+                            let owPlat = platforms.find(p => p.isOneWayWall);
+                            if (owPlat) owPlat.solid = false;
+                            autoSaveStoryProgress();
+                            if (typeof playSound === 'function') playSound('groundSlam');
+                            if (typeof triggerShake === 'function') triggerShake(8, 16);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // 7. Dew Flask pickup on pedestal inside Secret Room (X = 2300, Y = 1600)
+    if (!storyState.flaskDewCollected && storyState.room1SecretWallBroken) {
+        let fBox = { x: 2280, y: 1570, width: 45, height: 50 };
+        for (let pl of players) {
+            if (pl && rectIntersect(pl, fBox)) {
+                storyState.flaskDewCollected = true;
+                addStoryBackpackItem({
+                    id: 'flask_dew',
+                    name: 'Флакон с «Росой»',
+                    icon: '🧪',
+                    count: 1,
+                    desc: 'Восстанавливает 2 ❤️ всей команде при использовании.'
+                });
+                if (typeof playSound === 'function') {
+                    playSound('lightChime');
+                    playSound('absorb');
+                }
+                flashAlpha = 0.5;
+                break;
+            }
+        }
+    }
+
+    // 8. Dash Scroll pickup in Room 2 central tunnel (X = 8950, Y = 1480)
+    if (!storyState.dashScrollCollected) {
+        let sBox = { x: 8930, y: 1460, width: 50, height: 50 };
+        for (let pl of players) {
+            if (pl && rectIntersect(pl, sBox)) {
+                storyState.dashScrollCollected = true;
+                addStoryBackpackItem({
+                    id: 'dash_scroll',
+                    name: 'Свиток Рывка',
+                    icon: '📜',
+                    isScroll: true,
+                    desc: 'Энергетический свиток света. Активируйте на скамейке у костра!'
+                });
+                if (typeof playSound === 'function') {
+                    playSound('lightChime');
+                    playSound('parry');
+                }
+                flashAlpha = 0.6;
+                break;
+            }
+        }
+    }
+
+    // 9. Room Transitions (Sketch 1 exit pit -> Room 2 ceiling drop, Room 2 left arch -> Room 1 Archway)
+    let p1 = players[0];
+    if (p1 && storyState.currentRoom === 1 && p1.x >= 2280 && p1.x <= 2520 && p1.y >= 1925 && !storyState.roomTransitioning) {
+        startStoryRoomTransition(2);
+    }
+    // Room 1 Archway (Sketch 1 arch at X: 1620..1680, Y: 850) -> leads back to Room 2 if shortcut was broken!
+    if (p1 && storyState.currentRoom === 1 && storyState.room2OneWayBroken && p1.x >= 1620 && p1.x <= 1680 && p1.y >= 780 && p1.y <= 860 && !storyState.roomTransitioning) {
+        let wantShortcut = (p1.keys && (checkKeyInput(p1.keys, 'up') || isKeyPressed(p1.keys.up))) || keys['KeyW'] || keys['ArrowUp'] || keys['ц'] || keys['Ц'];
+        if (wantShortcut) {
+            startStoryRoomTransition(2);
+        }
+    }
+    if (p1 && storyState.currentRoom === 2 && p1.x <= 8260 && p1.y >= 1350 && p1.y <= 1550 && !storyState.roomTransitioning) {
+        startStoryRoomTransition(1);
+    }
+    if (storyState.roomTransitioning) {
+        updateStoryRoomTransitionStep();
+    }
+}
+
+function updateStoryScrollRitual() {
+    let r = storyState.scrollRitual;
+    if (!r) {
+        storyState.step = 'BENCH_REST';
+        return;
+    }
+    r.timer++;
+
+    for (let pl of players) {
+        if (pl) { pl.vx = 0; pl.vy = 0; }
+    }
+
+    let pLeader = players[0];
+    let atkPressed = (pLeader && pLeader.keys && checkKeyInput(pLeader.keys, 'attack')) ||
+        keys['KeyX'] || keys['KeyZ'] || keys['Space'] || keys['Enter'] ||
+        keys['KeyF'] || keys['KeyE'] || keys['ч'] || keys['я'] ||
+        (typeof touchInputs !== 'undefined' && touchInputs && touchInputs.atk);
+
+    let healPressed = (pLeader && pLeader.keys && checkKeyInput(pLeader.keys, 'heal')) ||
+        keys['KeyA'] || keys['KeyF'] || keys['KeyQ'] || keys['KeyE'] || keys['Space'] || keys['Enter'] ||
+        keys['KeyZ'] || keys['KeyX'] || keys['KeyC'] ||
+        keys['а'] || keys['А'] || keys['ф'] || keys['Ф'] || keys['й'] || keys['у'] ||
+        (typeof touchInputs !== 'undefined' && touchInputs && touchInputs.heal);
+
+    if (r.stage === 'PROMPT_ATTACK') {
+        if (atkPressed && r.timer > 5) {
+            if (pLeader && pLeader.keys) clearKeyInput(pLeader.keys, 'attack');
+            keys['KeyX'] = false;
+            keys['Space'] = false;
+            keys['Enter'] = false;
+            if (typeof touchInputs !== 'undefined' && touchInputs) touchInputs.atk = false;
+
+            r.stuckWeapon = true;
+            r.stage = 'PROMPT_HEAL';
+            r.timer = 0;
+            if (typeof playSound === 'function') {
+                playSound('slash');
+                playSound('parry');
+            }
+            if (typeof triggerShake === 'function') triggerShake(6, 12);
+            if (typeof voidExplosions !== 'undefined') {
+                voidExplosions.push({ x: 1500, y: 848, timer: 20, isWhite: true, r: 40 });
+            }
+        }
+    } else if (r.stage === 'PROMPT_HEAL') {
+        if (healPressed && r.timer > 5) {
+            if (pLeader && pLeader.keys) clearKeyInput(pLeader.keys, 'heal');
+            keys['KeyA'] = false;
+            keys['KeyF'] = false;
+            keys['KeyQ'] = false;
+            keys['KeyE'] = false;
+            keys['Space'] = false;
+            keys['Enter'] = false;
+            keys['а'] = false;
+            keys['А'] = false;
+            keys['ф'] = false;
+            keys['Ф'] = false;
+            if (typeof touchInputs !== 'undefined' && touchInputs) touchInputs.heal = false;
+
+            r.stage = 'LIGHT_ERUPTION';
+            r.timer = 0;
+            flashAlpha = 1.0;
+            if (typeof playSound === 'function') {
+                playSound('lightChime');
+                playSound('absorb');
+            }
+            if (typeof triggerShake === 'function') triggerShake(8, 16);
+        }
+    } else if (r.stage === 'LIGHT_ERUPTION') {
+        if (r.timer >= 80) {
+            r.stage = 'ANNOUNCEMENT';
+            r.timer = 0;
+            storyState.dashUnlocked = true;
+            storyState.dashMaster = r.hero;
+            if (storyState.backpack) {
+                let idx = storyState.backpack.findIndex(it => it && it.id === 'dash_scroll');
+                if (idx !== -1) storyState.backpack.splice(idx, 1);
+            }
+            updateStoryTouchUIVisibility();
+            if (typeof playSound === 'function') playSound('lightChime');
+        }
+    } else if (r.stage === 'ANNOUNCEMENT') {
+        if (r.timer > 30) {
+            let confirmKey = isKeyPressed(['Space', 'Enter', 'KeyZ', 'KeyX', 'KeyC', 'Escape']) || 
+                             (typeof touchInputs !== 'undefined' && touchInputs && (touchInputs.jump || touchInputs.atk || touchInputs.dash));
+            if (confirmKey) {
+                finishScrollRitual();
+            }
+        }
+    }
+}
+
+function updateStoryDeathFadeOut() {
+    storyState.deathTimer = (storyState.deathTimer || 0) + 1;
+    storyState.deathFadeAlpha = Math.min(1.0, (storyState.deathFadeAlpha || 0) + 0.045);
+
+    for (let pl of players) {
+        if (pl) { pl.vx = 0; pl.vy = 0; }
+    }
+
+    if (storyState.deathFadeAlpha >= 1.0) {
+        if (storyState.deathTimer >= 36) {
+            respawnPlayerAtStoryCheckpoint();
+            storyState.deathTimer = 0;
+            storyState.step = 'BENCH_REST';
+            storyState.stepTimer = 0;
+            storyState.deathFadeAlpha = 0;
+            if (typeof playSound === 'function') playSound('lightChime');
+        }
+    }
+}
+
+function startStoryRoomTransition(targetRoom) {
+    storyState.roomTransitioning = true;
+    storyState.targetRoom = targetRoom;
+    storyState.roomFadeTimer = 0;
+    storyState.roomFadeAlpha = 0.05;
+    for (let pl of players) {
+        if (pl) { pl.vx = 0; pl.vy = 0; }
+    }
+}
+window.startStoryRoomTransition = startStoryRoomTransition;
+
+function updateStoryRoomTransitionStep() {
+    storyState.roomFadeTimer = (storyState.roomFadeTimer || 0) + 1;
+    if (storyState.roomFadeTimer <= 16) {
+        storyState.roomFadeAlpha = Math.min(1.0, storyState.roomFadeTimer / 16);
+    } else if (storyState.roomFadeTimer === 17) {
+        if (storyState.targetRoom === 2) {
+            storyState.currentRoom = 2;
+            let fromArch = (players[0] && players[0].y < 1200);
+            for (let idx = 0; idx < players.length; idx++) {
+                let pl = players[idx];
+                if (!pl) continue;
+                if (fromArch) {
+                    // Entering Room 2 through unlocked Archway shortcut!
+                    pl.x = 8240 + idx * 24;
+                    pl.y = 1520 - pl.height;
+                    pl.facingRight = true;
+                    pl.vx = 0;
+                    pl.vy = 0;
+                } else {
+                    // Silksong-style transition: Drop down into Room 2 from the top ceiling shaft onto the roof!
+                    pl.x = 9400 - idx * 22;
+                    pl.y = 660; // Inside top vertical shaft!
+                    pl.vx = 0;
+                    pl.vy = 5;  // Falling downward with momentum
+                    pl.facingRight = false; // Look left towards parkour route
+                }
+                pl.invuln = 90;
+                pl.isDowned = false;
+                pl.lastSafeX = pl.x;
+                pl.lastSafeY = (fromArch ? 1520 : 1360) - pl.height;
+            }
+            camX = (fromArch ? 8300 : 9390) - GAME_WIDTH / 2;
+            camY = fromArch ? 1200 : 560;
+            if (typeof playSound === 'function') playSound(fromArch ? 'lightChime' : 'fall');
+        } else {
+            // Return to Room 1 Floor 3 Archway (near Bench 2)!
+            storyState.currentRoom = 1;
+            storyState.step = 'EXPLORE';
+            storyState.stepTimer = 0;
+            for (let idx = 0; idx < players.length; idx++) {
+                let pl = players[idx];
+                if (!pl) continue;
+                pl.x = 1650 + (idx === 0 ? 0 : (idx === 1 ? 32 : -32));
+                pl.y = STORY_CONFIG.LOWER_FLOOR - pl.height;
+                pl.facingRight = false; // Facing left towards the campfire bench!
+                pl.vx = 0;
+                pl.vy = 0;
+                pl.hp = pl.maxHp || 5;
+                pl.isDowned = false;
+                pl.downedTimer = 0;
+                pl.lastSafeX = pl.x;
+                pl.lastSafeY = pl.y;
+            }
+            camX = 1650 - GAME_WIDTH / 2;
+            camY = 500;
+            if (typeof playSound === 'function') playSound('lightChime');
+        }
+    } else if (storyState.roomFadeTimer <= 34) {
+        storyState.roomFadeAlpha = Math.max(0, 1.0 - (storyState.roomFadeTimer - 17) / 17);
+    } else {
+        storyState.roomTransitioning = false;
+        storyState.roomFadeAlpha = 0;
+    }
+}
+
+function drawStoryRoom1AndRoom2World() {
+    if (!ctx) return;
+    ctx.save();
+
+    // 1. Spikes rendering (Sunken pits with jagged obsidian stalagmites matching sketches!)
+    for (let sp of STORY_SPIKES) {
+        if (sp.x < camX - 100 || sp.x > camX + GAME_WIDTH + 100) continue;
+        // Sunken dark pit trough
+        ctx.fillStyle = "#030712";
+        ctx.fillRect(sp.x - 2, sp.y, sp.w + 4, sp.h + 8);
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(sp.x - 2, sp.y, sp.w + 4, sp.h + 8);
+
+        // Jagged crystal obsidian thorns
+        let toothW = 12;
+        let count = Math.floor(sp.w / toothW);
+        for (let t = 0; t < count; t++) {
+            let tx = sp.x + t * toothW;
+            let tipH = 15 + ((t * 7) % 5);
+            ctx.fillStyle = "#0f172a";
+            ctx.beginPath();
+            ctx.moveTo(tx, sp.y + sp.h);
+            ctx.lineTo(tx + toothW / 2, sp.y - tipH);
+            ctx.lineTo(tx + toothW, sp.y + sp.h);
+            ctx.closePath();
+            ctx.fill();
+
+            // Gleaming silver sharp spine
+            ctx.strokeStyle = "#e2e8f0";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(tx, sp.y + sp.h);
+            ctx.lineTo(tx + toothW / 2, sp.y - tipH);
+            ctx.stroke();
+
+            // Dangerous ruby gleam on tip
+            ctx.fillStyle = "#f43f5e";
+            ctx.beginPath();
+            ctx.arc(tx + toothW / 2, sp.y - tipH + 2, 1.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // 1b. Room 1 Portal Archway on Floor 3 (Sketch 1 Archway ∩: X = 1620..1680, Y = 710..850)
+    if (1620 > camX - 120 && 1680 < camX + GAME_WIDTH + 120) {
+        let ax = 1620, ay = 710, aw = 60, ah = 140;
+        let r1ArchGrad = ctx.createLinearGradient(ax, ay, ax + aw, ay);
+        r1ArchGrad.addColorStop(0, "rgba(56, 189, 248, 0.45)");
+        r1ArchGrad.addColorStop(0.5, "rgba(56, 189, 248, 0.15)");
+        r1ArchGrad.addColorStop(1, "transparent");
+        ctx.fillStyle = r1ArchGrad;
+        ctx.fillRect(ax, ay, aw, ah);
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 2.5;
+        ctx.strokeRect(ax, ay, aw, ah);
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(ax - 6, ay - 6, aw + 12, ah + 6);
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("⛩️ ПОРТАЛ", ax + aw / 2, ay - 12);
+        if (storyState.room2OneWayBroken) {
+            ctx.fillStyle = "#86efac";
+            ctx.font = "9.5px sans-serif";
+            ctx.fillText("[W / Вверх] В пещеру", ax + aw / 2, ay + ah + 15);
+        }
+    }
+
+    // 2. Room 1 Vine Barrier (Sketch 1 Red Arrow 🌿: X = 1420, Y = 960..1400)
+    if (!storyState.room1VinesBroken) {
+        let vx = 1420, vy = 960, vw = 30, vh = 440;
+        ctx.save();
+        ctx.fillStyle = "rgba(10, 40, 20, 0.95)";
+        ctx.fillRect(vx, vy, vw, vh);
+
+        // Twisted winding jungle ivy strands
+        for (let i = 0; i < 6; i++) {
+            let lx = vx + 3 + i * 5;
+            ctx.strokeStyle = (i % 2 === 0) ? "#15803d" : "#22c55e";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(lx, vy);
+            for (let y = vy; y <= vy + vh; y += 24) {
+                let sway = Math.sin(Date.now() / 250 + i * 1.5 + y * 0.05) * 4;
+                ctx.lineTo(lx + sway, y);
+            }
+            ctx.stroke();
+        }
+
+        // Hanging moss leaves
+        ctx.fillStyle = "#4ade80";
+        for (let y = vy + 15; y < vy + vh - 10; y += 28) {
+            ctx.beginPath();
+            ctx.ellipse(vx + 6, y, 6, 3, 0.4, 0, Math.PI * 2);
+            ctx.ellipse(vx + 22, y + 12, 6, 3, -0.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Crimson spores drifting from vines (matching red arrow!)
+        let t = Date.now() / 200;
+        ctx.fillStyle = "rgba(239, 68, 68, 0.85)";
+        for (let s = 0; s < 4; s++) {
+            let sx = vx + 15 + Math.sin(t + s * 2) * 8;
+            let sy = vy + 20 + ((t * 24 + s * 45) % (vh - 30));
+            ctx.beginPath();
+            ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+
+        // 2b. PITCH-BLACK DARKNESS SHROUD BEHIND VINES (Cannot see through walls/vines!)
+        ctx.save();
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(1040, 960, 380, 480); // Pitch black covering area behind vines (X: 1040..1420, Y: 960..1440)
+        ctx.restore();
+    }
+
+    // 3. Room 1 Secret Wall & Secret Room (Sketch 1 Pink Arrow 🧱: X = 2120, Y = 1520..1650)
+    if (!storyState.room1SecretWallBroken) {
+        let wx = 2120, wy = 1520, ww = 30, wh = 130;
+        ctx.save();
+        ctx.fillStyle = "#1e293b";
+        ctx.strokeStyle = "#334155";
+        ctx.lineWidth = 2;
+        ctx.fillRect(wx, wy, ww, wh);
+        ctx.strokeRect(wx, wy, ww, wh);
+
+        // Deep jagged stone fissures
+        ctx.strokeStyle = "#0f172a";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(wx + 8, wy);
+        ctx.lineTo(wx + 20, wy + 35);
+        ctx.lineTo(wx + 10, wy + 70);
+        ctx.lineTo(wx + 22, wy + wh);
+        ctx.moveTo(wx + 20, wy + 35);
+        ctx.lineTo(wx + 28, wy + 55);
+        ctx.stroke();
+
+        // Glowing rose/pink crystal veins in the cracks (matching pink arrow!)
+        let glowPulse = 0.55 + 0.35 * Math.sin(Date.now() / 260);
+        ctx.strokeStyle = `rgba(244, 114, 182, ${glowPulse})`;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = "#f472b6";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(wx + 8, wy + 2);
+        ctx.lineTo(wx + 20, wy + 35);
+        ctx.lineTo(wx + 10, wy + 70);
+        ctx.lineTo(wx + 22, wy + wh - 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+
+        // 3b. PITCH-BLACK DARKNESS SHROUD INSIDE SECRET ROOM (Cannot see through secret wall!)
+        ctx.save();
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(2120, 1495, 360, 180); // Pitch black covering secret room X: 2120..2480, Y: 1495..1675
+        ctx.restore();
+    } else {
+        // Shattered stone rubble at wall base
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(2120, 1640, 18, 10);
+        ctx.fillRect(2135, 1643, 14, 7);
+    }
+
+    // 4. Room 1 Secret Room Pedestal & Dew Flask Pickup (inside Secret Room at X = 2300, Y = 1600)
+    if (storyState.room1SecretWallBroken) {
+        // Ancient carved pedestal in center of Secret Room
+        ctx.save();
+        ctx.fillStyle = "#1e293b";
+        ctx.strokeStyle = "#4ade80";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(2282, 1622, 36, 28, [4, 4, 0, 0]);
+        ctx.fill();
+        ctx.stroke();
+
+        // Glowing emerald crystal cluster hanging from Secret Room ceiling
+        ctx.fillStyle = "#22c55e";
+        ctx.shadowColor = "#4ade80";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(2340, 1524); ctx.lineTo(2346, 1542); ctx.lineTo(2352, 1524);
+        ctx.moveTo(2350, 1524); ctx.lineTo(2358, 1548); ctx.lineTo(2364, 1524);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+
+        // Dew Flask resting on pedestal
+        if (!storyState.flaskDewCollected) {
+            let fx = 2300, fy = 1604 + Math.sin(Date.now() / 250) * 3;
+            ctx.save();
+            ctx.shadowColor = "#4ade80";
+            ctx.shadowBlur = 16;
+            ctx.fillStyle = "#22c55e";
+            ctx.beginPath();
+            ctx.roundRect(fx - 10, fy - 14, 20, 22, 6);
+            ctx.fill();
+            ctx.fillStyle = "#fef08a";
+            ctx.fillRect(fx - 4, fy - 20, 8, 6);
+            ctx.font = "bold 11px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#86efac";
+            ctx.fillText("🧪 Роса", fx, fy - 26);
+            ctx.restore();
+        }
+    }
+
+    // 5. Room 2 One-Way Shortcut Wall (Sketch 2 Red Arrow: X = 8680, Y = 1360..1540)
+    if (!storyState.room2OneWayBroken) {
+        let owx = 8680, owy = 1360, oww = 35, owh = 180;
+        ctx.save();
+        ctx.fillStyle = "#0f172a";
+        ctx.strokeStyle = "#334155";
+        ctx.lineWidth = 2.5;
+        ctx.fillRect(owx, owy, oww, owh);
+        ctx.strokeRect(owx, owy, oww, owh);
+
+        // Ancient locking runes on inside face (right side)
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.85)";
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "#ef4444";
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(owx + oww - 4, owy + 40);
+        ctx.lineTo(owx + oww - 16, owy + 90);
+        ctx.lineTo(owx + oww - 4, owy + 140);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+
+        // 5b. Darkness Shroud inside Central Tunnel when viewed from outside
+        let p1Leader = players[0];
+        if (p1Leader && p1Leader.x < 8680) {
+            ctx.save();
+            ctx.fillStyle = "#020617";
+            ctx.fillRect(8715, 1365, 620, 170);
+            ctx.restore();
+        }
+    }
+
+    // 6. Room 2 Dash Scroll Pickup (Sketch 2 White Arrow: X = 8950, Y = 1480)
+    if (!storyState.dashScrollCollected) {
+        let sx = 8950, sy = 1480 + Math.sin(Date.now() / 200) * 5;
+        ctx.save();
+        ctx.shadowColor = "#00e5ff";
+        ctx.shadowBlur = 22;
+
+        ctx.strokeStyle = "rgba(0, 229, 255, 0.7)";
+        ctx.lineWidth = 2;
+        let rot = Date.now() / 200;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 22, rot, rot + Math.PI * 1.3);
+        ctx.stroke();
+
+        ctx.fillStyle = "#fef08a";
+        ctx.strokeStyle = "#00e5ff";
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.roundRect(sx - 14, sy - 9, 28, 18, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#00e5ff";
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("📜 Свиток Рывка", sx, sy - 28);
+        ctx.restore();
+    }
+
+    // 7. Moss Crawlers (Мховички)
+    if (storyState.mossCrawlers) {
+        for (let mc of storyState.mossCrawlers) {
+            ctx.save();
+            ctx.translate(mc.x + mc.w / 2, mc.y + mc.h / 2);
+            if (!mc.facingRight) ctx.scale(-1, 1);
+
+            let flash = (mc.hitTimer > 0);
+            ctx.fillStyle = flash ? "#ffffff" : "#15803d";
+            ctx.strokeStyle = "#166534";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, -2, 16, Math.PI, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = flash ? "#ffffff" : "#4ade80";
+            ctx.beginPath();
+            ctx.arc(-5, -12, 4, 0, Math.PI * 2);
+            ctx.arc(4, -13, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#f43f5e";
+            ctx.beginPath();
+            ctx.arc(0, -18, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = flash ? "#ffffff" : "#1e293b";
+            ctx.fillRect(-14, -2, 28, 10);
+
+            let legWalk = Math.sin(Date.now() / 80) * 3;
+            ctx.strokeStyle = "#0f172a";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-10, 8); ctx.lineTo(-12 + legWalk, 13);
+            ctx.moveTo(-2, 8); ctx.lineTo(-2 - legWalk, 13);
+            ctx.moveTo(6, 8); ctx.lineTo(6 + legWalk, 13);
+            ctx.moveTo(12, 8); ctx.lineTo(14 - legWalk, 13);
+            ctx.stroke();
+
+            ctx.fillStyle = "#020617";
+            ctx.beginPath();
+            ctx.arc(9, 2, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(10, 1.2, 1, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+    }
+
+    // 8. Air Dash Waves
+    for (let w of airDashWaves) {
+        ctx.save();
+        ctx.translate(w.x + w.w / 2, w.y + w.h / 2);
+        if (w.dir < 0) ctx.scale(-1, 1);
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+        ctx.fillStyle = "rgba(125, 211, 252, 0.45)";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#38bdf8";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(0, 0, 16, -Math.PI / 2, Math.PI / 2);
+        ctx.lineTo(-8, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 9. Scroll Ritual in World Space
+    if (storyState.step === 'SCROLL_RITUAL' && storyState.scrollRitual) {
+        let r = storyState.scrollRitual;
+        let rx = 1500, ry = 848;
+
+        ctx.save();
+        ctx.shadowColor = "#00e5ff";
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = "#fef08a";
+        ctx.strokeStyle = "#00e5ff";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(rx - 15, ry - 6, 30, 14, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        if (r.stuckWeapon) {
+            ctx.save();
+            ctx.translate(rx, ry);
+            ctx.rotate(-0.4);
+            let wColor = (r.hero === 'WATER' ? '#38bdf8' : (r.hero === 'AIR' ? '#facc15' : '#4ade80'));
+            ctx.strokeStyle = wColor;
+            ctx.lineWidth = 3.5;
+            ctx.shadowColor = wColor;
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, -32);
+            ctx.stroke();
+
+            ctx.strokeStyle = "#cbd5e1";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(-6, -26);
+            ctx.lineTo(6, -26);
+            ctx.moveTo(0, -26);
+            ctx.lineTo(0, -36);
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.fillStyle = "#00e5ff";
+            for (let i = 0; i < 4; i++) {
+                let spX = rx + Math.sin(Date.now() / 60 + i) * 14;
+                let spY = ry - 10 - ((Date.now() / 40 + i * 20) % 25);
+                ctx.beginPath();
+                ctx.arc(spX, spY, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        if (r.stage === 'LIGHT_ERUPTION') {
+            for (let pl of players) {
+                if (!pl) continue;
+                ctx.strokeStyle = "rgba(0, 229, 255, 0.8)";
+                ctx.lineWidth = 3;
+                ctx.shadowColor = "#00e5ff";
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.moveTo(rx, ry);
+                ctx.lineTo(pl.x + pl.width / 2, pl.y + pl.height / 2);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+    }
+
     ctx.restore();
 }
 
@@ -4186,6 +6364,40 @@ if (typeof window !== 'undefined') {
         if (storyRitual.active && storyRitual.phase === 'BLACK_SCREEN' && storyRitual.blackScreenTimer > 40) {
             finishAncientRitual();
             return;
+        }
+
+        // Advance / finish Energy Scroll Ritual on tap
+        if (storyState.step === 'SCROLL_RITUAL' && storyState.scrollRitual) {
+            let r = storyState.scrollRitual;
+            if (r.stage === 'PROMPT_ATTACK' && r.timer > 15) {
+                r.stuckWeapon = true;
+                r.stage = 'PROMPT_HEAL';
+                r.timer = 0;
+                updateStoryTouchUIVisibility();
+                if (typeof playSound === 'function') {
+                    playSound('slash');
+                    playSound('parry');
+                }
+                if (typeof triggerShake === 'function') triggerShake(6, 12);
+                if (typeof voidExplosions !== 'undefined') {
+                    voidExplosions.push({ x: 1500, y: 848, timer: 20, isWhite: true, r: 40 });
+                }
+                return;
+            } else if (r.stage === 'PROMPT_HEAL' && r.timer > 15) {
+                r.stage = 'LIGHT_ERUPTION';
+                r.timer = 0;
+                flashAlpha = 1.0;
+                updateStoryTouchUIVisibility();
+                if (typeof playSound === 'function') {
+                    playSound('lightChime');
+                    playSound('absorb');
+                }
+                if (typeof triggerShake === 'function') triggerShake(8, 16);
+                return;
+            } else if (r.stage === 'ANNOUNCEMENT' && r.timer > 20) {
+                finishScrollRitual();
+                return;
+            }
         }
 
         if (storyState.step !== 'BENCH_REST' || storyState.stepTimer <= 25) return;

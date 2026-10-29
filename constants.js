@@ -1,5 +1,5 @@
 // --- CONSTANTS & SHARED STATE ---
-const GAME_VERSION = "v76.0";
+const GAME_VERSION = "v84.7";
 window.GAME_VERSION = GAME_VERSION;
 let isFireBossMode = false;
 window.isFireBossMode = false;
@@ -181,8 +181,8 @@ const DEFAULT_CONTROLS = {
     DUO_KEYBOARD: {
         p1: {
             left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
-            jump: 'Space', attack: 'KeyF', heal: 'KeyQ', dash: 'KeyE', special: 'KeyR',
-            light: 'KeyC', stance: 'KeyT'
+            jump: 'Space', attack: 'KeyF', heal: 'KeyQ', dash: 'KeyC', special: 'KeyR',
+            light: 'KeyE', stance: 'KeyT'
         },
         p2: {
             left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown',
@@ -216,6 +216,10 @@ function initControlsFromStorage() {
             if (userControls.DUO_KEYBOARD && userControls.DUO_KEYBOARD.p1 && userControls.DUO_KEYBOARD.p1.left === 'ArrowLeft') {
                 // Auto-migrate inverted Duo Keyboard mapping so P1 is on the left (WASD) and P2 is on the right (Arrows)
                 userControls.DUO_KEYBOARD = JSON.parse(JSON.stringify(DEFAULT_CONTROLS.DUO_KEYBOARD));
+            }
+            if (userControls.DUO_KEYBOARD && userControls.DUO_KEYBOARD.p1 && userControls.DUO_KEYBOARD.p1.dash === 'KeyE') {
+                userControls.DUO_KEYBOARD.p1.dash = 'KeyC';
+                if (userControls.DUO_KEYBOARD.p1.light === 'KeyC') userControls.DUO_KEYBOARD.p1.light = 'KeyE';
             }
             if (userControls.SCHEME_2 && (userControls.SCHEME_2.stance === 'KeyT' || !userControls.SCHEME_2.stance)) {
                 userControls.SCHEME_2.stance = 'KeyR';

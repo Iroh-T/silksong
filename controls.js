@@ -2,10 +2,13 @@
 
 function isKeyPressed(codes) { 
     if (!codes) return false;
+    if (typeof codes === 'boolean') return codes;
     if (typeof codes === 'string') return !!keys[codes];
-    for (let c of codes) { 
-        if (keys[c]) return true; 
-    } 
+    if (Array.isArray(codes)) {
+        for (let c of codes) { 
+            if (keys[c]) return true; 
+        } 
+    }
     return false; 
 }
 
@@ -340,6 +343,15 @@ tBtns.forEach(id => {
         el.addEventListener('touchcancel', releaseBtn, { passive: false });
     }
 });
+
+let mb = document.getElementById('m-backpack');
+if (mb) {
+    mb.addEventListener('touchstart', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof openStoryBackpackModal === 'function') openStoryBackpackModal();
+    }, { passive: false });
+}
 
 // Gamepad API Polling
 function getGamepadInput(targetIndex) {

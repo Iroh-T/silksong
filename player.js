@@ -190,8 +190,16 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
             voidExplosions.push({ x: p.x + p.width/2, y: p.y + p.height/2, timer: 18, isWhite: false, isOrange: true, r: 60 });
         }
 
-        if (typeof easyBossMode !== 'undefined' && easyBossMode && !isBleed && !isStaminaBleed) {
-            amount = Math.max(0.25, amount * 0.5);
+        let isSimplifiedOrTouch = (typeof easyBossMode !== 'undefined' && easyBossMode) || 
+                                  (typeof p1InputType !== 'undefined' && p1InputType === 'TOUCH') || 
+                                  (p.inputType === 'TOUCH');
+        if (isSimplifiedOrTouch && !isBleed && !isStaminaBleed) {
+            amount = Math.max(0.5, amount - 0.5);
+        }
+
+        // Water Dash Master Perk: incoming damage reduced by 0.5 during dash
+        if (p.isDashing && p.type === 'WATER' && typeof storyState !== 'undefined' && storyState.dashMaster === 'WATER' && !isBleed && !isStaminaBleed) {
+            amount = Math.max(0.5, amount - 0.5);
         }
 
         if (p.isDashing && !isBleed) {
@@ -294,13 +302,20 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         if (p.type === 'STAMINA') p.isCharging = false; 
         playSound('hitPlayer'); 
         if (p.hp <= 0) {
-            let activeAllies = players.filter(pl => pl.id !== p.id && pl.hp > 0 && !pl.isDowned);
-            if (players.length > 1 && activeAllies.length > 0 && !p.isDowned) { 
-                p.isDowned = true; 
-                p.hp = 0.1; 
-                p.downedTimer = 600; // 10 секунд (600 кадров при 60 FPS)
-            } else { 
-                p.hp = 0; 
+            if (typeof window !== 'undefined' && window.isStoryMode) {
+                // В сюжете НЕТ механики воскрешения! Если умирает хоть один - сразу смерть всей команды и скамейка!
+                p.hp = 0;
+                p.isDowned = false;
+                p.downedTimer = 0;
+            } else {
+                let activeAllies = players.filter(pl => pl.id !== p.id && pl.hp > 0 && !pl.isDowned);
+                if (players.length > 1 && activeAllies.length > 0 && !p.isDowned) { 
+                    p.isDowned = true; 
+                    p.hp = 0.1; 
+                    p.downedTimer = 600; // 10 секунд (600 кадров при 60 FPS)
+                } else { 
+                    p.hp = 0; 
+                }
             }
         }
 
@@ -316,6 +331,15 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         }
     }
 }
+window.takeDamage = takeDamage;
+
+function damagePlayer(arg1, arg2, isBleed = false, isFall = false) {
+    let p = (typeof arg1 === 'object' && arg1 !== null) ? arg1 : arg2;
+    let amt = (typeof arg1 === 'number') ? arg1 : ((typeof arg2 === 'number') ? arg2 : 1);
+    if (!p) return;
+    takeDamage(p, amt, isBleed, false, false, false, false, isFall);
+}
+window.damagePlayer = damagePlayer;
 
 function recordHit(p) { 
     if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal) {
@@ -633,10 +657,22 @@ function updatePlayers() {
         if (p.vy >= 0) {
             for (let plat of platforms) {
                 if (plat.isWall) continue;
-                if (p.y + p.height <= plat.y + 16 && p.y + p.height + p.vy >= plat.y && p.x + p.width > plat.x && p.x < plat.x + plat.w) {
-                    p.y = plat.y - p.height; p.vy = 0; onPlatform = true; 
-                    p.lastSafeX = plat.x + plat.w / 2 - p.width / 2; 
-                    p.lastSafeY = plat.y - p.height;
+                let platTop = plat.y;
+                let maxCatch = Math.max(16, p.vy + 6);
+                let isAboveOrEntering = (p.y + p.height <= platTop + maxCatch && p.y + p.height + p.vy >= platTop);
+                // Extra safety for solid ground: prevent tunneling through floors at high downward speed
+                if (!plat.canJumpThrough && !isAboveOrEntering) {
+                    let platBottom = plat.y + (plat.h || 30);
+                    if (p.y + p.height >= platTop && p.y + p.height <= platBottom + maxCatch) {
+                        isAboveOrEntering = true;
+                    }
+                }
+                if (isAboveOrEntering && p.x + p.width > plat.x && p.x < plat.x + plat.w) {
+                    p.y = platTop - p.height; p.vy = 0; onPlatform = true; 
+                    if (typeof isPositionNearSpikes !== 'function' || !isPositionNearSpikes(plat.x + plat.w / 2 - p.width / 2, plat.y - p.height, p.width, p.height)) {
+                        p.lastSafeX = plat.x + plat.w / 2 - p.width / 2; 
+                        p.lastSafeY = plat.y - p.height;
+                    }
                     if (plat.num) p.highestPlatReached = Math.max(p.highestPlatReached || 1, plat.num);
                     break;
                 }
@@ -644,7 +680,7 @@ function updatePlayers() {
         } else if (p.vy < 0) {
             // Твёрдые платформы (в паркуре сюжета): если прыгнуть снизу под платформой, ударяешься головой об неё!
             for (let plat of platforms) {
-                if (!plat.solid && !(typeof window !== 'undefined' && window.isStoryMode)) continue;
+                if (plat.canJumpThrough || (!plat.solid && !(typeof window !== 'undefined' && window.isStoryMode))) continue;
                 let platH = plat.h || 18;
                 if (p.y >= plat.y + platH - 14 && p.y + p.vy <= plat.y + platH && p.x + p.width > plat.x + 4 && p.x < plat.x + plat.w - 4) {
                     p.y = plat.y + platH;
@@ -903,15 +939,62 @@ function updatePlayers() {
         } else {
             kLeft = isKeyPressed(p.keys.left); kRight = isKeyPressed(p.keys.right); kDown = isKeyPressed(p.keys.down); kUp = isKeyPressed(p.keys.up);
             kJump = isKeyPressed(p.keys.jump); kAttack = isKeyPressed(p.keys.attack); kHeal = isKeyPressed(p.keys.heal); kSpec = isKeyPressed(p.keys.special);
-            kDash = p.keys.dash ? isKeyPressed(p.keys.dash) : false; 
+            
+            let dashPressed = (p.keys && p.keys.dash) ? isKeyPressed(p.keys.dash) : false;
+            if (p.id === 1) {
+                // Player 1 (Left Player / WASD or Silksong scheme):
+                // Allow bound dash keys, KeyC, KeyE, ShiftLeft, and Russian layout letters (с/С, у/У)
+                if (isKeyPressed(['KeyC', 'KeyE', 'ShiftLeft', 'KeyС', 'KeyУ', 'с', 'С', 'у', 'У'])) {
+                    dashPressed = true;
+                }
+            } else if (p.id === 2 && isDuoKeyboard) {
+                // Player 2 in Duo Keyboard (Right Player / Arrows):
+                // Only allow their bound dash key, Slash, Backslash, ShiftRight
+                if (isKeyPressed(['Slash', 'Backslash', 'ShiftRight'])) {
+                    dashPressed = true;
+                }
+            }
+            kDash = dashPressed;
             kLight = (p.keys && p.keys.light && isKeyPressed(p.keys.light)) || (!isDuoKeyboard && isKeyPressed(['ShiftLeft', 'ShiftRight', 'KeyL'])) || ((p.inputType === 'KEYBOARD_SHOOTER' || p.inputType === 'KEYBOARD_2') ? (isKeyPressed(['MouseLeft']) && isKeyPressed(['MouseRight'])) : false);
             kStance = (p.keys && p.keys.stance) ? isKeyPressed(p.keys.stance) : isKeyPressed((p.inputType === 'KEYBOARD_SHOOTER' || p.inputType === 'KEYBOARD_2') ? 'KeyR' : 'KeyS');
         }
 
         let rawHealKey = kHeal;
         if (typeof window !== 'undefined' && window.isStoryMode) {
-            kHeal = false;
-            kDash = false;
+            kHeal = (typeof storyState !== 'undefined' && !!storyState.healUnlocked);
+
+            // Determine if THIS SPECIFIC PLAYER pressed their own dash input:
+            let rawDashKey = kDash;
+            if (p.isAi || p.inputType === 'AI') {
+                rawDashKey = kDash; // AI decides its own dash
+            }
+
+            if (typeof storyState === 'undefined' || !storyState.dashUnlocked) {
+                if (rawDashKey && !p.prevDashLockedNotice && p.id === 1 && !p.isAi) {
+                    p.prevDashLockedNotice = true;
+                    let hasScroll = storyState && storyState.backpack && storyState.backpack.some(it => it && it.id === 'dash_scroll');
+                    if (hasScroll) {
+                        storyState.dashPromptNotice = {
+                            text: "📜 Свиток у вас! Сядьте у костра, откройте рюкзак [Tab] и вонзите оружие!",
+                            color: "#00e5ff",
+                            timer: 180
+                        };
+                    } else {
+                        storyState.dashPromptNotice = {
+                            text: "🔒 Рывок запечатан! Найдите Свиток в пещере за шипами в конце зала.",
+                            color: "#facc15",
+                            timer: 160
+                        };
+                    }
+                    if (typeof playSound === 'function') playSound('parry');
+                } else if (!rawDashKey) {
+                    p.prevDashLockedNotice = false;
+                }
+                kDash = false;
+            } else {
+                p.prevDashLockedNotice = false;
+                kDash = rawDashKey;
+            }
             if (p.id === 1 && typeof storyState !== 'undefined') {
                 if (!storyState.jumpUnlocked) kJump = false;
                 if (!storyState.attackUnlocked) kAttack = false;
@@ -1210,10 +1293,10 @@ function updatePlayers() {
         }
 
         // Water Demon L-mode Abyss Plunge (F + Down): мгновенное погружение под пол арены
-        if (p.type === 'WATER' && p.stance === 'DEMON' && secretMode) {
+        if (p.type === 'WATER' && p.stance === 'DEMON' && secretMode && !(typeof window !== 'undefined' && window.isStoryMode)) {
             if (kDown && kSpec && !p.isHealing && p.overheatTimer <= 0 && !p.isUnderFloor) {
                 p.isUnderFloor = true;
-                p.y = FLOOR + 70;
+                p.y = FLOOR + 60;
                 p.vy = 0;
                 p.prevDaggerKey = true; // блокирует параллельный каст способности слота F
                 playSound('teleport');
@@ -1222,6 +1305,11 @@ function updatePlayers() {
             }
             if (p.isUnderFloor) {
                 p.underFloorTimer = (p.underFloorTimer || 0) + 1;
+                // Keep player floating safely in the shadow sub-floor layer (never drop into infinity!)
+                if (p.y > FLOOR + 65) {
+                    p.y = FLOOR + 65;
+                    if (p.vy > 0) p.vy = 0;
+                }
                 if (p.underFloorTimer >= 120) { // каждые 2 секунды тратит 0.25 хила
                     p.underFloorTimer = 0;
                     if (sharedHeals >= 0.25) {
@@ -1230,8 +1318,13 @@ function updatePlayers() {
                         takeDamage(p, 0.5, true);
                     }
                 }
-                if (p.y + p.height <= FLOOR) {
-                    p.isUnderFloor = false; // выход при прыжке выше пола
+                // Surface immediately on jump, pressing up, or when timer expires (max 3 sec)
+                if (p.y + p.height <= FLOOR || kJump || kUp || p.underFloorTimer >= 180) {
+                    p.isUnderFloor = false;
+                    p.underFloorTimer = 0;
+                    p.y = Math.min(p.y, FLOOR - p.height);
+                    if (p.vy >= 0) p.vy = -7.5; // Smooth launch up onto the floor!
+                    playSound('waterDrop');
                 }
             }
         }
@@ -1289,7 +1382,7 @@ function updatePlayers() {
             if (p.type === 'STAMINA'){ p.isCharging = false; p.chargeTimer = 0; }
         } else {
             // --- БЛИЖНЕЕ ВОСКРЕШЕНИЕ НА [A] (Отдать 1 HP или 0.5 HP тяжело раненому союзнику) ---
-            let nearbyDownedAlly = players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0 && Math.hypot((pl.x + pl.width / 2) - (p.x + p.width / 2), (pl.y + pl.height / 2) - (p.y + p.height / 2)) <= 75);
+            let nearbyDownedAlly = (!window.isStoryMode) ? players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0 && Math.hypot((pl.x + pl.width / 2) - (p.x + p.width / 2), (pl.y + pl.height / 2) - (p.y + p.height / 2)) <= 75) : null;
             if (nearbyDownedAlly && rawHealKey && !p.prevHealKey && !p.isHealing && !p.isParrying && p.overheatTimer <= 0 && p.hp > 0.5) {
                 let giveHp = (p.hp > 1.0) ? 1.0 : 0.5;
                 p.hp = Math.max(0.5, Math.round((p.hp - giveHp) * 2) / 2);
@@ -1857,17 +1950,27 @@ function updatePlayers() {
 
                 if (canBurst) {
                     let burstFrames = (p.type === 'WATER_ROPE') ? 14 : 10;
+                    let isDashMaster = (typeof storyState !== 'undefined' && storyState.dashMaster === p.type);
+                    if (isDashMaster) burstFrames = Math.round(burstFrames * 1.2);
                     p.dashBurstTimer = burstFrames;
                     p.dashDir = (kLeft ? -1 : (kRight ? 1 : (p.facingRight ? 1 : -1)));
                     p.facingRight = p.dashDir > 0;
                     playSound('dash');
                     applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 8);
+
+                    // Air Dash Master: unleash forward air wave that knocks back enemies
+                    if (isDashMaster && p.type === 'AIR') {
+                        if (typeof triggerAirDashWave === 'function') {
+                            triggerAirDashWave(p);
+                        }
+                    }
                 }
 
-                // Dash Backstab Shadow Teleport for Water Demon & Earth facing boss
+                // Dash Backstab Shadow Teleport for Water Demon & Earth facing boss / story enemies
+                let isEarthMaster = (typeof storyState !== 'undefined' && storyState.dashMaster === 'EARTH');
                 if ((p.type === 'WATER' && p.stance === 'DEMON') || p.type === 'EARTH') {
-                    let facingBoss = (p.facingRight && boss.x > p.x) || (!p.facingRight && boss.x < p.x);
-                    let dist = Math.abs(boss.x - p.x);
+                    let facingBoss = (typeof boss !== 'undefined' && boss && boss.hp > 0) && ((p.facingRight && boss.x > p.x) || (!p.facingRight && boss.x < p.x));
+                    let dist = (typeof boss !== 'undefined' && boss) ? Math.abs(boss.x - p.x) : 9999;
                     if (facingBoss && dist < 450 && p.shadowStepCooldown <= 0 && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED" && !p.tied) {
                         p.shadowStepCooldown = 90;
                         let targetX = boss.facingRight ? boss.x - 35 : boss.x + boss.width + 5;
@@ -1877,13 +1980,23 @@ function updatePlayers() {
                         p.facingRight = boss.x > p.x;
                         playSound('teleport');
                         triggerShake(3, 6);
+                    } else if (isEarthMaster && p.type === 'EARTH' && p.shadowStepCooldown <= 0 && typeof triggerEarthBehindBackDash === 'function') {
+                        triggerEarthBehindBackDash(p);
                     }
                 }
             }
             p.prevDashKey = kDash;
 
-            let baseSpd = { 'WATER': 5, 'EARTH': 5.5, 'AIR': 5.5, 'STAMINA': 5, 'FIRE': 5.25, 'FIRE_HALBERD': 5.1, 'WATER_ROPE': 5.4 }[p.type] || 5;
-            let sprintSpd = { 'WATER': 7.8, 'EARTH': 8.2, 'AIR': 8.2, 'STAMINA': 7.2, 'FIRE': 7.6, 'FIRE_HALBERD': 7.8, 'WATER_ROPE': 8.2 }[p.type] || 7.8;
+            let baseSpd = { 'WATER': 5.5, 'EARTH': 5.2, 'AIR': 5.5, 'STAMINA': 5.0, 'FIRE': 5.25, 'FIRE_HALBERD': 5.1, 'WATER_ROPE': 5.4 }[p.type] || 5.5;
+            let sprintSpd = { 'WATER': 8.2, 'EARTH': 7.8, 'AIR': 8.2, 'STAMINA': 7.2, 'FIRE': 7.6, 'FIRE_HALBERD': 7.8, 'WATER_ROPE': 8.2 }[p.type] || 8.2;
+
+            // Scroll Dash Master receives permanent +20% movement speed (walking + sprint)
+            let isDashMaster = (typeof storyState !== 'undefined' && storyState.dashUnlocked && storyState.dashMaster === p.type);
+            if (isDashMaster) {
+                baseSpd *= 1.2;
+                sprintSpd *= 1.2;
+            }
+
             let isSprinting = kDash && (onFloor || onPlatform) && p.dashBurstTimer <= 0;
             p.speed = (isSprinting ? sprintSpd : baseSpd) * p.speedMod;
             p.isDashing = isSprinting || (p.dashBurstTimer > 0);
@@ -2191,8 +2304,25 @@ function updatePlayers() {
                 } else if (p.dashBurstTimer > 0) {
                     p.dashBurstTimer--;
                     let burstVelocity = (p.type === 'WATER_ROPE') ? 13.5 : 11.5;
+                    let isDashMaster = (typeof storyState !== 'undefined' && storyState.dashUnlocked && storyState.dashMaster === p.type);
+                    if (isDashMaster) burstVelocity *= 1.2;
                     p.vx = p.dashDir * burstVelocity * p.speedMod;
                     if (!onFloor && !onPlatform) p.vy = Math.min(p.vy, 0.4);
+                    p.isDashing = true;
+                    if (typeof stepPuffs !== 'undefined') {
+                        let trailCol = (p.type === 'WATER') ? 'rgba(56, 189, 248, 0.75)' : (p.type === 'AIR' ? 'rgba(250, 204, 21, 0.75)' : 'rgba(74, 222, 128, 0.75)');
+                        stepPuffs.push({
+                            x: p.x + p.width / 2 + (Math.random() - 0.5) * 8,
+                            y: p.y + p.height / 2 + (Math.random() - 0.5) * 12,
+                            vx: -p.vx * 0.2 + (Math.random() - 0.5) * 2,
+                            vy: (Math.random() - 0.5) * 2,
+                            radius: isDashMaster ? 7 : 4,
+                            life: 14,
+                            maxLife: 14,
+                            alpha: 0.8,
+                            color: trailCol
+                        });
+                    }
                 } else if (p.type === 'FIRE' && p.fireLungeTimer > 0) {
                     p.vx = (p.facingRight ? 1 : -1) * 20;
                     if (!onFloor && !onPlatform) p.vy = Math.min(p.vy, 0.2);
@@ -2977,7 +3107,7 @@ function updatePlayers() {
                 if (p.type === 'FIRE') p.prevDashKey = kDash;
                 if (!p.isRopeSliding) {
                     let grav = (p.badges && p.badges.includes('bracelet')) ? (currentGravity * 1.07) : currentGravity;
-                    p.vy += grav;
+                    p.vy = Math.min(18, p.vy + grav);
                 }
                 if (p.badges && p.badges.includes('feather') && kJump && p.vy > 1.2 && !onFloor && !onPlatform && !onWall) {
                     p.vy = 1.2;
@@ -3009,7 +3139,7 @@ function updatePlayers() {
         } else if (window.isStoryMode) {
             // Горизонтальная коллизия с твёрдыми платформами и стенами в сюжете
             for (let plat of platforms) {
-                if (!plat.solid) continue;
+                if (!plat.solid || plat.canJumpThrough) continue;
                 let platH = plat.h || 18;
                 if (p.y + p.height > plat.y + 8 && p.y < plat.y + platH - 6) {
                     if (p.vx > 0 && p.x + p.width > plat.x && (p.x - p.vx + p.width) <= plat.x + 14) {
@@ -3026,15 +3156,44 @@ function updatePlayers() {
                 if (p.x < 4810) { p.x = 4810; if (p.vx < 0) p.vx = 0; }
                 let rightBound = (typeof storyTrials !== 'undefined' && storyTrials && storyTrials.trialsCleared) ? (ARENA_W - p.width) : (6290 - p.width);
                 if (p.x > rightBound) { p.x = rightBound; if (p.vx > 0) p.vx = 0; }
+                // Fall into pit in Trials arena (Floor is at Y = 850)
+                if (p.y > 1100 && p.invuln <= 0) {
+                    damagePlayer(1, p, false, true); // 1 fall damage
+                    p.x = p.lastSafeX || ((typeof storyTrials !== 'undefined' && storyTrials && storyTrials.trialsCleared) ? 6400 : 4960);
+                    p.y = (p.lastSafeY || 800) - 10;
+                    p.vx = 0;
+                    p.vy = 0;
+                    p.invuln = 60;
+                }
             } else {
                 if (p.x < -480) { p.x = -480; if (p.vx < 0) p.vx = 0; }
                 if (p.x > ARENA_W - p.width) { p.x = ARENA_W - p.width; if (p.vx > 0) p.vx = 0; }
-            }
-            if (p.y > 1100) {
-                p.x = p.lastSafeX || (typeof storyState !== 'undefined' && storyState.inTrials ? ((typeof storyTrials !== 'undefined' && storyTrials && storyTrials.trialsCleared) ? 6400 : 4960) : 120);
-                p.y = p.lastSafeY || 800;
-                p.vx = 0;
-                p.vy = 0;
+                // In Story Mode exploration, falling between tiers (Y: 850 -> 1400 -> 1950) is natural!
+                // Teleport back ONLY happens if player takes fall damage from spikes or an actual out-of-bounds abyss (Y > 2300)
+                let inDropShaft = (p.x >= 2280 && p.x <= 2520 && p.y >= 1920) || 
+                                  (p.x >= 8200 && p.x <= 8520 && p.y >= 1700) ||
+                                  (typeof storyState !== 'undefined' && storyState.roomTransitioning);
+                if (!inDropShaft && p.y > 2300) {
+                    if (p.isAi) {
+                        let lead = players.find(pl => !pl.isAi) || players[0];
+                        if (lead) { p.x = lead.x; p.y = lead.y; p.vx = 0; p.vy = 0; }
+                    } else if (p.invuln <= 0) {
+                        if (typeof window !== 'undefined' && typeof window.handleStoryHazardDamage === 'function') {
+                            window.handleStoryHazardDamage(p);
+                        } else if (typeof handleStoryHazardDamage === 'function') {
+                            handleStoryHazardDamage(p);
+                        } else {
+                            damagePlayer(1, p, false, true); // 1 fall damage
+                            let fallbackX = (p.x >= 8200) ? 8480 : 1350;
+                            let fallbackY = (p.x >= 8200) ? 1790 : 1940;
+                            p.x = p.lastSafeX || fallbackX;
+                            p.y = (p.lastSafeY || fallbackY) - 10;
+                            p.vx = 0;
+                            p.vy = 0;
+                            p.invuln = 60;
+                        }
+                    }
+                }
             }
         } else {
             let ceilingLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) ? -2000 : 0;
