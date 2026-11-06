@@ -44,8 +44,9 @@ function createPlayer(id, type, keysObj, inputType, startX) {
         prevWaterDropKey: false, prevUltKey: false, prevLightKey: false,
         wallJumpCooldown: 0, bleedTimer: 0, tied: false, tieClicks: 0, hasPressedTie: false, keys: keysObj, inputType: inputType, isDowned: false, downedTimer: 0, 
         isDashing: false, purpleHp: 0, tpCooldown: 0, tpDebuffTimer: 0, jumps: 0, maxJumps: 1, healFramesTotal: 120, isMultiHeal: false, glassDebuff: false, hasSharpening: false, dmgDealtMod: 1, genTimer: 0, lightCharge: 0, saHit: false, pendingDmgTimer: 0, pendingDmg: 0, healCost: 1,
-        recoilResist: false, attackSpamCount: 0, overheatTimer: 0, heatLevel: 0, lastSafeX: startX, lastSafeY: FLOOR - 50, badges: [], abilities: {}, chillBrews: 0, invigBrews: 0, chillTimer: 0, invigTimer: 0,
-        speedMod: 1, hasSneakers: false, runTimer: 0, voidDamageTimer: 0, spamResetTimer: 0,
+        recoilResist: false, lastSafeX: startX, lastSafeY: FLOOR - 50, badges: [], abilities: {}, chillBrews: 0, invigBrews: 0, chillTimer: 0, invigTimer: 0,
+        speedMod: 1, hasSneakers: false, runTimer: 0, voidDamageTimer: 0,
+        coyoteTimer: 0, jumpBufferTimer: 0, squashX: 1, squashY: 1, prevLandingVy: 0, lastSpikePogoTimer: 0, hazardCooldown: 0,
         stance: 'LIGHT', weaponMode: 'PINK', comboHits: 0, comboTimer: 0,
         heatBladeTimer: 0, heatBladeIgniteTimer: 0, heatHitCount: 0,
         demonRageTimer: 0, isUnderFloor: false, underFloorTimer: 0, holdDownSpecTimer: 0,
@@ -67,13 +68,13 @@ function createPlayer(id, type, keysObj, inputType, startX) {
     let isL = (typeof secretMode !== 'undefined' && !!secretMode) || (typeof window !== 'undefined' && !!window.secretMode);
     let isFireDuel = (typeof isFireBossMode !== 'undefined' && !!isFireBossMode) || (typeof window !== 'undefined' && !!window.isFireBossMode);
     let baseHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : (isFireDuel ? 8 : (isL ? 8 : 6));
-    if (type === 'WATER') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#3366ff", atkCdBase: 24, atkRange: 95, jumpPowerBase: -12, type: 'WATER', dmgMulti: 1 }); } 
-    else if (type === 'EARTH') { Object.assign(p, { speed: 5.6, hp: baseHp, maxHp: baseHp, color: "#33cc33", atkCdBase: 8, atkRange: 65, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.75 }); } 
-    else if (type === 'AIR') { Object.assign(p, { speed: 5.5, hp: baseHp, maxHp: baseHp, color: "#ffdd00", atkCdBase: 60, atkRange: 80, jumpPowerBase: -13, type: 'AIR', dmgMulti: 1.0 }); } 
-    else if (type === 'STAMINA') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#b35959", atkCdBase: 24, atkRange: 95, jumpPowerBase: -12, type: 'STAMINA', dmgMulti: 1.5, stamina: 5, maxStamina: 9, isCharging: false, chargeTimer: 0, chargeProjectiles: [] }); }
-    else if (type === 'FIRE') { Object.assign(p, { speed: 5.25, hp: baseHp, maxHp: baseHp, color: "#ff5500", atkCdBase: 18, atkRange: 80, jumpPowerBase: -12.5, type: 'FIRE', dmgMulti: 1.25, isParrying: false, parryTimer: 0, orangeHp: 0, orangeHpTimer: 0, isFieryHealing: false, fireDashTimer: 0 }); }
-    else if (type === 'FIRE_HALBERD') { Object.assign(p, { speed: 5.1, hp: baseHp, maxHp: baseHp, color: "#ff3322", atkCdBase: 28, atkRange: 130, jumpPowerBase: -12.2, type: 'FIRE_HALBERD', dmgMulti: 1.0, halberdBuffTimer: 0, halberdVampiricReady: false, halberdCombos: 0, halberdComboTimer: 0, whirlwindTimer: 0 }); }
-    else if (type === 'WATER_ROPE') { let rHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : (isL ? 6 : 4); Object.assign(p, { width: 22, height: 38, speed: 5.4, hp: rHp, maxHp: rHp, color: "#00e5ff", atkCdBase: 18, atkRange: 58, jumpPowerBase: -11.8, type: 'WATER_ROPE', dmgMulti: 0.75, concentrateTimer: 0, concentrateReady: false, ropeA: null, ropeB: null, ropeActive: false, ropeDrainTimer: 0, ropeSlideTimer: 0, isRopeSliding: false, ropeT: 0, ropeUltAttempts: 3 }); }
+    if (type === 'WATER') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#3366ff", atkCdBase: 28, atkRange: 95, jumpPowerBase: -12, type: 'WATER', dmgMulti: 1 }); } 
+    else if (type === 'EARTH') { Object.assign(p, { speed: 5.6, hp: baseHp, maxHp: baseHp, color: "#33cc33", atkCdBase: 9, atkRange: 65, jumpPowerBase: -12, type: 'EARTH', dmgMulti: 0.75 }); } 
+    else if (type === 'AIR') { Object.assign(p, { speed: 5.5, hp: baseHp, maxHp: baseHp, color: "#ffdd00", atkCdBase: 70, atkRange: 80, jumpPowerBase: -13, type: 'AIR', dmgMulti: 1.0 }); } 
+    else if (type === 'STAMINA') { Object.assign(p, { speed: 5, hp: baseHp, maxHp: baseHp, color: "#b35959", atkCdBase: 28, atkRange: 95, jumpPowerBase: -12, type: 'STAMINA', dmgMulti: 1.5, stamina: 5, maxStamina: 9, isCharging: false, chargeTimer: 0, chargeProjectiles: [] }); }
+    else if (type === 'FIRE') { Object.assign(p, { speed: 5.25, hp: baseHp, maxHp: baseHp, color: "#ff5500", atkCdBase: 21, atkRange: 80, jumpPowerBase: -12.5, type: 'FIRE', dmgMulti: 1.25, isParrying: false, parryTimer: 0, orangeHp: 0, orangeHpTimer: 0, isFieryHealing: false, fireDashTimer: 0 }); }
+    else if (type === 'FIRE_HALBERD') { Object.assign(p, { speed: 5.1, hp: baseHp, maxHp: baseHp, color: "#ff3322", atkCdBase: 33, atkRange: 130, jumpPowerBase: -12.2, type: 'FIRE_HALBERD', dmgMulti: 1.0, halberdBuffTimer: 0, halberdVampiricReady: false, halberdCombos: 0, halberdComboTimer: 0, whirlwindTimer: 0 }); }
+    else if (type === 'WATER_ROPE') { let rHp = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.hp3) ? 3 : (isL ? 6 : 4); Object.assign(p, { width: 22, height: 38, speed: 5.4, hp: rHp, maxHp: rHp, color: "#00e5ff", atkCdBase: 21, atkRange: 58, jumpPowerBase: -11.8, type: 'WATER_ROPE', dmgMulti: 0.75, concentrateTimer: 0, concentrateReady: false, ropeA: null, ropeB: null, ropeActive: false, ropeDrainTimer: 0, ropeSlideTimer: 0, isRopeSliding: false, ropeT: 0, ropeUltAttempts: 3 }); }
     return p;
 }
 
@@ -92,7 +93,7 @@ window.addPlayerBurnGauge = addPlayerBurnGauge;
 
 function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassInvuln = false, isVoidPuddle = false, isBoulder = false, isFallGoo = false) {
     if (godModeActive || window.godModeActive) return;
-    if (p.isSilkRunning) return; // Герой во время шелкового бега находится в безопасности!
+    if (p.isSilkRunning && !bypassInvuln && !isFallGoo) return; // Герой во время шелкового бега находится в безопасности от обычных атак!
     if (p.crackedImmuneTimer > 0) return; // 100% immune during Cracked Life multi-tick survival window
     if (!isBleed && !boss.state.startsWith("CINEMATIC") && !activeCinematic && !bypassInvuln && !boss.state.startsWith("L_SCREAM") && !boss.state.startsWith("L_INTRO")) { 
         boss.directAttackHit = true; 
@@ -106,7 +107,7 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         amount = Math.max(0.5, amount - 0.5);
     }
 
-    if (p.isParrying && !isBleed && !isStaminaBleed && !bypassInvuln) {
+    if (p.isParrying && !isBleed && !isStaminaBleed && !bypassInvuln && !isFallGoo) {
         p.isParrying = false; 
         p.parryTimer = 0;
         triggerVibration('clash'); 
@@ -134,7 +135,7 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         return; 
     }
 
-    if (p.invuln <= 0 || isBleed || bypassInvuln) {
+    if (p.invuln <= 0 || isBleed || bypassInvuln || isFallGoo) {
         // Lucky Charm (5% dodge) & Earth Hero at 4-5 heals (5% dodge + 2% Lucky Charm synergy)
         let dodgeChance = 0;
         if (p.hasLuckyCharm) dodgeChance += 0.05;
@@ -142,7 +143,7 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
             dodgeChance += 0.05;
             if (p.hasLuckyCharm) dodgeChance += 0.02; // +2% synergy!
         }
-        if (dodgeChance > 0 && Math.random() < dodgeChance && !isBleed && !isStaminaBleed) {
+        if (dodgeChance > 0 && Math.random() < dodgeChance && !isBleed && !isStaminaBleed && !bypassInvuln && !isFallGoo) {
             p.invuln = 30;
             p.dodgeFlashTimer = 16;
             playSound('parry');
@@ -152,7 +153,7 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         }
 
         // Light Amulet («Амулет света»): шанс смягчить входящий удар на 1 за каждый целый хил команды
-        if (p.hasLightAmulet && !p.lightAmuletBroken && !isBleed && !isStaminaBleed && amount > 0) {
+        if (p.hasLightAmulet && !p.lightAmuletBroken && !isBleed && !isStaminaBleed && !bypassInvuln && !isFallGoo && amount > 0) {
             let blockChance = Math.floor(sharedHeals) * 0.05 + (p.hasLuckyCharm ? 0.02 : 0);
             if (Math.random() < blockChance) {
                 amount = Math.max(0, amount - 1);
@@ -173,7 +174,7 @@ function takeDamage(p, amount, isBleed = false, isStaminaBleed = false, bypassIn
         }
 
         // Shield Badge: Blocks the first incoming attack cleanly!
-        if (p.badges && p.badges.includes('shield') && p.hasAegisShield && !isBleed && !isStaminaBleed) {
+        if (p.badges && p.badges.includes('shield') && p.hasAegisShield && !isBleed && !isStaminaBleed && !bypassInvuln && !isFallGoo) {
             p.hasAegisShield = false;
             p.invuln = 50;
             playSound('parry');
@@ -337,9 +338,72 @@ function damagePlayer(arg1, arg2, isBleed = false, isFall = false) {
     let p = (typeof arg1 === 'object' && arg1 !== null) ? arg1 : arg2;
     let amt = (typeof arg1 === 'number') ? arg1 : ((typeof arg2 === 'number') ? arg2 : 1);
     if (!p) return;
-    takeDamage(p, amt, isBleed, false, false, false, false, isFall);
+    takeDamage(p, amt, isBleed, false, isFall, false, false, isFall);
 }
 window.damagePlayer = damagePlayer;
+
+// --- SILKSONG-GRADE POGO BOUNCE (Мощный отскок с обновлением рывков и прыжков) ---
+function triggerPlayerPogoBounce(pl, targetY, isSpike = false) {
+    if (!pl) return;
+    let kJump = (pl.keys && (checkKeyInput(pl.keys, 'jump') || pl.keys.jump || isKeyPressed(pl.keys.jump))) ||
+                keys['ArrowUp'] || keys['KeyW'] || keys['Space'] ||
+                (typeof touchInputs !== 'undefined' && touchInputs && touchInputs.jump);
+    // Мощный взлёт: в сюжетном режиме высокий отскок для паркура (-17.5/-15.2), а на боевой арене с низким потолком (350px) комфортный сбалансированный отскок (-13.2/-11.2)
+    let force = (!window.isStoryMode)
+        ? (kJump ? -13.2 : -11.2)
+        : (kJump ? -17.5 : -15.2);
+
+    // Дополнительная защита: на боевых аренах ограничиваем силу, если игрок уже близко к потолку
+    if (!window.isStoryMode && pl.y + force < 25) {
+        force = Math.min(-6, -(Math.max(0, pl.y - 25)));
+    }
+
+    pl.vy = force;
+    pl.jumps = 1;              // Восстанавливает двойной прыжок в воздухе!
+    pl.airDashed = false;       // Восстанавливает воздушный рывок!
+    pl.dashBurstTimer = 0;
+    pl.jumpHoldTimer = 0;
+    pl.squashX = 0.62;
+    pl.squashY = 1.48;
+
+    // В духе Silksong: даём игроку кадры неуязвимости (i-frames) при любом успешном пого, чтобы не получать мгновенный контактный урон от хитбокса босса/шипов!
+    pl.invuln = Math.max(pl.invuln || 0, isSpike ? 24 : 18);
+    if (isSpike) {
+        pl.lastSpikePogoTimer = 26;
+    }
+
+    freezeFrames = Math.max(freezeFrames || 0, 5); // Сочный hitstop на 5 кадров!
+
+    if (typeof playSound === 'function') {
+        playSound('clash');
+        playSound('bladeSpin');
+    }
+    if (typeof triggerVibration === 'function') triggerVibration('clash');
+    if (typeof triggerShake === 'function') triggerShake(4, 7, 0, 1);
+
+    let hitY = (targetY !== undefined && targetY > -200) ? targetY : (pl.y + pl.height);
+    if (typeof clashFlash !== 'undefined') {
+        clashFlash = { x: pl.x + pl.width / 2, y: hitY, timer: 16 };
+    }
+    if (typeof voidExplosions !== 'undefined') {
+        voidExplosions.push({ x: pl.x + pl.width / 2, y: hitY, timer: 14, isWhite: true, isOrange: false, r: 32 });
+    }
+    if (typeof stepPuffs !== 'undefined') {
+        for (let k = 0; k < 8; k++) {
+            let angle = -Math.PI * 0.15 - Math.random() * Math.PI * 0.7;
+            let spd = 3.5 + Math.random() * 5.5;
+            stepPuffs.push({
+                x: pl.x + pl.width / 2,
+                y: hitY,
+                vx: Math.cos(angle) * spd,
+                vy: Math.sin(angle) * spd,
+                r: 5.5,
+                alpha: 0.85
+            });
+        }
+    }
+}
+window.triggerPlayerPogoBounce = triggerPlayerPogoBounce;
 
 function recordHit(p) { 
     if (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal) {
@@ -483,7 +547,7 @@ function executeAbility(p, ab) {
     }
     else if (ab === 'chill') {
         if (p.chillBrews > 0) {
-            p.chillBrews--; p.chillTimer = 540; p.overheatTimer = 0; p.attackSpamCount = 0; p.heatLevel = 0; playSound('heal');
+            p.chillBrews--; p.chillTimer = 540; playSound('heal');
         }
     }
     else if (ab === 'invig') {
@@ -656,33 +720,46 @@ function updatePlayers() {
         let onPlatform = false;
         if (p.vy >= 0) {
             for (let plat of platforms) {
-                if (plat.isWall) continue;
-                let platTop = plat.y;
-                let maxCatch = Math.max(16, p.vy + 6);
-                let isAboveOrEntering = (p.y + p.height <= platTop + maxCatch && p.y + p.height + p.vy >= platTop);
-                // Extra safety for solid ground: prevent tunneling through floors at high downward speed
-                if (!plat.canJumpThrough && !isAboveOrEntering) {
-                    let platBottom = plat.y + (plat.h || 30);
-                    if (p.y + p.height >= platTop && p.y + p.height <= platBottom + maxCatch) {
-                        isAboveOrEntering = true;
-                    }
+                if (plat.isWall || plat.isCeiling) continue;
+                if (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined') {
+                    if (storyState.currentRoom === 1 && plat.isRoom2) continue;
+                    if (storyState.currentRoom === 2 && plat.isRoom1) continue;
                 }
-                if (isAboveOrEntering && p.x + p.width > plat.x && p.x < plat.x + plat.w) {
-                    p.y = platTop - p.height; p.vy = 0; onPlatform = true; 
-                    if (typeof isPositionNearSpikes !== 'function' || !isPositionNearSpikes(plat.x + plat.w / 2 - p.width / 2, plat.y - p.height, p.width, p.height)) {
-                        p.lastSafeX = plat.x + plat.w / 2 - p.width / 2; 
-                        p.lastSafeY = plat.y - p.height;
+                let isJumpThrough = plat.canJumpThrough || (!plat.solid && !plat.isWall && !plat.isCeiling);
+                if (isJumpThrough) {
+                    if (p.y + p.height <= plat.y + Math.max(16, p.vy + 4) && p.y + p.height + p.vy >= plat.y && p.x + p.width > plat.x && p.x < plat.x + plat.w) {
+                        p.y = plat.y - p.height; p.vy = 0; onPlatform = true; 
+                        if (typeof isPositionNearSpikes !== 'function' || !isPositionNearSpikes(plat.x + plat.w / 2 - p.width / 2, plat.y - p.height, p.width, p.height)) {
+                            p.lastSafeX = plat.x + plat.w / 2 - p.width / 2; 
+                            p.lastSafeY = plat.y - p.height;
+                        }
+                        if (plat.num) p.highestPlatReached = Math.max(p.highestPlatReached || 1, plat.num);
+                        break;
                     }
-                    if (plat.num) p.highestPlatReached = Math.max(p.highestPlatReached || 1, plat.num);
-                    break;
+                } else if (plat.solid) {
+                    // Твёрдая платформа: посадка сверху на поверхность платформы
+                    let landingTol = Math.max(16, p.vy + 6);
+                    if (p.y + p.height <= plat.y + landingTol && p.y + p.height + p.vy >= plat.y && p.x + p.width > plat.x && p.x < plat.x + plat.w) {
+                        p.y = plat.y - p.height; p.vy = 0; onPlatform = true; 
+                        if (typeof isPositionNearSpikes !== 'function' || !isPositionNearSpikes(plat.x + plat.w / 2 - p.width / 2, plat.y - p.height, p.width, p.height)) {
+                            p.lastSafeX = plat.x + plat.w / 2 - p.width / 2; 
+                            p.lastSafeY = plat.y - p.height;
+                        }
+                        if (plat.num) p.highestPlatReached = Math.max(p.highestPlatReached || 1, plat.num);
+                        break;
+                    }
                 }
             }
         } else if (p.vy < 0) {
-            // Твёрдые платформы (в паркуре сюжета): если прыгнуть снизу под платформой, ударяешься головой об неё!
+            // Твёрдые платформы: если прыгнуть снизу под платформой, ударяешься головой об неё!
             for (let plat of platforms) {
-                if (plat.canJumpThrough || (!plat.solid && !(typeof window !== 'undefined' && window.isStoryMode))) continue;
-                let platH = plat.h || 18;
-                if (p.y >= plat.y + platH - 14 && p.y + p.vy <= plat.y + platH && p.x + p.width > plat.x + 4 && p.x < plat.x + plat.w - 4) {
+                if (plat.canJumpThrough || !plat.solid) continue;
+                if (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined') {
+                    if (storyState.currentRoom === 1 && plat.isRoom2) continue;
+                    if (storyState.currentRoom === 2 && plat.isRoom1) continue;
+                }
+                let platH = plat.h || 20;
+                if (p.y >= plat.y + platH - 14 && p.y + p.vy <= plat.y + platH && p.x + p.width > plat.x + 2 && p.x < plat.x + plat.w - 2) {
                     p.y = plat.y + platH;
                     p.vy = 2.0;
                     p.jumpHoldTimer = 99;
@@ -705,13 +782,25 @@ function updatePlayers() {
         p.inStoryWater = false;
         if (typeof window !== 'undefined' && window.isStoryMode) {
             if (p.x + p.width > 3816 && p.x < 4500 && p.y + p.height > 354 && p.y < 455) {
-                if (!p.wasInStoryWater && p.vy > 1.5) {
+                if (!p.wasInStoryWater && p.vy > 1.2) {
                     if (typeof playSound === 'function') playSound('waterSplash');
+                    if (typeof createWaterSplash === 'function') {
+                        createWaterSplash(p.x + p.width / 2, 356, p.vy);
+                    }
                     if (typeof voidExplosions !== 'undefined') {
                         voidExplosions.push({ x: p.x + p.width / 2, y: 358, timer: 16, isWhite: true, isOrange: false, r: 28 });
                     }
                 }
                 p.inStoryWater = true;
+                // Водные круги и пена при плавании
+                if (Math.abs(p.vx) > 0.4 && (!p.waterRippleTimer || p.waterRippleTimer <= 0)) {
+                    p.waterRippleTimer = 7;
+                    if (typeof addWaterSwimmingRipple === 'function') {
+                        addWaterSwimmingRipple(p.x + p.width / 2, 356, p.vx);
+                    }
+                }
+                if (p.waterRippleTimer > 0) p.waterRippleTimer--;
+
                 // Плавучесть в воде: мягкое покачивание у поверхности, возможность плыть и выпрыгивать
                 if (p.y + p.height > 386) {
                     p.vy -= 0.75;
@@ -738,6 +827,11 @@ function updatePlayers() {
                 }
                 onPlatform = true;
                 p.jumps = 0;
+            } else if (p.wasInStoryWater && p.vy < -1.8) {
+                // Выпрыгивание из воды наружу с фонтанчиком брызг!
+                if (typeof createWaterExitSplash === 'function') {
+                    createWaterExitSplash(p.x + p.width / 2, 356, p.vy);
+                }
             }
             p.wasInStoryWater = p.inStoryWater;
         }
@@ -752,7 +846,7 @@ function updatePlayers() {
                 let triggerFallGoo = (targetP) => {
                     targetP.invuln = 0; // Защита от урона не спасает от падения
                     targetP.gooLightAmuletTimer = 0;
-                    takeDamage(targetP, 2, false, false, false, true); // 2 урона падения
+                    takeDamage(targetP, 2, false, false, true, true, false, true); // 2 урона падения (bypassInvuln=true)
                     let respawnX = targetP.lastSafeX;
                     let respawnY = targetP.lastSafeY;
                     if (abyssGooFloorActive && !abyssGooSolidified && (respawnY >= FLOOR - 40 || !respawnY)) {
@@ -849,6 +943,89 @@ function updatePlayers() {
         }
         p.onGround = (onFloor || onPlatform);
 
+        // Silksong Juice: Coyote Time & Hard Landing Squash / Dust & Wet Floor Splashes
+        if (onFloor || onPlatform) {
+            p.coyoteTimer = 6;
+            if (p.prevLandingVy > 7) {
+                p.squashX = 1.25;
+                p.squashY = 0.75;
+                if (typeof stepPuffs !== 'undefined') {
+                    stepPuffs.push({ x: p.x + p.width / 2 - 8, y: p.y + p.height, vx: -2.2, vy: -0.5, r: 6, alpha: 0.65 });
+                    stepPuffs.push({ x: p.x + p.width / 2 + 8, y: p.y + p.height, vx: 2.2, vy: -0.5, r: 6, alpha: 0.65 });
+                }
+                // Silksong Damp Floor Landing Water Micro-Splashes
+                if (typeof storyState !== 'undefined' && storyState && storyState.waterDrops) {
+                    let landX = p.x + p.width / 2;
+                    let landY = p.y + p.height;
+                    for (let s = 0; s < 4; s++) {
+                        let lDir = (s % 2 === 0 ? -1 : 1);
+                        storyState.waterDrops.push({
+                            x: landX + lDir * (3 + Math.random() * 5),
+                            y: landY - 1,
+                            vx: lDir * (1.6 + Math.random() * 2.2),
+                            vy: -1.2 - Math.random() * 1.8,
+                            r: 1.3 + Math.random() * 1.0,
+                            alpha: 0.85,
+                            life: 16 + Math.random() * 8
+                        });
+                    }
+                    if (storyState.waterRipples) {
+                        storyState.waterRipples.push({
+                            x: landX,
+                            y: landY,
+                            rx: 3.5,
+                            ry: 1.1,
+                            maxRx: 16,
+                            alpha: 0.7,
+                            timer: 16
+                        });
+                    }
+                }
+                if (typeof playSound === 'function') playSound('step');
+            }
+        } else {
+            if (p.coyoteTimer > 0) p.coyoteTimer--;
+        }
+        p.prevLandingVy = p.vy;
+
+        // Running dust puffs & wet floor water micro-splashes (Silksong atmospheric feel)
+        if ((onFloor || onPlatform) && Math.abs(p.vx) > 2) {
+            p.runDustTimer = (p.runDustTimer || 0) + 1;
+            if (p.runDustTimer % 10 === 0 && typeof stepPuffs !== 'undefined') {
+                stepPuffs.push({
+                    x: p.x + (p.vx > 0 ? 2 : p.width - 2),
+                    y: p.y + p.height,
+                    vx: -Math.sign(p.vx) * 1.0,
+                    vy: -0.3,
+                    r: 4.5,
+                    alpha: 0.45
+                });
+            }
+            // Continuous subtle water flick from wet soles
+            if (p.runDustTimer % 8 === 0 && typeof storyState !== 'undefined' && storyState && storyState.waterDrops) {
+                let splashX = p.x + (p.vx > 0 ? 3 : p.width - 3);
+                let splashY = p.y + p.height;
+                let kickDir = -Math.sign(p.vx);
+                storyState.waterDrops.push({
+                    x: splashX + (Math.random() - 0.5) * 4,
+                    y: splashY - 1,
+                    vx: kickDir * (1.1 + Math.random() * 1.6),
+                    vy: -0.8 - Math.random() * 1.2,
+                    r: 1.2 + Math.random() * 0.8,
+                    alpha: 0.8,
+                    life: 14 + Math.random() * 6
+                });
+            }
+        } else {
+            p.runDustTimer = 0;
+        }
+
+        // Squash & stretch elastic decay
+        if (p.squashX) p.squashX += (1 - p.squashX) * 0.2;
+        if (p.squashY) p.squashY += (1 - p.squashY) * 0.2;
+        if (p.lastSpikePogoTimer > 0) p.lastSpikePogoTimer--;
+        if (p.hazardCooldown > 0) p.hazardCooldown--;
+
         if (p.hasSneakers && Math.abs(p.vx) > 0 && (onFloor || onPlatform) && !p.isDashing && !boss.state.startsWith("CINEMATIC") && boss.state !== "DEFEATED") {
             p.runTimer++;
             if (p.runTimer >= 180) {
@@ -859,24 +1036,7 @@ function updatePlayers() {
             p.runTimer = 0;
         }
 
-        if (p.chillTimer > 0) {
-            p.chillTimer--; p.overheatTimer = 0; p.attackSpamCount = 0; p.heatLevel = 0;
-        } else {
-            if (p.spamResetTimer > 0) {
-                p.spamResetTimer--;
-                if (p.spamResetTimer <= 0) {
-                    p.attackSpamCount = 0;
-                    p.heatLevel = 0;
-                }
-            }
-            if (p.overheatTimer > 0) { 
-                p.overheatTimer--; p.heatLevel = Math.max(0, p.overheatTimer / 90); 
-                if (p.overheatTimer <= 0) { p.attackSpamCount = 0; p.heatLevel = 0; } 
-            } else if (p.heatLevel > 0) { 
-                p.heatLevel -= 0.01; 
-            }
-        }
-        
+        if (p.chillTimer > 0) p.chillTimer--;
         if (p.invigTimer > 0) p.invigTimer--;
 
         if (p.pendingDmgTimer > 0) { 
@@ -943,14 +1103,15 @@ function updatePlayers() {
             let dashPressed = (p.keys && p.keys.dash) ? isKeyPressed(p.keys.dash) : false;
             if (p.id === 1) {
                 // Player 1 (Left Player / WASD or Silksong scheme):
-                // Allow bound dash keys, KeyC, KeyE, ShiftLeft, and Russian layout letters (с/С, у/У)
-                if (isKeyPressed(['KeyC', 'KeyE', 'ShiftLeft', 'KeyС', 'KeyУ', 'с', 'С', 'у', 'У'])) {
+                // Allow bound dash keys, KeyC, KeyE, and Russian layout letters (с/С, у/У)
+                // Shift is NOT dash — Shift is reserved for Light Blade / Special Thread (Клинок Света / Спец. Нить)
+                if (isKeyPressed(['KeyC', 'KeyE', 'KeyС', 'KeyУ', 'с', 'С', 'у', 'У'])) {
                     dashPressed = true;
                 }
             } else if (p.id === 2 && isDuoKeyboard) {
                 // Player 2 in Duo Keyboard (Right Player / Arrows):
-                // Only allow their bound dash key, Slash, Backslash, ShiftRight
-                if (isKeyPressed(['Slash', 'Backslash', 'ShiftRight'])) {
+                // Only allow their bound dash key, Slash, Backslash (Shift is reserved for Light)
+                if (isKeyPressed(['Slash', 'Backslash'])) {
                     dashPressed = true;
                 }
             }
@@ -970,29 +1131,8 @@ function updatePlayers() {
             }
 
             if (typeof storyState === 'undefined' || !storyState.dashUnlocked) {
-                if (rawDashKey && !p.prevDashLockedNotice && p.id === 1 && !p.isAi) {
-                    p.prevDashLockedNotice = true;
-                    let hasScroll = storyState && storyState.backpack && storyState.backpack.some(it => it && it.id === 'dash_scroll');
-                    if (hasScroll) {
-                        storyState.dashPromptNotice = {
-                            text: "📜 Свиток у вас! Сядьте у костра, откройте рюкзак [Tab] и вонзите оружие!",
-                            color: "#00e5ff",
-                            timer: 180
-                        };
-                    } else {
-                        storyState.dashPromptNotice = {
-                            text: "🔒 Рывок запечатан! Найдите Свиток в пещере за шипами в конце зала.",
-                            color: "#facc15",
-                            timer: 160
-                        };
-                    }
-                    if (typeof playSound === 'function') playSound('parry');
-                } else if (!rawDashKey) {
-                    p.prevDashLockedNotice = false;
-                }
                 kDash = false;
             } else {
-                p.prevDashLockedNotice = false;
                 kDash = rawDashKey;
             }
             if (p.id === 1 && typeof storyState !== 'undefined') {
@@ -1045,7 +1185,8 @@ function updatePlayers() {
                 else if (p.comboBufferSpecTimer > 0) p.comboBufferSpecTimer--;
 
                 let canDoComboQ = (p.type === 'WATER_ROPE') || (p.type === 'STAMINA' && p.weaponMode === 'PINK');
-                let canDoComboW = (p.type === 'WATER' && (p.stance === 'LIGHT' || window.isStoryMode));
+                let isStoryDropletUnlocked = (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && (storyState.guardianDefeated || storyState.bluePowerUnlocked));
+                let canDoComboW = (p.type === 'WATER' && (p.stance === 'LIGHT' || window.isStoryMode)) || isStoryDropletUnlocked;
 
                 // Прямые шорткаты Q/W работают только когда не включен режим DUO_KEYBOARD (где у P2 на W прыжок/вверх, а на Q хилка)
                 let directQ = !isDuoKeyboard && isKeyPressed(['KeyQ', 'KeyЙ']);
@@ -1096,7 +1237,7 @@ function updatePlayers() {
         }
 
         // Stance / Weapon mode switching & S-Abilities (Key S)
-        if (kStance && !p.prevStanceKey && p.overheatTimer <= 0 && !boss.state.startsWith("CINEMATIC")) {
+        if (kStance && !p.prevStanceKey && !boss.state.startsWith("CINEMATIC")) {
             let isStory = (typeof window !== 'undefined' && window.isStoryMode);
             let cost = isStory ? 0 : ((p.type === 'FIRE') ? 2 : ((p.type === 'FIRE_HALBERD') ? 6 : ((p.type === 'AIR') ? 3 : 1)));
             let isLimited = (typeof activeChallenges !== 'undefined' && activeChallenges && activeChallenges.limitedHeal);
@@ -1292,11 +1433,13 @@ function updatePlayers() {
             }
         }
 
-        // Water Demon L-mode Abyss Plunge (F + Down): мгновенное погружение под пол арены
-        if (p.type === 'WATER' && p.stance === 'DEMON' && secretMode && !(typeof window !== 'undefined' && window.isStoryMode)) {
-            if (kDown && kSpec && !p.isHealing && p.overheatTimer <= 0 && !p.isUnderFloor) {
+        // Water Demon L-mode Abyss Plunge (F + Down): мгновенное погружение под пол арены (ТОЛЬКО в бою L-режима Бездны, не в сюжете!)
+        if (typeof window !== 'undefined' && window.isStoryMode) {
+            p.isUnderFloor = false;
+        } else if (p.type === 'WATER' && p.stance === 'DEMON' && secretMode) {
+            if (kDown && kSpec && !p.isHealing && !p.isUnderFloor) {
                 p.isUnderFloor = true;
-                p.y = FLOOR + 60;
+                p.y = FLOOR + 70;
                 p.vy = 0;
                 p.prevDaggerKey = true; // блокирует параллельный каст способности слота F
                 playSound('teleport');
@@ -1305,11 +1448,6 @@ function updatePlayers() {
             }
             if (p.isUnderFloor) {
                 p.underFloorTimer = (p.underFloorTimer || 0) + 1;
-                // Keep player floating safely in the shadow sub-floor layer (never drop into infinity!)
-                if (p.y > FLOOR + 65) {
-                    p.y = FLOOR + 65;
-                    if (p.vy > 0) p.vy = 0;
-                }
                 if (p.underFloorTimer >= 120) { // каждые 2 секунды тратит 0.25 хила
                     p.underFloorTimer = 0;
                     if (sharedHeals >= 0.25) {
@@ -1318,13 +1456,8 @@ function updatePlayers() {
                         takeDamage(p, 0.5, true);
                     }
                 }
-                // Surface immediately on jump, pressing up, or when timer expires (max 3 sec)
-                if (p.y + p.height <= FLOOR || kJump || kUp || p.underFloorTimer >= 180) {
-                    p.isUnderFloor = false;
-                    p.underFloorTimer = 0;
-                    p.y = Math.min(p.y, FLOOR - p.height);
-                    if (p.vy >= 0) p.vy = -7.5; // Smooth launch up onto the floor!
-                    playSound('waterDrop');
+                if (p.y + p.height <= FLOOR) {
+                    p.isUnderFloor = false; // выход при прыжке выше пола
                 }
             }
         }
@@ -1348,15 +1481,14 @@ function updatePlayers() {
         if (p.tpCooldown > 0) p.tpCooldown--;
         p.isDashing = false;
 
-        if (p.overheatTimer > 0 || boss.state.includes("SCREAM") || boss.state === "L_INTRO_FALL" || boss.state === "L_INTRO_RISE" || boss.state === "L_PHASE3_RISE" || boss.state === "L_CLIMB_START") {
+        if (boss.state.includes("SCREAM") || boss.state === "L_INTRO_FALL" || boss.state === "L_INTRO_RISE" || boss.state === "L_PHASE3_RISE" || boss.state === "L_CLIMB_START") {
             kJump = false; kAttack = false; kDash = false; kSpec = false; kLight = false; 
             if (boss.state.includes("SCREAM") || boss.state === "L_CLIMB_START") { kLeft = false; kRight = false; kHeal = false; rawHealKey = false; }
-            if (p.overheatTimer > 0) p.speed = 3.5;
         }
 
         if (boss.state.startsWith("CINEMATIC") || boss.state === "DEFEATED" || boss.state === "FREE_ROAM") {
             if (boss.state === "CINEMATIC_TIE_WAIT") { 
-                if (kSpec && !p.prevDaggerKey && !p.hasPressedTie && sharedHeals >= 0.5 && p.overheatTimer<=0) { 
+                if (kSpec && !p.prevDaggerKey && !p.hasPressedTie && sharedHeals >= 0.5) { 
                     sharedHeals -= 0.5; p.hasPressedTie = true; playSound('throw'); 
                     // При нажатии F человеком, ИИ-напарник автоматически бросает свои нити за компанию!
                     for (let pl of players) {
@@ -1383,7 +1515,7 @@ function updatePlayers() {
         } else {
             // --- БЛИЖНЕЕ ВОСКРЕШЕНИЕ НА [A] (Отдать 1 HP или 0.5 HP тяжело раненому союзнику) ---
             let nearbyDownedAlly = (!window.isStoryMode) ? players.find(pl => pl.id !== p.id && pl.isDowned && pl.hp > 0 && Math.hypot((pl.x + pl.width / 2) - (p.x + p.width / 2), (pl.y + pl.height / 2) - (p.y + p.height / 2)) <= 75) : null;
-            if (nearbyDownedAlly && rawHealKey && !p.prevHealKey && !p.isHealing && !p.isParrying && p.overheatTimer <= 0 && p.hp > 0.5) {
+            if (nearbyDownedAlly && rawHealKey && !p.prevHealKey && !p.isHealing && !p.isParrying && p.hp > 0.5) {
                 let giveHp = (p.hp > 1.0) ? 1.0 : 0.5;
                 p.hp = Math.max(0.5, Math.round((p.hp - giveHp) * 2) / 2);
                 nearbyDownedAlly.isDowned = false;
@@ -1427,7 +1559,7 @@ function updatePlayers() {
                 }
             }
 
-            if (kHeal && !p.prevHealKey && !p.isHealing && !p.isParrying && canAffordHeal && p.overheatTimer<=0) {
+            if (kHeal && !p.prevHealKey && !p.isHealing && !p.isParrying && canAffordHeal) {
                 let isAoE = (p.type === 'WATER' && p.stance !== 'DEMON' && numPlayers === 2 && kUp); 
                 let isFiery = (p.type === 'FIRE' && kUp);
                 let needsHeal = p.hp < p.maxHp || isFiery || (p.type === 'WATER' && p.stance === 'DEMON'); 
@@ -1474,7 +1606,7 @@ function updatePlayers() {
             // Light dagger: disabled for FIRE and for WATER in Demon form
             let canUseLightDagger = (p.type !== 'FIRE') && !(p.type === 'WATER' && p.stance === 'DEMON');
             let hasLightDaggerCost = isLimited ? (sharedHealPoints >= 4) : (sharedHeals >= 0.5);
-            if (secretMode && kLight && canUseLightDagger && hasLightDaggerCost && p.attackCooldown <= 0 && !p.isHealing && p.overheatTimer<=0) {
+            if (secretMode && kLight && canUseLightDagger && hasLightDaggerCost && p.attackCooldown <= 0 && !p.isHealing) {
                 if (p.lightCharge === 0) {
                     if (isLimited) {
                         sharedHealPoints -= 4;
@@ -1488,8 +1620,8 @@ function updatePlayers() {
                 if (p.lightCharge === reqCharge) {
                     playSound('lightChime');
                 }
-            } else if (p.lightCharge >= reqCharge && !kLight && p.overheatTimer<=0) {
-                p.lightCharge = 0; p.attackCooldown = 30; playSound('slash'); p.attackTimer = 16; p.attackType = "LIGHT";
+            } else if (p.lightCharge >= reqCharge && !kLight) {
+                p.lightCharge = 0; p.attackCooldown = 35; playSound('slash'); p.attackTimer = 16; p.attackType = "LIGHT";
                 let hitW = Math.max(p.atkRange, 120);
                 let sHit = { x: p.facingRight ? p.x + p.width : p.x - hitW, y: p.y - 20, width: hitW, height: 70 };
                 
@@ -1602,7 +1734,7 @@ function updatePlayers() {
             // Стоимость: 2 очка шкалы хила. Дальность: 1.5 алебарды (195 px). Урон: 0.75.
             // Эффект: +1 к поджогу (при 3 стаках босс горит) и отбрасывает босса.
             if (p.type === 'FIRE') {
-                if (kLight && !p.prevLightKey && p.attackCooldown <= 0 && !p.isHealing && p.overheatTimer <= 0) {
+                if (kLight && !p.prevLightKey && p.attackCooldown <= 0 && !p.isHealing) {
                     let cost = 2;
                     let canAfford = isLimited ? (sharedHealPoints >= cost) : ((sharedHeals * 8 + sharedHitCount) >= cost);
                     if (canAfford) {
@@ -1663,7 +1795,7 @@ function updatePlayers() {
             // Зажатие C + F при наличии хила. Тратит 1 очко шкалы хила за каждые 0.25 сек (15 кадров).
             // Мир замедляется в 2 раза (0.5x), герой бежит в 2.5 раза быстрее обычного.
             // Полупрозрачный силуэт, урона врагам не наносит.
-            if ((p.type === 'WATER' || p.type === 'FIRE') && kDash && kSpec && !p.isHealing && !p.tied && p.overheatTimer <= 0) {
+            if ((p.type === 'WATER' || p.type === 'FIRE') && kDash && kSpec && !p.isHealing && !p.tied) {
                 let totalPts = isLimited ? sharedHealPoints : (sharedHeals * 8 + sharedHitCount);
                 if (totalPts >= 1) {
                     p.isSilkRunning = true;
@@ -1695,8 +1827,9 @@ function updatePlayers() {
             // Тело героя стоит на месте, игрок рулит полетом капли стрелками.
             // Двойная концентрация: Z или X заставляет тело реагировать, расходуя 1 очко хила.
             // Капля: босс -> 1.0 урона (без накопления хита шкалы хила); союзник -> +0.5 HP; пол/стена -> брызги.
-            if (p.type === 'WATER' && (p.stance === 'LIGHT' || window.isStoryMode)) {
-                if (kWaterDrop && !p.prevWaterDropKey && !p.waterDropActive && !p.isHealing && p.overheatTimer <= 0) {
+            if ((p.type === 'WATER' && (p.stance === 'LIGHT' || window.isStoryMode)) || (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined' && (storyState.guardianDefeated || storyState.bluePowerUnlocked))) {
+                if (p.waterDropActive && !p.waterDrop) p.waterDropActive = false;
+                if (kWaterDrop && !p.prevWaterDropKey && !p.waterDropActive && !p.isHealing) {
                     let cost = window.isStoryMode ? 0 : 3;
                     let canAfford = window.isStoryMode ? true : (isLimited ? (sharedHealPoints >= cost) : ((sharedHeals * 8 + sharedHitCount) >= cost));
                     if (canAfford) {
@@ -1800,6 +1933,31 @@ function updatePlayers() {
                         p.waterDropActive = false;
                         p.waterDrop = null;
                     }
+                } else if (window.isStoryMode && typeof storyState !== 'undefined' && storyState.mossCrawlers && storyState.mossCrawlers.some(mc => mc && mc.hp > 0 && rectIntersect(dropHitBox, { x: mc.x, y: mc.y, width: mc.w, height: mc.h }))) {
+                    let mc = storyState.mossCrawlers.find(m => m && m.hp > 0 && rectIntersect(dropHitBox, { x: m.x, y: m.y, width: m.w, height: m.h }));
+                    if (mc) {
+                        mc.hp -= (2.0 + storyBonus);
+                        mc.hitTimer = 16;
+                        mc.vx = Math.sign(p.waterDrop.vx || (p.facingRight ? 1 : -1)) * 3;
+                        playSound('hitBoss');
+                        playSound('waterSplash');
+                        triggerShake(4, 8);
+                        voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 18, isWhite: false, isOrange: false, r: 32 });
+                        p.waterDropActive = false;
+                        p.waterDrop = null;
+                    }
+                } else if (window.isStoryMode && typeof storyState !== 'undefined' && storyState.sporeSpitters && storyState.sporeSpitters.some(sp => sp && sp.hp > 0 && rectIntersect(dropHitBox, { x: sp.x, y: sp.y, width: sp.w, height: sp.h }))) {
+                    let sp = storyState.sporeSpitters.find(s => s && s.hp > 0 && rectIntersect(dropHitBox, { x: s.x, y: s.y, width: s.w, height: s.h }));
+                    if (sp) {
+                        sp.hp -= (2.0 + storyBonus);
+                        sp.hitTimer = 16;
+                        playSound('hitBoss');
+                        playSound('waterSplash');
+                        triggerShake(4, 8);
+                        voidExplosions.push({ x: p.waterDrop.x, y: p.waterDrop.y, timer: 18, isWhite: false, isOrange: false, r: 32 });
+                        p.waterDropActive = false;
+                        p.waterDrop = null;
+                    }
                 } else if (rectIntersect(dropHitBox, boss) && boss.invuln <= 0) {
                     tryDamageBoss(1.0 + storyBonus, null);
                     playSound('hitBoss');
@@ -1809,17 +1967,40 @@ function updatePlayers() {
                     p.waterDropActive = false;
                     p.waterDrop = null;
                 }
+
+                // Check collision with floor, platforms, or walls
                 let dropExpired = false;
                 if (p.waterDrop) {
-                    if (window.isStoryMode) {
-                        let inTrials = (typeof storyState !== 'undefined' && storyState.inTrials) || (typeof storyTrials !== 'undefined' && storyTrials.active) || (p.waterDrop.x > 4750 && p.waterDrop.x < 6350);
-                        if (inTrials) {
-                            dropExpired = (p.waterDrop.timer <= 0 || p.waterDrop.y > 900 || p.waterDrop.y < 420 || p.waterDrop.x < 4780 || p.waterDrop.x > 6320);
-                        } else {
-                            dropExpired = (p.waterDrop.timer <= 0 || p.waterDrop.y > 950 || p.waterDrop.x < -550 || p.waterDrop.x > 6200);
+                    if (p.waterDrop.timer <= 0) {
+                        dropExpired = true;
+                    }
+
+                    // Check solid platforms, walls, ceilings
+                    let plats = platforms || [];
+                    for (let plat of plats) {
+                        let pw = plat.w;
+                        let ph = plat.h || 20;
+                        if ((plat.solid || plat.isWall || plat.isCeiling || plat.canJumpThrough) &&
+                            p.waterDrop.x >= plat.x && p.waterDrop.x <= plat.x + pw &&
+                            p.waterDrop.y >= plat.y && p.waterDrop.y <= plat.y + ph) {
+                            dropExpired = true;
+                            break;
                         }
-                    } else {
-                        dropExpired = (p.waterDrop.y >= FLOOR || p.waterDrop.x <= 0 || p.waterDrop.x >= ARENA_W || p.waterDrop.timer <= 0);
+                    }
+
+                    if (!window.isStoryMode && p.waterDrop.y >= FLOOR) {
+                        dropExpired = true;
+                    } else if (window.isStoryMode) {
+                        // Impact with story floors
+                        if (p.waterDrop.x >= 0 && p.waterDrop.x <= 3820 && p.waterDrop.y >= STORY_CONFIG.FLOOR && p.waterDrop.y <= STORY_CONFIG.FLOOR + 25) {
+                            dropExpired = true;
+                        } else if (p.waterDrop.x >= -480 && p.waterDrop.x <= 1960 && p.waterDrop.y >= STORY_CONFIG.LOWER_FLOOR && p.waterDrop.y <= STORY_CONFIG.LOWER_FLOOR + 25) {
+                            dropExpired = true;
+                        } else if (p.waterDrop.x >= 4780 && p.waterDrop.x <= 7700 && p.waterDrop.y >= STORY_CONFIG.LOWER_FLOOR && p.waterDrop.y <= STORY_CONFIG.LOWER_FLOOR + 25) {
+                            dropExpired = true;
+                        } else if (p.waterDrop.x < -600 || p.waterDrop.x > 10500 || p.waterDrop.y < -600 || p.waterDrop.y > 2300) {
+                            dropExpired = true;
+                        }
                     }
                 }
                 if (p.waterDrop && dropExpired) {
@@ -1832,7 +2013,7 @@ function updatePlayers() {
 
             // Вода с тросом: Ультимейт на Q (Кинжал с тросом и захват босса)
             if (p.type === 'WATER_ROPE') {
-                if (kUlt && !p.prevUltKey && (p.ropeUltAttempts || 0) > 0 && !p.isHealing && p.overheatTimer <= 0 && !p.ropeHarpoon) {
+                if (kUlt && !p.prevUltKey && (p.ropeUltAttempts || 0) > 0 && !p.isHealing && !p.ropeHarpoon) {
                     p.ropeUltAttempts--;
                     p.ropeActive = false;
                     p.ropeA = null;
@@ -1893,7 +2074,7 @@ function updatePlayers() {
 
             // 4-й герой (STAMINA): в розовом режиме Ультимейт на Q
             if (p.type === 'STAMINA' && p.weaponMode === 'PINK') {
-                if (kUlt && !p.prevUltKey && (p.staminaUltAttempts || 0) > 0 && p.hp > 0.5 && !p.isHealing && p.overheatTimer <= 0) {
+                if (kUlt && !p.prevUltKey && (p.staminaUltAttempts || 0) > 0 && p.hp > 0.5 && !p.isHealing) {
                     p.staminaUltAttempts--;
                     let spentStamina = p.stamina || 0;
                     p.stamina = 0;
@@ -1921,9 +2102,9 @@ function updatePlayers() {
             p.prevUltKey = kUlt;
 
             let wallDir = 0; 
-            let topWallLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) ? -2000 : (secretMode ? FLOOR/2 - 100 : FLOOR/2);
-            let onWall = false;
             let isClimbPhase = boss.state.startsWith("L_CLIMB") || boss.phase === 2.5;
+            let topWallLimit = isClimbPhase ? -2000 : (secretMode ? FLOOR/2 - 100 : FLOOR/2);
+            let onWall = false;
             
             // В сюжетном режиме способности карабкаться по стенам пока нет!
             if (!isClimbPhase && !window.isFireBossMode && !window.isStoryMode) {
@@ -1937,7 +2118,7 @@ function updatePlayers() {
             }
 
             // Dash burst trigger on Key C press
-            if (kDash && !p.prevDashKey && !p.tied && p.overheatTimer <= 0) {
+            if (kDash && !p.prevDashKey && !p.tied) {
                 let canBurst = false;
                 if (onFloor || onPlatform || onWall) {
                     canBurst = true;
@@ -2015,7 +2196,7 @@ function updatePlayers() {
             }
             if (p.dashStrikeCooldown > 0) p.dashStrikeCooldown--;
 
-            if (p.type === 'WATER' && p.stance === 'LIGHT' && kDash && kUp && p.tpCooldown <= 0 && (isLimited ? sharedHealPoints >= 4 : sharedHeals >= 0.5) && (numPlayers === 1 || secretMode) && p.overheatTimer<=0) { 
+            if (p.type === 'WATER' && p.stance === 'LIGHT' && kDash && kUp && p.tpCooldown <= 0 && (isLimited ? sharedHealPoints >= 4 : sharedHeals >= 0.5) && (numPlayers === 1 || secretMode)) { 
                 if (isLimited) {
                     sharedHealPoints -= 4;
                     sharedHitCount = sharedHealPoints % 8;
@@ -2027,7 +2208,7 @@ function updatePlayers() {
             }
 
             if (p.type === 'FIRE') {
-                if (kSpec && !p.prevDaggerKey && !p.isHealing && p.attackCooldown <= 0 && p.overheatTimer<=0) {
+                if (kSpec && !p.prevDaggerKey && !p.isHealing && p.attackCooldown <= 0) {
                     let intendedSlot = 'mid';
                     if (kUp) intendedSlot = 'top';
                     else if (kAttack) intendedSlot = 'bot';
@@ -2051,7 +2232,7 @@ function updatePlayers() {
                 }
                 if (p.orangeHpTimer > 0) { p.orangeHpTimer--; if (p.orangeHpTimer <= 0) p.orangeHp = 0; }
             } else if (p.type === 'FIRE_HALBERD') {
-                if (kSpec && !p.prevDaggerKey && !p.isHealing && p.attackCooldown <= 0 && p.overheatTimer<=0) {
+                if (kSpec && !p.prevDaggerKey && !p.isHealing && p.attackCooldown <= 0) {
                     let intendedSlot = kUp ? 'top' : 'mid';
                     let ab = p.abilities[intendedSlot] || (intendedSlot === 'top' ? 'shuriken' : 'whirlwind');
                     if (ab && ab !== 'none') {
@@ -2067,7 +2248,7 @@ function updatePlayers() {
                 let ab = p.abilities[intendedSlot];
                 if (!ab && intendedSlot !== 'mid') ab = p.abilities['mid'];
 
-                if (kSpec && !p.prevDaggerKey && !p.isHealing && p.attackCooldown <= 0 && p.overheatTimer<=0 && ab && ab !== 'none') {
+                if (kSpec && !p.prevDaggerKey && !p.isHealing && p.attackCooldown <= 0 && ab && ab !== 'none') {
                     executeAbility(p, ab);
                     p.prevDaggerKey = true;
                 }
@@ -2477,28 +2658,50 @@ function updatePlayers() {
                     }
                 }
 
+                if (kJump && !p.prevJumpKey) {
+                    p.jumpBufferTimer = 6; // 6 frames (~100ms) Jump Buffer
+                }
+                let canGroundJump = (onFloor || onPlatform || p.isUnderFloor || (p.coyoteTimer > 0));
+                if (p.jumpBufferTimer > 0) {
+                    if (canGroundJump) { 
+                        p.vy = p.jumpPowerBase * jumpMod; 
+                        p.jumps = 1; 
+                        p.jumpHoldTimer = 0;
+                        p.coyoteTimer = 0;
+                        p.jumpBufferTimer = 0;
+                        p.squashX = 0.82;
+                        p.squashY = 1.25;
+                        applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); 
+                        if (typeof stepPuffs !== 'undefined') {
+                            stepPuffs.push({ x: p.x + p.width / 2, y: p.y + p.height, vx: -1.5, vy: -0.4, r: 5, alpha: 0.5 });
+                            stepPuffs.push({ x: p.x + p.width / 2, y: p.y + p.height, vx: 1.5, vy: -0.4, r: 5, alpha: 0.5 });
+                        }
+                    }
+                    else if (onWall) { 
+                        p.vy = p.jumpPowerBase * jumpMod; 
+                        p.vx = (wallDir === -1 ? 1 : -1) * (globalWindMode === "DOWN" ? 2 : 5); 
+                        p.wallJumpCooldown = globalWindMode === "DOWN" ? 2 : 6; 
+                        p.jumpHoldTimer = 0;
+                        p.jumpBufferTimer = 0;
+                        p.squashX = 0.85;
+                        p.squashY = 1.2;
+                        applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 4); 
+                        if (typeof stepPuffs !== 'undefined') {
+                            stepPuffs.push({ x: p.x + (wallDir === -1 ? 0 : p.width), y: p.y + p.height / 2, vx: -wallDir * 1.5, vy: -0.4, r: 5, alpha: 0.5 });
+                        }
+                    }
+                    else if (p.jumps < p.maxJumps && !p.prevJumpKey) { 
+                        p.vy = p.jumpPowerBase * jumpMod; 
+                        p.jumps++; 
+                        p.jumpHoldTimer = 0;
+                        p.jumpBufferTimer = 0;
+                        p.squashX = 0.85;
+                        p.squashY = 1.2;
+                        applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); 
+                    }
+                }
                 if (kJump) {
-                    if (!p.prevJumpKey) {
-                        if (onFloor || onPlatform || p.isUnderFloor) { 
-                            p.vy = p.jumpPowerBase * jumpMod; 
-                            p.jumps = 1; 
-                            p.jumpHoldTimer = 0;
-                            applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); 
-                        }
-                        else if (onWall) { 
-                            p.vy = p.jumpPowerBase * jumpMod; 
-                            p.vx = (wallDir === -1 ? 1 : -1) * (globalWindMode === "DOWN" ? 2 : 5); 
-                            p.wallJumpCooldown = globalWindMode === "DOWN" ? 2 : 6; 
-                            p.jumpHoldTimer = 0;
-                            applyPhysicsPushToLeaves(p.x + 15, p.y + 25, 4); 
-                        }
-                        else if (p.jumps < p.maxJumps) { 
-                            p.vy = p.jumpPowerBase * jumpMod; 
-                            p.jumps++; 
-                            p.jumpHoldTimer = 0;
-                            applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 5); 
-                        }
-                    } else {
+                    if (p.prevJumpKey) {
                         // Air Hero: удерживая кнопку прыжка чуть дольше в первые 12-14 кадров, взлетает выше!
                         if (p.type === 'AIR' && p.jumpHoldTimer < 14 && p.vy < 0) {
                             p.jumpHoldTimer++;
@@ -2511,15 +2714,9 @@ function updatePlayers() {
                     p.jumpHoldTimer = 99;
                     if (p.vy < 0) p.vy *= 0.5; 
                 }
+                if (p.jumpBufferTimer > 0) p.jumpBufferTimer--;
 
                 if (p.attackCooldown > 0) p.attackCooldown--; if (p.attackTimer > 0) p.attackTimer--;
-
-                if (kAttack && !p.prevAttackKey && p.overheatTimer <= 0 && p.chillTimer <= 0 && !kSpec) {
-                    p.spamResetTimer = 120;
-                    p.attackSpamCount++;
-                    p.heatLevel = Math.max(p.heatLevel, Math.min(1, p.attackSpamCount / 10));
-                    if (p.attackSpamCount >= 10) { p.overheatTimer = 90; p.attackSpamCount = 0; p.spamResetTimer = 0; }
-                }
 
                 // Water Rope: Concentration in air & Rope Riding
                 if (p.type === 'WATER_ROPE') {
@@ -2767,11 +2964,11 @@ function updatePlayers() {
                 let swordHitbox = null;
                 let nearRopeForAttack = (p.type === 'WATER_ROPE' && p.ropeActive && p.ropeA && p.ropeB && distToSegment({ x: p.x + p.width/2, y: p.y + p.height/2 }, p.ropeA, p.ropeB) < 95);
 
-                let canAttackNow = kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && p.lightCharge === 0 && p.overheatTimer <= 0 && !p.isRopeSliding && !nearRopeForAttack && !p.holdingBossRope;
+                let canAttackNow = kAttack && !p.prevAttackKey && p.attackCooldown <= 0 && p.lightCharge === 0 && !p.isRopeSliding && !nearRopeForAttack && !p.holdingBossRope;
                 if (canAttackNow) {
                     if (p.type === 'AIR') {
                         p.attackTimer = 12;
-                        p.attackCooldown = 60; 
+                        p.attackCooldown = 70; 
                         playSound('throw'); 
                         let facing = p.facingRight ? 1 : -1;
                         let vx = facing * 15;
@@ -2806,8 +3003,8 @@ function updatePlayers() {
                         p.attackType = "NORMAL";
                     } else {
                         p.attackTimer = 12; 
-                        let cdBase = (p.type === 'STAMINA' && p.weaponMode === 'BLUE') ? 12 : p.atkCdBase;
-                        if (p.type === 'FIRE_HALBERD' && p.halberdBuffTimer > 0) cdBase = 24;
+                        let cdBase = (p.type === 'STAMINA' && p.weaponMode === 'BLUE') ? 14 : p.atkCdBase;
+                        if (p.type === 'FIRE_HALBERD' && p.halberdBuffTimer > 0) cdBase = 28;
                         p.attackCooldown = cdBase; 
                         playSound('slash'); 
                         triggerVibration('attack');
@@ -2823,27 +3020,27 @@ function updatePlayers() {
                             applyPhysicsPushToLeaves(p.x + 15, p.y - 20, 6);
                         } else if (p.type === 'FIRE') {
                             if (kDown && !onFloor) { p.attackType = "DIVE"; p.vy = 15; p.vx = (p.facingRight ? 1 : -1) * 15; p.attackTimer = 20; swordHitbox = { x: p.facingRight ? p.x : p.x - 30, y: p.y + p.height, width: p.width + 30, height: 40 }; } 
-                            else if (kDash) { p.attackType = "HEAVY"; p.attackTimer = 18; p.attackCooldown = 30; currentAtkRange += 15; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - currentAtkRange, y: p.y + 10, width: currentAtkRange, height: 20 }; } 
+                            else if (kDash) { p.attackType = "HEAVY"; p.attackTimer = 18; p.attackCooldown = 35; currentAtkRange += 15; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - currentAtkRange, y: p.y + 10, width: currentAtkRange, height: 20 }; } 
                             else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; }
                         } else if (p.type === 'FIRE_HALBERD') {
-                            if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 130 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); }
+                            if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 22, y: p.y + p.height - 8, width: 74, height: 140 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); }
                             else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - 130, y: p.y + 5, width: 130, height: 30 }; applyPhysicsPushToLeaves(swordHitbox.x + 65, swordHitbox.y + 10, 5); }
                         } else if (p.type === 'WATER_ROPE') {
-                            if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 15, y: p.y + p.height - 10, width: 52, height: 45 }; applyPhysicsPushToLeaves(p.x + 11, p.y + 38, 5); }
+                            if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 18, y: p.y + p.height - 8, width: 60, height: 68 }; applyPhysicsPushToLeaves(p.x + 11, p.y + 38, 5); }
                             else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - 58, y: p.y + 8, width: 58, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + 29, swordHitbox.y + 10, 3); }
                         } else if (p.type === 'EARTH') {
-                            if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 45 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); }
+                            if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 22, y: p.y + p.height - 8, width: 76, height: 68 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); }
                             else if (kDash) {
                                 // Earth Hero: комбо X + C (разгон + удар: 1.25 урона, акробатический кувырок назад под 45°)
                                 p.attackType = "EARTH_SPRINT_STRIKE"; 
                                 p.attackTimer = 16; 
-                                p.attackCooldown = 18; 
+                                p.attackCooldown = 21; 
                                 swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - (p.atkRange + 20), y: p.y + 5, width: p.atkRange + 20, height: 25 }; 
                                 applyPhysicsPushToLeaves(swordHitbox.x + (p.atkRange + 20)/2, swordHitbox.y + 10, 8); 
                             }
                             else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - p.atkRange, y: p.y + 10, width: p.atkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + p.atkRange/2, swordHitbox.y + 10, 4); }
                         } else {
-                            if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 20, y: p.y + p.height - 10, width: 70, height: 45 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); } 
+                            if (kDown && !onFloor) { p.attackType = "DOWN"; swordHitbox = { x: p.x - 22, y: p.y + p.height - 8, width: 76, height: 68 }; applyPhysicsPushToLeaves(p.x + 15, p.y + 50, 6); } 
                             else { p.attackType = "NORMAL"; swordHitbox = { x: p.facingRight ? p.x + p.width : p.x - currentAtkRange, y: p.y + 10, width: currentAtkRange, height: 20 }; applyPhysicsPushToLeaves(swordHitbox.x + currentAtkRange/2, swordHitbox.y + 10, 4); }
                         }
                     }
@@ -3090,13 +3287,41 @@ function updatePlayers() {
                                         }
                                     }
 
-                                    if (p.attackType === "DOWN" || p.attackType === "DIVE") { p.vy = -14; p.jumps = 1; p.airDashed = false; triggerVibration('clash'); triggerShake(2, 5, 0, 1); }
+                                    if (p.attackType === "DOWN" || p.attackType === "DIVE") {
+                                        let bHitY = (boss.y > -200) ? (boss.y + 15) : (p.y + p.height);
+                                        triggerPlayerPogoBounce(p, bHitY);
+                                        if (boss.state === "WIND_FLY") {
+                                            boss.vy = 2; // Прерываем бесконечный взлёт босса вверх, отдавая отдачу вниз
+                                            boss.stateTimer = Math.min(boss.stateTimer, 5);
+                                        }
+                                    }
                                 }
                             }
                         }
 
                         for (let ph of phantoms) {
-                            if (p.attackType === "DOWN" && rectIntersect(swordHitbox, ph)) { p.vy = -14; p.jumps = 1; p.airDashed = false; triggerVibration('clash'); triggerShake(2, 5, 0, 1); freezeFrames = 5; }
+                            if (p.attackType === "DOWN" && rectIntersect(swordHitbox, ph)) {
+                                triggerPlayerPogoBounce(p, ph.y + 10);
+                            }
+                        }
+
+                        // --- SILKSONG SPIKE POGO ---
+                        if (typeof STORY_SPIKES !== 'undefined' && swordHitbox && (p.attackType === "DOWN" || p.attackType === "DIVE" || p.attackType === "SUPER_POGO")) {
+                            for (let sp of STORY_SPIKES) {
+                                let spBox = { x: sp.x - 4, y: sp.y - 4, width: sp.w + 8, height: sp.h + 8 };
+                                if (rectIntersect(swordHitbox, spBox)) {
+                                    triggerPlayerPogoBounce(p, sp.y + 4, true);
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Interactive Grass Slicing & Water Slashes
+                        if (typeof checkStoryGrassSlashHitbox === 'function' && swordHitbox) {
+                            checkStoryGrassSlashHitbox(swordHitbox, p);
+                        }
+                        if (typeof checkStoryWaterAttackHitbox === 'function' && swordHitbox) {
+                            checkStoryWaterAttackHitbox(swordHitbox, p);
                         }
 
                         if (typeof window !== 'undefined' && window.isStoryMode && typeof checkStoryTrialHitbox === 'function' && swordHitbox) {
@@ -3119,7 +3344,107 @@ function updatePlayers() {
         }
 
         if (p.bleedTimer > 0) { p.bleedTimer--; if (p.bleedTimer <= 0) { let wasH = p.isHealing; takeDamage(p, 0.5, true); if(wasH) triggerVibration('heal_interrupt'); else triggerVibration('damage'); } }
+        let prevPhysX = p.x;
+        let prevPhysY = p.y;
         p.x += p.vx; p.y += p.vy;
+
+        // Continuous Collision Detection (CCD) & Anti-Penetration against platforms/walls (Стена в воздухе)
+        if (typeof platforms !== 'undefined' && platforms.length > 0) {
+            let pw = p.width;
+            let ph = p.height;
+            for (let plat of platforms) {
+                if (typeof window !== 'undefined' && window.isStoryMode && typeof storyState !== 'undefined') {
+                    if (storyState.currentRoom === 1 && plat.isRoom2) continue;
+                    if (storyState.currentRoom === 2 && plat.isRoom1) continue;
+                }
+
+                let isJumpThrough = plat.canJumpThrough || (!plat.solid && !plat.isWall && !plat.isCeiling);
+                if (isJumpThrough) {
+                    if (p.vy >= 0 && prevPhysY + ph <= plat.y + 6 && p.y + ph >= plat.y && p.x + pw > plat.x && p.x < plat.x + plat.w) {
+                        p.y = plat.y - ph;
+                        p.vy = 0;
+                        p.onGround = true;
+                        onPlatform = true;
+                        if (typeof isPositionNearSpikes !== 'function' || !isPositionNearSpikes(plat.x + plat.w / 2 - pw / 2, plat.y - ph, pw, ph)) {
+                            p.lastSafeX = plat.x + plat.w / 2 - pw / 2;
+                            p.lastSafeY = plat.y - ph;
+                        }
+                    }
+                    continue;
+                }
+
+                if (!plat.solid) continue;
+                let platH = plat.h || 20;
+                let platW = plat.w;
+
+                // AABB intersection check:
+                if (p.x + pw > plat.x && p.x < plat.x + platW && p.y + ph > plat.y && p.y < plat.y + platH) {
+                    let penLeft = (p.x + pw) - plat.x;
+                    let penRight = (plat.x + platW) - p.x;
+                    let penTop = (p.y + ph) - plat.y;
+                    let penBottom = (plat.y + platH) - p.y;
+
+                    // 1. Приземление сверху: персонаж был выше или на уровне верха (плавный шаг, исключает ложные стенки!)
+                    let landingTol = Math.max(16, (p.vy || 0) + 6);
+                    if ((prevPhysY + ph <= plat.y + landingTol || penTop <= 14) && p.vy >= 0 && !plat.isWall && !plat.isCeiling) {
+                        p.y = plat.y - ph;
+                        p.vy = 0;
+                        p.onGround = true;
+                        onPlatform = true;
+                        if (typeof isPositionNearSpikes !== 'function' || !isPositionNearSpikes(plat.x + platW / 2 - pw / 2, plat.y - ph, pw, ph)) {
+                            p.lastSafeX = plat.x + platW / 2 - pw / 2;
+                            p.lastSafeY = plat.y - ph;
+                        }
+                        if (plat.num) p.highestPlatReached = Math.max(p.highestPlatReached || 1, plat.num);
+                    }
+                    // 2. Удар головой снизу ("стена в воздухе, снизу не запрыгнуть!")
+                    else if ((prevPhysY >= plat.y + platH - 8 || penBottom <= 12) && p.vy < 0 && !plat.isFloor) {
+                        p.y = plat.y + platH;
+                        p.vy = 2.0; // отскок вниз
+                        p.jumpHoldTimer = 99;
+                        if (typeof playSound === 'function') playSound('step');
+                    }
+                    // 3. Удар о боковую стенку платформы: ТОЛЬКО если персонаж действительно на уровне боковой грани!
+                    else if (plat.isWall || (p.y + ph > plat.y + 14 && p.y < plat.y + platH - 6)) {
+                        if (prevPhysX + pw <= plat.x + 8 && p.vx >= 0) {
+                            p.x = plat.x - pw;
+                            p.vx = 0;
+                        } else if (prevPhysX >= plat.x + platW - 8 && p.vx <= 0) {
+                            p.x = plat.x + platW;
+                            p.vx = 0;
+                        } else {
+                            if (penLeft < penRight) {
+                                p.x = plat.x - pw;
+                                if (p.vx > 0) p.vx = 0;
+                            } else {
+                                p.x = plat.x + platW;
+                                if (p.vx < 0) p.vx = 0;
+                            }
+                        }
+                    }
+                    // 4. Защита от застревания (моделька персонажа НЕ МОЖЕТ находиться внутри платформы)
+                    else {
+                        let minPen = Math.min(penLeft, penRight, penTop, penBottom);
+                        if (minPen === penTop && !plat.isWall && !plat.isCeiling) {
+                            p.y = plat.y - ph;
+                            p.vy = 0;
+                            p.onGround = true;
+                            onPlatform = true;
+                        } else if (minPen === penBottom && !plat.isFloor) {
+                            p.y = plat.y + platH;
+                            if (p.vy < 0) p.vy = 2.0;
+                        } else if (minPen === penLeft) {
+                            p.x = plat.x - pw;
+                            if (p.vx > 0) p.vx = 0;
+                        } else {
+                            p.x = plat.x + platW;
+                            if (p.vx < 0) p.vx = 0;
+                        }
+                    }
+                }
+            }
+        }
+
         if (window.isFireBossMode) {
             let domeRx = 700;
             let domeRy = 480;
@@ -3137,22 +3462,9 @@ function updatePlayers() {
                 if (p.vy < 0) p.vy = 0;
             }
         } else if (window.isStoryMode) {
-            // Горизонтальная коллизия с твёрдыми платформами и стенами в сюжете
-            for (let plat of platforms) {
-                if (!plat.solid || plat.canJumpThrough) continue;
-                let platH = plat.h || 18;
-                if (p.y + p.height > plat.y + 8 && p.y < plat.y + platH - 6) {
-                    if (p.vx > 0 && p.x + p.width > plat.x && (p.x - p.vx + p.width) <= plat.x + 14) {
-                        p.x = plat.x - p.width;
-                        p.vx = 0;
-                    } else if (p.vx < 0 && p.x < plat.x + plat.w && (p.x - p.vx) >= plat.x + plat.w - 14) {
-                        p.x = plat.x + plat.w;
-                        p.vx = 0;
-                    }
-                }
-            }
             if (p.y < -2000) { p.y = -2000; if (p.vy < 0) p.vy = 0; }
-            if (typeof storyState !== 'undefined' && storyState.inTrials) {
+            let inTrials = (typeof storyState !== 'undefined' && storyState.inTrials) || (typeof storyTrials !== 'undefined' && storyTrials && storyTrials.active);
+            if (inTrials) {
                 if (p.x < 4810) { p.x = 4810; if (p.vx < 0) p.vx = 0; }
                 let rightBound = (typeof storyTrials !== 'undefined' && storyTrials && storyTrials.trialsCleared) ? (ARENA_W - p.width) : (6290 - p.width);
                 if (p.x > rightBound) { p.x = rightBound; if (p.vx > 0) p.vx = 0; }
@@ -3177,7 +3489,7 @@ function updatePlayers() {
                     if (p.isAi) {
                         let lead = players.find(pl => !pl.isAi) || players[0];
                         if (lead) { p.x = lead.x; p.y = lead.y; p.vx = 0; p.vy = 0; }
-                    } else if (p.invuln <= 0) {
+                    } else {
                         if (typeof window !== 'undefined' && typeof window.handleStoryHazardDamage === 'function') {
                             window.handleStoryHazardDamage(p);
                         } else if (typeof handleStoryHazardDamage === 'function') {
@@ -3196,7 +3508,8 @@ function updatePlayers() {
                 }
             }
         } else {
-            let ceilingLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) ? -2000 : 0;
+            let isClimbPhase = boss.state.startsWith("L_CLIMB") || boss.phase === 2.5;
+            let ceilingLimit = isClimbPhase ? -2000 : (secretMode ? Math.max(8, FLOOR - 540) : 8);
             if (p.y < ceilingLimit) { p.y = ceilingLimit; if (p.vy < 0) p.vy = 0; } 
             if (p.x < 0) p.x = 0; if (p.x > ARENA_W - p.width) p.x = ARENA_W - p.width;
         }
@@ -4013,6 +4326,14 @@ function drawPlayer(p) {
         return; 
     }
     if (p.hp <= 0) return;
+
+    let hasSquash = (p.squashX && p.squashX !== 1) || (p.squashY && p.squashY !== 1);
+    if (hasSquash) {
+        ctx.save();
+        ctx.translate(p.x + p.width / 2, p.y + p.height);
+        ctx.scale(p.squashX, p.squashY);
+        ctx.translate(-(p.x + p.width / 2), -(p.y + p.height));
+    }
 
     if (p.lightCharge > 0) { 
         let req = (boss.state === "VOID_SINK_STUN") ? 15 : 60;
@@ -4883,6 +5204,9 @@ function drawPlayer(p) {
             ctx.fillStyle = f === 1 ? "rgba(255, 230, 80, 0.75)" : "rgba(255, 90, 0, 0.75)";
             ctx.fill();
         }
+        ctx.restore();
+    }
+    if (hasSquash) {
         ctx.restore();
     }
 }

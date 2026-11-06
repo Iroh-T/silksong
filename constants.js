@@ -1,5 +1,5 @@
 // --- CONSTANTS & SHARED STATE ---
-const GAME_VERSION = "v84.7";
+const GAME_VERSION = "v85.0";
 window.GAME_VERSION = GAME_VERSION;
 let isFireBossMode = false;
 window.isFireBossMode = false;

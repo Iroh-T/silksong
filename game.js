@@ -711,7 +711,7 @@ function buildAndStartGame() {
         }
 
         if (!secretMode && !window.isFireBossMode) {
-            platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10 } ];
+            platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10, canJumpThrough: true } ];
         } else {
             platforms = [];
         }
@@ -775,7 +775,7 @@ function buildAndStartTutorialGame() {
         ARENA_W = 1000; 
         ARENA_H = 400; 
         FLOOR = 350; 
-        platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10 } ];
+        platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10, canJumpThrough: true } ];
 
         battleResultRecorded = false;
         cheatUsedInBattle = false;
@@ -907,9 +907,9 @@ function resetGameParams() {
         p.tied = false; p.tieClicks = 0; p.hasPressedTie = false; p.isDowned = false; 
         p.purpleHp = 0; p.tpCooldown = 0; p.tpDebuffTimer = 0; p.genTimer = 0; 
         p.lightCharge = 0; p.saHit = false; p.pendingDmgTimer = 0; p.pendingDmg = 0; 
-        p.attackSpamCount = 0; p.overheatTimer = 0; p.heatLevel = 0; 
+        p.coyoteTimer = 0; p.jumpBufferTimer = 0; p.squashX = 1; p.squashY = 1; p.prevLandingVy = 0; p.lastSpikePogoTimer = 0; p.hazardCooldown = 0;
         p.lastSafeX = p.x; p.lastSafeY = p.y;
-        p.chillTimer = 0; p.invigTimer = 0; p.runTimer = 0; p.voidDamageTimer = 0; p.spamResetTimer = 0;
+        p.chillTimer = 0; p.invigTimer = 0; p.runTimer = 0; p.voidDamageTimer = 0;
         let abList = (p.abilities && typeof p.abilities === 'object') ? Object.values(p.abilities) : [];
         p.chillBrews = abList.includes('chill') ? 3 : 0;
         p.invigBrews = abList.includes('invig') ? 3 : 0;
@@ -2848,7 +2848,8 @@ function drawBackground() {
         drawFireBossArena(boss ? boss.introTimer : 0);
         return;
     }
-    let bgTop = (boss.phase >= 2.5 || boss.state.startsWith("L_CLIMB") || secretMode) ? -6000 : 0;
+    let isClimbPhase = (boss.phase === 2.5 || boss.state.startsWith("L_CLIMB"));
+    let bgTop = isClimbPhase ? -6000 : (secretMode && FLOOR > 1000 ? FLOOR - 1000 : 0);
     ctx.fillStyle = secretMode ? "#111" : (globalWindMode === "DOWN" ? "#1a100c" : "#2e1a12"); 
     ctx.fillRect(0, bgTop, ARENA_W, FLOOR - bgTop);
 
@@ -2917,11 +2918,21 @@ function drawBackground() {
     ctx.fillStyle = secretMode ? "#000" : "#22110a"; 
     ctx.fillRect(0, FLOOR, ARENA_W, ARENA_H > FLOOR ? ARENA_H : 2000);
 
-    if (!boss.state.startsWith("L_CLIMB")) {
+    if (!boss.state.startsWith("L_CLIMB") && boss.phase !== 2.5) {
         ctx.strokeStyle = secretMode ? "#2a1538" : "#111"; 
         ctx.lineWidth = 4; ctx.beginPath(); 
         ctx.moveTo(0, FLOOR); ctx.lineTo(ARENA_W, FLOOR);
         ctx.stroke();
+
+        let ceilLimit = secretMode ? Math.max(8, FLOOR - 540) : 8;
+        ctx.save();
+        ctx.strokeStyle = secretMode ? "#2a1538" : "#1b110b";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, ceilLimit);
+        ctx.lineTo(ARENA_W, ceilLimit);
+        ctx.stroke();
+        ctx.restore();
     }
 
     // Растительность на арене: анимированные Цветки (BlueFlower1) на поле боя и Растения 1, 2, 3 по краям арены
@@ -3082,7 +3093,8 @@ function drawBackground() {
     // Decorative bananas scattered on arena and platforms when banana skin is active
     drawArenaDecorativeBananas();
 
-    let topWallLimit = (boss.state.startsWith("L_CLIMB") || boss.phase >= 2.5 || secretMode) 
+    let isClimb = boss.state.startsWith("L_CLIMB") || boss.phase === 2.5;
+    let topWallLimit = isClimb 
         ? -2000 
         : (secretMode ? FLOOR/2 - 100 : FLOOR/2);
     ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"; 
@@ -4747,22 +4759,13 @@ function draw() {
     ctx.restore(); 
 
     // HUD overlays & Vignettes
-    let maxHeat = 0;
     let maxChill = 0;
     let maxVoidDamage = 0;
     
     if (gameState === "PLAYING") {
         for (let p of players) {
-            if (p.heatLevel > maxHeat) maxHeat = p.heatLevel;
             if (p.chillTimer > maxChill) maxChill = p.chillTimer;
             if (p.voidDamageTimer > maxVoidDamage) maxVoidDamage = p.voidDamageTimer;
-        }
-        if (maxHeat > 0) {
-            let grad = ctx.createRadialGradient(GAME_WIDTH/2, GAME_HEIGHT/2, 200, GAME_WIDTH/2, GAME_HEIGHT/2, GAME_WIDTH/1.5);
-            grad.addColorStop(0, "transparent");
-            grad.addColorStop(1, `rgba(255, 80, 0, ${maxHeat * 0.6})`);
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
         }
         if (maxChill > 0) {
             let chillAlpha = Math.min(0.4, maxChill / 60); 

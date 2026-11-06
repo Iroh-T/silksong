@@ -280,7 +280,7 @@ function checkPhaseTransition() {
                     boss.superQueue = [ { s: "VOID_PORTALS", t: 90 }, { s: "VOID_PORTALS", t: 90 }, { s: "VOID_PORTALS", t: 90 }, { s: "SHARPEN_WINDUP", t: 120 } ]; 
                     boss.state = "EXECUTE_QUEUE"; 
                     boss.stateTimer = 1;
-                    platforms = [ {x: 200, y: FLOOR-80, w: 80, h:10}, {x: 500, y: FLOOR-120, w: 80, h:10}, {x: 800, y: FLOOR-80, w: 80, h:10} ];
+                    platforms = [ {x: 200, y: FLOOR-80, w: 80, h:10, canJumpThrough: true}, {x: 500, y: FLOOR-120, w: 80, h:10, canJumpThrough: true}, {x: 800, y: FLOOR-80, w: 80, h:10, canJumpThrough: true} ];
                 } else {
                     startTransition("Фаза 2: Кинжалы и Телепорты!"); 
                 }
@@ -292,6 +292,11 @@ function checkPhaseTransition() {
                     boss.hp = phase3Hp; 
                     boss.damageBonus = 0.5; 
                     boss.speed = 8.5; 
+                    if (!platforms || platforms.length === 0) {
+                        platforms = [ { x: 420, y: FLOOR - 100, w: 160, h: 10, canJumpThrough: true } ];
+                    } else {
+                        platforms.forEach(plat => { plat.canJumpThrough = true; });
+                    }
                     startTransition("Фаза 3: Финальная Битва!");
                 }
             }
@@ -517,11 +522,11 @@ function updatePhase3Transition() {
             // Боевые платформы для 3 фазы:
             let cX = boss.climbCenterX;
             platforms = [
-                { x: cX - 550, y: FLOOR - 80, w: 180, h: 14 },
-                { x: cX - 280, y: FLOOR - 140, w: 200, h: 14 },
-                { x: cX - 80, y: FLOOR - 80, w: 160, h: 14 },
-                { x: cX + 160, y: FLOOR - 140, w: 200, h: 14 },
-                { x: cX + 420, y: FLOOR - 80, w: 180, h: 14 }
+                { x: cX - 550, y: FLOOR - 80, w: 180, h: 14, canJumpThrough: true },
+                { x: cX - 280, y: FLOOR - 140, w: 200, h: 14, canJumpThrough: true },
+                { x: cX - 80, y: FLOOR - 80, w: 160, h: 14, canJumpThrough: true },
+                { x: cX + 160, y: FLOOR - 140, w: 200, h: 14, canJumpThrough: true },
+                { x: cX + 420, y: FLOOR - 80, w: 180, h: 14, canJumpThrough: true }
             ];
 
             // 4. Музыка включается ТОЛЬКО СЕЙЧАС (в начале 3 фазы):
@@ -605,6 +610,7 @@ function updateBoss() {
     }
 
     if (boss.invuln > 0) boss.invuln--; 
+    if (boss.silkRunGrace > 0) boss.silkRunGrace--;
     boss.stateTimer--; 
 
     // Оглушение босса (Boss Stun: 5 секунд / 300 кадров)
@@ -1702,6 +1708,7 @@ function updateBoss() {
                     boss.color = "#e6c800";
                     boss.stateTimer = 15;
                     boss.vx = 0;
+                    boss.silkRunGrace = 25; // Grace period after silk run so boss does not deal cheap contact damage
                 }
                 break;
             case "WIND_FLY": 
@@ -1911,8 +1918,12 @@ function updateBoss() {
         boss.y = bossFloorLimit - boss.height; 
         boss.vy = 0; 
     }
-    let bossCeilLimit = secretMode ? -2000 : 0;
-    if (boss.y < bossCeilLimit && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB")) boss.y = bossCeilLimit; 
+    let isClimb = boss.state.startsWith("L_CLIMB") || boss.phase === 2.5;
+    let bossCeilLimit = isClimb ? -2000 : (secretMode ? Math.max(8, FLOOR - 540) : 8);
+    if (boss.y < bossCeilLimit && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB")) {
+        boss.y = bossCeilLimit;
+        if (boss.vy < 0) boss.vy = 0;
+    } 
     if (boss.x < 0 && !boss.state.startsWith("L_CLIMB")) { boss.x = 0; boss.vx *= -1; } 
     if (boss.x > ARENA_W - 30 && !boss.state.startsWith("L_CLIMB")) { boss.x = ARENA_W - 30; boss.vx *= -1; }
 
@@ -1923,7 +1934,7 @@ function updateBoss() {
     }
 
     for (let p of players) {
-        if (!p.isDowned && p.hp > 0 && rectIntersect(p, bossDmgHitbox) && !(p.fireLungeTimer > 0) && boss.state !== "TRANSITION" && p.invuln <= 0 && !boss.halfHpSeqActive && boss.state !== "EXECUTE_QUEUE" && !boss.state.startsWith("SA") && !boss.state.startsWith("TELEPORT") && !boss.state.startsWith("CINEMATIC") && !boss.state.startsWith("L_INTRO") && !boss.state.startsWith("L_PHASE3") && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB") && boss.state !== "VOID_SINK_STUN") {
+        if (!p.isDowned && p.hp > 0 && rectIntersect(p, bossDmgHitbox) && !(p.fireLungeTimer > 0) && boss.state !== "TRANSITION" && boss.state !== "SILK_RUN" && !(boss.silkRunGrace > 0) && p.invuln <= 0 && !boss.halfHpSeqActive && boss.state !== "EXECUTE_QUEUE" && !boss.state.startsWith("SA") && !boss.state.startsWith("TELEPORT") && !boss.state.startsWith("CINEMATIC") && !boss.state.startsWith("L_INTRO") && !boss.state.startsWith("L_PHASE3") && boss.state !== "HIDDEN_PAUSE" && !boss.state.startsWith("L_CLIMB") && boss.state !== "VOID_SINK_STUN") {
             let dmg = (secretMode ? 2 : 1) + boss.damageBonus; 
             if (boss.state === "GREAT_LUNGE_ACTIVE") {
                 if (!secretMode) {

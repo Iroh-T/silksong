@@ -92,6 +92,14 @@ let storyState = {
     checkpoint: { x: 120, y: 350, stance: 'WATER', hp: 5, benchId: 0 },
     leaves: [],
     grassBlades: [],
+    cutGrassParticles: [],
+    waterRipples: [],
+    waterDrops: [],
+    ambientDrips: [],
+    ambientDripTimer: 0,
+    silkFlies: [],
+    sporeSpitters: [],
+    sporeProjectiles: [],
     stars: [],
     campfireFlames: [],
     backpackSlots: 6,
@@ -105,8 +113,8 @@ let storyState = {
     room1SecretWallHp: 2,
     room1SecretWallBroken: false,
     secretRoomAnnounce: 0,
-    room2OneWayWallHp: 2,
-    room2OneWayBroken: false,
+    room2OneWayWallHp: 1,
+    room2OneWayBroken: true,
     currentRoom: 1, // 1 = Descent & Spikes, 2 = Scroll Cavern
     roomTransitioning: false,
     roomFadeAlpha: 0.0,
@@ -153,20 +161,22 @@ function setupStoryPlatforms() {
         // Right boundary wall of Room 1 (X = 2440, Y = 850..2020)
         { x: 2440, y: 850, w: 40, h: 1170, solid: true, isWall: true },
 
-        // Shaft 1: Top Tier (Bench 2 at Y=850) <-> Middle Tier (Y=1400) - Bidirectional Staggered Steps
-        // Semi-solid (canJumpThrough: true) allows upward parkour without head bonking or side blocking!
-        { x: 1940, y: 890,  w: 90,  h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom1: true }, // Transition hop onto Floor 3!
-        { x: 1980, y: 930,  w: 160, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 2240, y: 1030, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 2040, y: 1120, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 2240, y: 1210, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 2040, y: 1305, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        // Shaft 1: Top Tier (Bench 2 at Y=850) <-> Middle Tier (Y=1400) - Staggered solid platforms (стена в воздухе)
+        { x: 1980, y: 930,  w: 160, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 2260, y: 1030, w: 140, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 2020, y: 1120, w: 140, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 2260, y: 1210, w: 140, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 2020, y: 1305, w: 140, h: 24, solid: true, mossy: true, isRoom1: true },
 
         // Middle Tier (Y = 1400) - Path moves RIGHT to LEFT!
         // Solid landing floor right of center spikes (X: 1960..2380)
         { x: 1960, y: 1400, w: 420, h: 40, solid: true, mossy: true, isRoom1: true },
-        // Floating rock ledge directly over center sunken spike pit (Sketch 1 🟢 - comfortable 50px hop!)
-        { x: 1730, y: 1350, w: 180, h: 24, solid: true, mossy: true, isRoom1: true },
+        // Solid sub-floor under right spike pit (X: 2380..2480)
+        { x: 2380, y: 1410, w: 100, h: 40, solid: true, isFloor: true, isRoom1: true },
+        // Floating rock ledge directly over center sunken spike pit (Sketch 1 🟢 - jump-through floating platform!)
+        { x: 1720, y: 1350, w: 200, h: 24, canJumpThrough: true, solid: false, mossy: true, isRoom1: true },
+        // Solid sub-floor under center spike pit (X: 1680..1960)
+        { x: 1680, y: 1410, w: 280, h: 40, solid: true, isFloor: true, isRoom1: true },
         // Solid floor left of center spikes (X: 1420..1680)
         { x: 1420, y: 1400, w: 260, h: 40, solid: true, mossy: true, isRoom1: true },
         // Hanging Vine Barrier (Sketch 1 Red Arrow 🌿: X = 1420, Y = 960..1400) - slashed with attack
@@ -174,22 +184,21 @@ function setupStoryPlatforms() {
         // Solid floor past vines leading to left drop-off (X: 1200..1420)
         { x: 1200, y: 1400, w: 220, h: 40, solid: true, mossy: true, isRoom1: true },
 
-        // Shaft 2: Middle Tier left side (Y=1400) <-> Bottom Tier (Y=1950) - Bidirectional Staggered Steps
-        { x: 1160, y: 1445, w: 90,  h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom1: true }, // Transition hop onto Middle Tier floor!
-        { x: 1080, y: 1490, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 1240, y: 1580, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 1080, y: 1670, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 1240, y: 1760, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 1100, y: 1855, w: 140, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        // Shaft 2: Middle Tier left side (Y=1400) <-> Bottom Tier (Y=1950) - Staggered solid platforms (стена в воздухе)
+        { x: 1080, y: 1490, w: 110, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 1270, y: 1580, w: 110, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 1080, y: 1670, w: 110, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 1270, y: 1760, w: 110, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 1080, y: 1855, w: 110, h: 24, solid: true, mossy: true, isRoom1: true },
 
         // Bottom Tier (Y = 1950) - Path moves LEFT to RIGHT!
-        // Main bottom walking floor (X: 1120..2320, ending at the drop pit at X = 2320)
-        { x: 1120, y: 1950, w: 1200, h: 60, solid: true, mossy: true, tier: 3, isRoom1: true },
+        // Continuous Solid Bottom Tier Floor (X: 1040..2320, Y = 1950 - seamless, no snagging step at X=1120)
+        { x: 1040, y: 1950, w: 1280, h: 60, solid: true, mossy: true, tier: 3, isRoom1: true },
 
-        // High Path Steps to Secret Room (Sketch 1 White Line): jumps UP to Secret Room (comfortable 90-100px hops!)
-        { x: 1680, y: 1850, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 1840, y: 1750, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
-        { x: 2000, y: 1650, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom1: true },
+        // High Path Steps to Secret Room (Sketch 1 White Line): jumps UP to Secret Room (solid floating blocks!)
+        { x: 1680, y: 1850, w: 120, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 1840, y: 1750, w: 120, h: 24, solid: true, mossy: true, isRoom1: true },
+        { x: 2000, y: 1650, w: 120, h: 24, solid: true, mossy: true, isRoom1: true },
 
         // Secret Room (Sketch 1 Pink Arrow 🧱: X = 2120..2480, Y = 1520..1650)
         { x: 2120, y: 1520, w: 30,  h: 130, solid: !storyState.room1SecretWallBroken, isSecretWall: true, isRoom1: true },
@@ -197,47 +206,39 @@ function setupStoryPlatforms() {
         { x: 2120, y: 1500, w: 340, h: 24,  solid: true, isWall: true, isRoom1: true },
         { x: 2440, y: 1500, w: 30,  h: 180, solid: true, isWall: true, isRoom1: true },
 
-        // --- ROOM 2: SCROLL CAVERN & ONE-WAY SHORTCUT WALL (X: 8200..9580, Y: 700..1860) ---
+        // --- ROOM 2: SCROLL CAVERN & SHORTCUT ARCHWAY (X: 8200..9580, Y: 700..1860) ---
         // Ceiling with top-right entrance drop shaft (Sketch 2 Purple Circle: shaft at X = 9320..9460)
         { x: 8200, y: 700,  w: 1120, h: 30, solid: true, isWall: true, isRoom2: true },
         { x: 9460, y: 700,  w: 120,  h: 30, solid: true, isWall: true, isRoom2: true },
         { x: 9320, y: 480,  w: 24,   h: 220, solid: true, isWall: true, isRoom2: true },
-        // Shaft right wall extends all the way down to chamber roof (Y: 480..1360) so player CANNOT fall right!
-        { x: 9460, y: 480,  w: 24,   h: 880, solid: true, isWall: true, isRoom2: true },
-        // Solid rock mass blocking the right side above scroll tunnel entrance (X: 9460..9580, Y: 700..1540)
-        { x: 9460, y: 700,  w: 120,  h: 840, solid: true, isWall: true, isRoom2: true },
-
+        { x: 9460, y: 480,  w: 24,   h: 220, solid: true, isWall: true, isRoom2: true },
         // Left boundary wall of Room 2 with Archway opening at Y: 1360..1520
         { x: 8170, y: 700,  w: 30,  h: 660,  solid: true, isWall: true, isRoom2: true }, // Upper wall: Y = 700..1360
         { x: 8170, y: 1520, w: 30,  h: 340,  solid: true, isWall: true, isRoom2: true }, // Lower wall: Y = 1520..1860
         { x: 9550, y: 700,  w: 30,  h: 1160, solid: true, isWall: true, isRoom2: true },
+        // Upper Entrance Landing Ledge (right under entrance shaft at X: 9240..9500)
+        { x: 9240, y: 1120, w: 260, h: 26, solid: true, mossy: true, isRoom2: true },
 
-        // Central Raised Chamber Roof (X = 8680..9460, Y = 1360)
-        // Solid walkable roof slab where player lands after dropping from shaft!
-        // No isWall flag so you walk on top of it cleanly without falling through!
-        { x: 8680, y: 1360, w: 780, h: 30, solid: true, mossy: true, isRoom2: true },
+        // Exit Archway Ledge (threshold of the corridor leading back to Room 1: X = 8170..8300, Y = 1520)
+        { x: 8170, y: 1520, w: 130, h: 24, solid: true, mossy: true, isRoom2: true },
 
-        // Exit Archway Ledge (threshold of the portal leading back to Bench 2: X = 8170..8320, Y = 1520)
-        { x: 8170, y: 1520, w: 150, h: 24, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
-
-        // Stepping Stones between Chamber (X = 8680, Y = 1540) and Exit Archway (X = 8320, Y = 1520)
-        { x: 8370, y: 1525, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
-        { x: 8520, y: 1530, w: 120, h: 22, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+        // Stepping Stones between Chamber (X = 8680, Y = 1540) and Exit Archway (X = 8300, Y = 1520)
+        { x: 8350, y: 1520, w: 110, h: 24, solid: true, mossy: true, isRoom2: true },
+        { x: 8520, y: 1530, w: 160, h: 24, solid: true, mossy: true, isRoom2: true },
 
         // Left climbable steps from Bottom Floor (Y = 1800) back up to Exit Platform (Y = 1520)
-        // Comfortable ~70px hops so any player / Water jumps up effortlessly!
-        { x: 8440, y: 1730, w: 110, h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
-        { x: 8340, y: 1660, w: 110, h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
-        { x: 8420, y: 1590, w: 110, h: 20, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
+        { x: 8440, y: 1710, w: 100, h: 24, solid: true, mossy: true, isRoom2: true },
+        { x: 8350, y: 1615, w: 100, h: 24, solid: true, mossy: true, isRoom2: true },
 
-        // Bottom Floor (X: 8340..9480, Y = 1800)
-        { x: 8340, y: 1800, w: 1140, h: 60, solid: true, tier: 3, isRoom2: true },
-        // Bottom-Right Steps leading up into central chamber (Sketch 2 bottom right 🟢): 1800 -> 1715 -> 1628 -> 1540
-        { x: 9230, y: 1715, w: 120, h: 24, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
-        { x: 9362, y: 1628, w: 110, h: 24, solid: true, mossy: true, canJumpThrough: true, isRoom2: true },
-        // Central Raised Chamber Floor & One-Way Wall
+        // Room 2 Continuous Solid Bottom Floor (X: 8170..9480, Y = 1800 - seamless, no snagging step at X=8320)
+        { x: 8170, y: 1800, w: 1310, h: 60, solid: true, tier: 3, isRoom2: true },
+        // Bottom-Right Steps leading up into central chamber (Sketch 2 bottom right 🟢): 1800 -> 1715 -> 1630 -> 1540 (~85px hops)
+        { x: 9230, y: 1715, w: 120, h: 24, solid: true, mossy: true, isRoom2: true },
+        { x: 9362, y: 1628, w: 110, h: 24, solid: true, mossy: true, isRoom2: true },
+        // Central Raised Chamber Floor & Roof (housing Dash Scroll and Shortcut Passage)
         { x: 8680, y: 1540, w: 660, h: 30, solid: true, mossy: true, isRoom2: true },
-        { x: 8680, y: 1360, w: 35,  h: 180, solid: !storyState.room2OneWayBroken, isOneWayWall: true, isRoom2: true },
+        { x: 8680, y: 1360, w: 660, h: 30, solid: true, isCeiling: true, isRoom2: true },
+        { x: 8680, y: 1360, w: 35,  h: 180, solid: false, isOneWayWall: true, isRoom2: true },
 
         // Dedicated Isolated Trials Arena Chamber (X = 4800..6300, Y = 430..870)
         // Hidden from corridor view; accessible ONLY via Arch Gate teleport!
@@ -545,16 +546,20 @@ function finishAncientRitual() {
     storyRitual.phase = 'IDLE';
     storyRitual.cyanFlashAlpha = 0;
     storyState.bluePowerUnlocked = true;
+    storyState.guardianDefeated = true;
+    storyState.comboUnlocked = true;
     sharedHeals = 3;
     maxSharedHeals = 3;
     sharedHealPoints = 12;
 
-    // Fully heal all party members!
+    // Fully heal all party members and reset any active droplet!
     for (let pl of players) {
         if (pl) {
             pl.hp = pl.maxHp || 5;
             pl.isDowned = false;
             pl.downedTimer = 0;
+            pl.waterDropActive = false;
+            pl.waterDrop = null;
         }
     }
 
@@ -1340,21 +1345,23 @@ function rebuildStoryPartyFromAssignments(anchorX, anchorFloorY) {
     }
 
     players = [];
+    let spawnedCount = 0;
     orderedHeroes.forEach((hType, idx) => {
         let role = storyState.heroAssignments[hType] || (idx === 0 ? 'P1' : 'AI');
+        if (role === 'NONE') return; // Герой отключен и не следует за командой!
         let isP1 = (role === 'P1');
         let isP2 = (role === 'P2' && window.storyPlayerCount === 2);
         let keysObj = isP1 ? getStoryP1Keys() : (isP2 ? getStoryP2Keys() : getStoryP1Keys());
         let inType = isP1 ? p1InputType : (isP2 ? (p2InputType || 'KEYBOARD_2') : 'AI');
 
-        let pl = createPlayer(idx + 1, hType, keysObj, inType, anchorX - 18 + idx * 22);
+        let pl = createPlayer(spawnedCount + 1, hType, keysObj, inType, anchorX - 18 + spawnedCount * 22);
         pl.isAi = !(isP1 || isP2);
         pl.maxHp = 5;
         pl.hp = 5;
         pl.purpleHp = 0;
         pl.stance = (hType === 'WATER') ? (oldStances.WATER || 'LIGHT') : 'LIGHT';
         pl.abilities = { top: 'shuriken', mid: 'shuriken', bot: 'shuriken' };
-        pl.x = anchorX - 18 + idx * 22;
+        pl.x = anchorX - 18 + spawnedCount * 22;
         pl.y = anchorFloorY - 24;
         pl.lastSafeX = pl.x;
         pl.lastSafeY = pl.y;
@@ -1363,6 +1370,7 @@ function rebuildStoryPartyFromAssignments(anchorX, anchorFloorY) {
         if (hType === 'AIR') pl.jumpPower = -11.9;
         applyBadgesToPlayer(pl, true);
         players.push(pl);
+        spawnedCount++;
     });
 }
 
@@ -1380,18 +1388,11 @@ function initForestScenery() {
         });
     }
 
-    // 2. Swaying grass blades along Floor 1 (0..3820)
-    storyState.grassBlades = [];
-    for (let x = 0; x < 3820; x += 12) {
-        let h = 14 + Math.sin(x * 0.1) * 8 + Math.random() * 8;
-        storyState.grassBlades.push({
-            x: x + (Math.random() * 4 - 2),
-            h: h,
-            lean: (Math.random() - 0.5) * 4,
-            phase: Math.random() * Math.PI * 2,
-            color: (Math.random() > 0.4) ? "#15803d" : "#166534"
-        });
-    }
+    // 2. Interactive grass blades across the world
+    initStoryGrassBlades();
+
+    // 2b. Spawn starting location enemies
+    spawnStoryWorldEnemies();
 
     // 3. Drifting leaves blown by wind (green & autumn emerald)
     storyState.leaves = [];
@@ -1411,6 +1412,241 @@ function initForestScenery() {
     // 4. Campfire flame particles
     storyState.campfireFlames = [];
 }
+
+// --- INTERACTIVE WORLD & GRASS SYSTEM (Silksong-Style Foliage) ---
+function initStoryGrassBlades() {
+    storyState.grassBlades = [];
+    storyState.cutGrassParticles = [];
+
+    // Helper to generate a row of grass along a ledge/floor
+    function addGrassLine(x1, x2, y, step = 14) {
+        for (let x = x1; x <= x2; x += step) {
+            let h = 13 + Math.sin(x * 0.12) * 7 + Math.random() * 6;
+            storyState.grassBlades.push({
+                x: Math.round(x + (Math.random() * 4 - 2)),
+                y: y,
+                h: h,
+                maxH: h,
+                lean: (Math.random() - 0.5) * 3,
+                springVx: 0,
+                phase: Math.random() * Math.PI * 2,
+                cut: false,
+                color: (Math.random() > 0.45) ? "#22c55e" : ((Math.random() > 0.5) ? "#15803d" : "#4ade80")
+            });
+        }
+    }
+
+    // 1. Forest Floor 1 (0..3820, Y = 350)
+    addGrassLine(10, 3810, STORY_CONFIG.FLOOR, 12);
+
+    // 2. Room 1 Top Tier / Bench 2 corridor (entire tier from shaft at -470 to shaft drop at 2430, Y = 850)
+    addGrassLine(-470, 2430, 850, 13);
+
+    // 3. Room 1 Middle Tier: left floor (1200..1670), right floor (1970..2370), Plat 3 (1720..1910, Y = 1350)
+    addGrassLine(1210, 1670, 1400, 15);
+    addGrassLine(1970, 2370, 1400, 15);
+    addGrassLine(1725, 1915, 1350, 13);
+
+    // 4. Room 1 Bottom Tier (1050..2310, Y = 1950)
+    addGrassLine(1050, 2310, 1950, 14);
+
+    // 5. Room 2 Bottom Floor (8180..9470, Y = 1800) and Central Chamber Roof (8690..9330, Y = 1360)
+    addGrassLine(8180, 9470, 1800, 15);
+    addGrassLine(8690, 9330, 1360, 14);
+}
+window.initStoryGrassBlades = initStoryGrassBlades;
+
+function regrowStoryGrass() {
+    if (!storyState.grassBlades || storyState.grassBlades.length === 0) {
+        initStoryGrassBlades();
+        return;
+    }
+    for (let g of storyState.grassBlades) {
+        g.cut = false;
+        g.h = g.maxH;
+        g.springVx = 0;
+        g.lean = (Math.random() - 0.5) * 3;
+    }
+    storyState.cutGrassParticles = [];
+}
+window.regrowStoryGrass = regrowStoryGrass;
+
+// --- STARTING LOCATION ENEMIES (Мховички, Шёлковые Мошки, Споровые Плевуны) ---
+function spawnStoryWorldEnemies() {
+    // 1. Moss Crawlers (Мховички - патрульные жучки)
+    storyState.mossCrawlers = [
+        // Room 1 Middle Tier Platform 3 over center spikes
+        { id: 'mc_1', x: 1820, y: 1350 - 24, w: 36, h: 24, startX: 1740, endX: 1890, vx: 0.5, hp: 2, maxHp: 2, facingRight: true, hitTimer: 0 },
+        // Room 1 Top Tier far right edge (leaving Bench 2 campfire peaceful!)
+        { id: 'mc_top', x: 1780, y: 850 - 24, w: 34, h: 22, startX: 1680, endX: 1940, vx: 0.6, hp: 2, maxHp: 2, facingRight: true, hitTimer: 0 },
+        // Room 1 Bottom Tier left side
+        { id: 'mc_bot1', x: 1280, y: 1950 - 24, w: 36, h: 24, startX: 1120, endX: 1440, vx: 0.55, hp: 2, maxHp: 2, facingRight: false, hitTimer: 0 },
+        // Room 1 Bottom Tier right side
+        { id: 'mc_bot2', x: 1920, y: 1950 - 24, w: 36, h: 24, startX: 1800, endX: 2160, vx: 0.5, hp: 2, maxHp: 2, facingRight: true, hitTimer: 0 },
+        // Room 2 Bottom Floor
+        { id: 'mc_r2', x: 8850, y: 1800 - 24, w: 36, h: 24, startX: 8680, endX: 9180, vx: 0.55, hp: 2, maxHp: 2, facingRight: true, hitTimer: 0 }
+    ];
+
+    // 2. Silk Flies / Moths (Шёлковые мошки - парят в воздухе над пропастями, служат трамплинами для пого-прыжка!)
+    storyState.silkFlies = [
+        // Room 1 Middle Tier over center spikes (пого-отскок через яму)
+        { id: 'sf_1', x: 1820, baseY: 1240, y: 1240, w: 34, h: 26, hp: 1, maxHp: 1, hitTimer: 0, phase: 0, bobSpeed: 0.05, bobAmp: 18, facingRight: true },
+        // Room 1 Shaft 2 left drop-off
+        { id: 'sf_2', x: 1180, baseY: 1620, y: 1620, w: 34, h: 26, hp: 1, maxHp: 1, hitTimer: 0, phase: 1.5, bobSpeed: 0.045, bobAmp: 16, facingRight: false },
+        // Room 2 over entrance spike pit (пого-шорткат к арке выхода)
+        { id: 'sf_3', x: 8280, baseY: 1640, y: 1640, w: 34, h: 26, hp: 1, maxHp: 1, hitTimer: 0, phase: 0.8, bobSpeed: 0.05, bobAmp: 20, facingRight: true },
+        // Room 1 Bottom Tier high steps leading to secret room
+        { id: 'sf_4', x: 1760, baseY: 1780, y: 1780, w: 34, h: 26, hp: 1, maxHp: 1, hitTimer: 0, phase: 2.2, bobSpeed: 0.04, bobAmp: 15, facingRight: true }
+    ];
+
+    // 3. Spore Spitters (Споровые плевуны - плюются отбиваемыми спорами, можно делать пого)
+    storyState.sporeSpitters = [
+        // Room 1 Bottom Tier
+        { id: 'spit_1', x: 1540, y: 1950 - 28, w: 38, h: 28, hp: 3, maxHp: 3, shootTimer: 90, hitTimer: 0, facingRight: false },
+        // Room 2 Central Chamber
+        { id: 'spit_2', x: 8950, y: 1540 - 28, w: 38, h: 28, hp: 3, maxHp: 3, shootTimer: 130, hitTimer: 0, facingRight: false }
+    ];
+
+    storyState.sporeProjectiles = [];
+}
+window.spawnStoryWorldEnemies = spawnStoryWorldEnemies;
+
+// --- WATER POND INTERACTIVE EFFECTS (Всплески, круги на воде, брызги) ---
+function createWaterSplash(x, y, vy) {
+    if (!storyState.waterDrops) storyState.waterDrops = [];
+    if (!storyState.waterRipples) storyState.waterRipples = [];
+
+    let count = Math.min(18, Math.max(8, Math.floor(Math.abs(vy || 3) * 3)));
+    for (let i = 0; i < count; i++) {
+        let angle = -Math.PI * 0.15 - Math.random() * Math.PI * 0.7;
+        let spd = 2.5 + Math.random() * (Math.abs(vy || 3) * 0.9);
+        storyState.waterDrops.push({
+            x: x + (Math.random() - 0.5) * 16,
+            y: y + (Math.random() - 0.5) * 4,
+            vx: Math.cos(angle) * spd,
+            vy: Math.sin(angle) * spd,
+            r: 2 + Math.random() * 2.5,
+            alpha: 0.9,
+            life: 25 + Math.random() * 15
+        });
+    }
+
+    storyState.waterRipples.push({
+        x: x,
+        y: y,
+        rx: 6,
+        ry: 2.2,
+        maxRx: 42,
+        alpha: 0.85,
+        timer: 30
+    });
+    storyState.waterRipples.push({
+        x: x,
+        y: y,
+        rx: 2,
+        ry: 1.0,
+        maxRx: 24,
+        alpha: 0.95,
+        timer: 20
+    });
+}
+window.createWaterSplash = createWaterSplash;
+
+function addWaterSwimmingRipple(x, y, vx) {
+    if (!storyState.waterRipples) storyState.waterRipples = [];
+    if (!storyState.waterDrops) storyState.waterDrops = [];
+
+    storyState.waterRipples.push({
+        x: x,
+        y: y,
+        rx: 4,
+        ry: 1.6,
+        maxRx: 26,
+        alpha: 0.75,
+        timer: 22
+    });
+
+    for (let k = 0; k < 2; k++) {
+        storyState.waterDrops.push({
+            x: x - Math.sign(vx || 1) * 10 + (Math.random() - 0.5) * 6,
+            y: y - 2,
+            vx: -Math.sign(vx || 1) * (1.2 + Math.random() * 1.5),
+            vy: -1.2 - Math.random() * 1.5,
+            r: 1.5 + Math.random() * 1.5,
+            alpha: 0.8,
+            life: 18
+        });
+    }
+}
+window.addWaterSwimmingRipple = addWaterSwimmingRipple;
+
+function createWaterExitSplash(x, y, vy) {
+    if (!storyState.waterDrops) storyState.waterDrops = [];
+    if (typeof playSound === 'function') playSound('waterSplash');
+
+    for (let i = 0; i < 10; i++) {
+        storyState.waterDrops.push({
+            x: x + (Math.random() - 0.5) * 14,
+            y: y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: -3 - Math.random() * 4,
+            r: 2 + Math.random() * 2,
+            alpha: 0.85,
+            life: 24
+        });
+    }
+}
+window.createWaterExitSplash = createWaterExitSplash;
+
+function checkStoryWaterAttackHitbox(swordHitbox, pl) {
+    if (!swordHitbox) return;
+    let waterY = 356;
+    let pondX1 = STORY_CONFIG.POND_X1 || 3820;
+    let pondX2 = STORY_CONFIG.POND_X2 || 4500;
+    if (swordHitbox.x + swordHitbox.width > pondX1 && swordHitbox.x < pondX2 &&
+        swordHitbox.y <= waterY + 14 && swordHitbox.y + swordHitbox.height >= waterY - 8) {
+        let hitX = Math.max(pondX1, Math.min(pondX2, swordHitbox.x + swordHitbox.width / 2));
+        createWaterSplash(hitX, waterY, 5);
+        if (typeof playSound === 'function') playSound('waterSplash');
+    }
+}
+window.checkStoryWaterAttackHitbox = checkStoryWaterAttackHitbox;
+
+function checkStoryGrassSlashHitbox(swordHitbox, pl) {
+    if (!swordHitbox || !storyState.grassBlades) return;
+    let cutAny = false;
+    for (let g of storyState.grassBlades) {
+        if (g.cut) continue;
+        let gy = g.y !== undefined ? g.y : STORY_CONFIG.FLOOR;
+        if (g.x >= swordHitbox.x && g.x <= swordHitbox.x + swordHitbox.width &&
+            gy >= swordHitbox.y && gy - g.h <= swordHitbox.y + swordHitbox.height) {
+            g.cut = true;
+            g.h = 4;
+            g.springVx = (pl.facingRight ? 7 : -7);
+            cutAny = true;
+
+            if (!storyState.cutGrassParticles) storyState.cutGrassParticles = [];
+            for (let p = 0; p < 4; p++) {
+                storyState.cutGrassParticles.push({
+                    x: g.x,
+                    y: gy - g.maxH * 0.5,
+                    vx: (pl.facingRight ? 1 : -1) * (1.8 + Math.random() * 3.5) + (Math.random() - 0.5) * 2,
+                    vy: -2.5 - Math.random() * 3.5,
+                    rot: Math.random() * Math.PI,
+                    rotSpeed: (Math.random() - 0.5) * 0.4,
+                    len: 5 + Math.random() * 6,
+                    color: g.color,
+                    alpha: 1.0,
+                    life: 35
+                });
+            }
+        }
+    }
+    if (cutAny) {
+        if (typeof playSound === 'function') playSound('leaf');
+    }
+}
+window.checkStoryGrassSlashHitbox = checkStoryGrassSlashHitbox;
 
 // Start Prologue Session
 function initStoryPrologue(slotData) {
@@ -1441,6 +1677,7 @@ function initStoryPrologue(slotData) {
     resetGameParams();
     setupStoryPlatforms();
     storyState.bluePowerUnlocked = !!(slotData && slotData.bluePowerUnlocked);
+    storyState.guardianDefeated = !!(slotData && (slotData.guardianDefeated || slotData.bluePowerUnlocked || slotData.checkpointId === 'bench_2_underground' || slotData.checkpointId === 'forest_bench_campfire'));
     if (slotData && slotData.explored) {
         storyState.explored = Object.assign({ startForest: true }, slotData.explored);
     }
@@ -2051,10 +2288,10 @@ function updateStoryMode() {
                 }
             }
 
-            // 5. Standing near Gate of the Trials at X = 1850, Y = 850
-            if (!storyState.inTrials) {
+            // 5. Standing near Gate of the Trials at X = 1850, Y = 850 (strictly at the portal door only)
+            if (!storyState.inTrials && (!storyTrials || !storyTrials.trialsCleared)) {
                 let p1 = players[0];
-                let nearGate = p1 && (p1.y > 700) && (Math.abs(p1.x - 1850) < 65);
+                let nearGate = p1 && (p1.y >= 750 && p1.y <= 855) && (Math.abs((p1.x + p1.width / 2) - 1878) <= 45);
                 storyState.nearTrialsGate = !!nearGate;
                 if (nearGate && storyState.airMet && storyState.earthMet) {
                     let kDown = checkKeyInput(p1.keys, 'down') || keys['ArrowDown'] || keys['KeyS'] || (typeof touchInputs !== 'undefined' && touchInputs && touchInputs.down);
@@ -2067,6 +2304,8 @@ function updateStoryMode() {
                         }
                     }
                 }
+            } else {
+                storyState.nearTrialsGate = false;
             }
 
             if (storyTrials.trialsCleared && !storyState.bluePowerUnlocked && !storyRitual.active && !storyDialogue.active && p1 && p1.x >= 6680 && p1.x <= 7720 && p1.y > 600 && p1.y < 900) {
@@ -2156,11 +2395,9 @@ function updateStoryMode() {
             for (let pl of players) {
                 if (pl) { pl.vx = 0; pl.vy = 0; }
             }
-            if (storyState.stepTimer >= 135) {
+            if (storyState.stepTimer >= 70) {
                 storyState.demonAuraTimer = 0;
                 storyState.exposedQuote = "";
-                storyState.checkpoint.stance = 'LIGHT';
-                respawnPlayerAtStoryCheckpoint();
                 for (let pl of players) {
                     if (pl && pl.type === 'WATER') pl.stance = 'LIGHT';
                 }
@@ -2519,6 +2756,8 @@ function respawnPlayerAtStoryCheckpoint() {
         storyState.step = 'BENCH_REST';
         storyState.stepTimer = 0;
         storyState.mossCrawlerDefeated = false;
+        spawnStoryWorldEnemies();
+        regrowStoryGrass();
         storyState.currentRoom = 1;
         let bx = (bId === 2) ? STORY_CONFIG.BENCH_2_X : STORY_CONFIG.BENCH_X;
         let by = (bId === 2) ? STORY_CONFIG.BENCH_2_Y : STORY_CONFIG.FLOOR;
@@ -2533,6 +2772,8 @@ function respawnPlayerAtStoryCheckpoint() {
             pl.isDowned = false;
             pl.downedTimer = 0;
             pl.invuln = 60;
+            pl.waterDropActive = false;
+            pl.waterDrop = null;
             if (pl.type === 'WATER') {
                 pl.stance = 'LIGHT';
             }
@@ -2584,6 +2825,8 @@ function restAtCampfire(benchId = 1) {
     storyState.heroSelectOpen = false;
     storyState.step = 'BENCH_REST';
     storyState.stepTimer = 0;
+    spawnStoryWorldEnemies();
+    regrowStoryGrass();
 
     for (let idx = 0; idx < players.length; idx++) {
         let pl = players[idx];
@@ -2620,6 +2863,7 @@ function restAtCampfire(benchId = 1) {
         demonUnlocked: true,
         stealthUnlocked: true,
         waterDropBonusDmg: storyState.waterDropBonusDmg || 0.5,
+        guardianDefeated: !!storyState.guardianDefeated,
         airMet: !!storyState.airMet,
         earthMet: !!storyState.earthMet,
         bluePowerUnlocked: !!storyState.bluePowerUnlocked,
@@ -2665,6 +2909,7 @@ function autoSaveStoryProgress() {
         demonUnlocked: true,
         stealthUnlocked: true,
         waterDropBonusDmg: storyState.waterDropBonusDmg || 0.5,
+        guardianDefeated: !!storyState.guardianDefeated,
         airMet: !!storyState.airMet,
         earthMet: !!storyState.earthMet,
         bluePowerUnlocked: !!storyState.bluePowerUnlocked,
@@ -2793,7 +3038,10 @@ function openStoryBackpackModal() {
         let slotsHtml = '';
         let maxSlots = storyState.backpackSlots || 6;
         let bp = storyState.backpack || [];
-        let isAtBench = (storyState.step === 'BENCH_REST' || (storyState.activeBenchId && storyState.activeBenchId >= 1));
+        let leadP = players[0] || { x: 0, y: 0 };
+        let isNearBench1 = Math.abs(leadP.x - STORY_CONFIG.BENCH_X) < 140 && Math.abs(leadP.y - STORY_CONFIG.FLOOR) < 80;
+        let isNearBench2 = Math.abs(leadP.x - STORY_CONFIG.BENCH_2_X) < 140 && Math.abs(leadP.y - STORY_CONFIG.BENCH_2_Y) < 80;
+        let isAtBench = (storyState.step === 'BENCH_REST') || isNearBench1 || isNearBench2;
 
         for (let s = 0; s < maxSlots; s++) {
             let item = bp[s];
@@ -2815,8 +3063,8 @@ function openStoryBackpackModal() {
                         ? `<button onclick="openStoryScrollHeroModal()" style="margin-top: 10px; padding: 6px 10px; font-size: 11.5px; font-weight: 900; background: linear-gradient(90deg, rgba(0, 229, 255, 0.25), rgba(56, 189, 248, 0.35)); border: 1.5px solid #00e5ff; border-radius: 8px; color: #e0f2fe; cursor: pointer; box-shadow: 0 0 10px rgba(0,229,255,0.4);">
                                 ⚡ ВОНЗИТЬ ОРУЖИЕ У КОСТРА
                            </button>`
-                        : `<div style="margin-top: 10px; padding: 6px; font-size: 10.5px; text-align: center; color: #94a3b8; background: rgba(15, 23, 42, 0.6); border: 1px dashed #64748b; border-radius: 8px;">
-                                (Отнесите к костру на скамейке)
+                        : `<div style="margin-top: 10px; padding: 7px 10px; font-size: 11px; text-align: center; color: #fca5a5; background: rgba(239, 68, 68, 0.12); border: 1px dashed rgba(239, 68, 68, 0.4); border-radius: 8px;">
+                                🔥 Применить свиток можно только у костра на скамейке
                            </div>`;
                     slotsHtml += `
                         <div style="background: rgba(15, 23, 42, 0.95); border: 2px solid #00e5ff; box-shadow: 0 0 16px rgba(0, 229, 255, 0.35); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
@@ -2932,6 +3180,14 @@ function useStoryBackpackDewFlask() {
 window.useStoryBackpackDewFlask = useStoryBackpackDewFlask;
 
 function openStoryScrollHeroModal() {
+    let leadP = players[0] || { x: 0, y: 0 };
+    let isNearBench1 = Math.abs(leadP.x - STORY_CONFIG.BENCH_X) < 140 && Math.abs(leadP.y - STORY_CONFIG.FLOOR) < 80;
+    let isNearBench2 = Math.abs(leadP.x - STORY_CONFIG.BENCH_2_X) < 140 && Math.abs(leadP.y - STORY_CONFIG.BENCH_2_Y) < 80;
+    let isAtBench = (storyState.step === 'BENCH_REST') || isNearBench1 || isNearBench2;
+    if (!isAtBench) {
+        showStoryHeroWarning("Свиток можно изучить только у костра на скамейке!");
+        return;
+    }
     let modal = document.getElementById('story-scroll-hero-modal');
     if (modal) modal.style.display = 'flex';
 }
@@ -3043,6 +3299,10 @@ function closeStoryHeroSelectModal() {
     let bId = storyState.activeBenchId || 1;
     let bx = (bId === 2) ? STORY_CONFIG.BENCH_2_X : STORY_CONFIG.BENCH_X;
     let by = (bId === 2) ? STORY_CONFIG.BENCH_2_Y : STORY_CONFIG.FLOOR;
+    if (storyState.step !== 'BENCH_REST' && players[0]) {
+        bx = players[0].x;
+        by = players[0].y + (players[0].height || 50);
+    }
     rebuildStoryPartyFromAssignments(bx, by);
 }
 window.closeStoryHeroSelectModal = closeStoryHeroSelectModal;
@@ -3058,13 +3318,24 @@ function assignStoryHeroRole(heroType, targetRole) {
     let is2P = (window.storyPlayerCount === 2);
     let next = Object.assign({}, storyState.heroAssignments);
 
-    if (targetRole === 'P1' || targetRole === 'P2') {
+    if (targetRole === 'NONE') {
+        let trialsCleared = (typeof storyTrials !== 'undefined' && storyTrials && storyTrials.trialsCleared);
+        if (!trialsCleared) {
+            showStoryHeroWarning("Оставлять героев можно только после прохождения Испытаний!");
+            return;
+        }
+        if (next[heroType] === 'P1') {
+            showStoryHeroWarning("Основной герой (Игрок 1) не может быть отключён!");
+            return;
+        }
+        next[heroType] = 'NONE';
+    } else if (targetRole === 'P1' || targetRole === 'P2') {
         // Swap roles with whichever hero currently holds targetRole so there are never duplicates!
         let prevHolder = Object.keys(next).find(h => next[h] === targetRole);
         let oldRoleOfClicked = next[heroType] || 'AI';
         next[heroType] = targetRole;
         if (prevHolder && prevHolder !== heroType) {
-            next[prevHolder] = oldRoleOfClicked;
+            next[prevHolder] = (oldRoleOfClicked === 'NONE') ? 'AI' : oldRoleOfClicked;
         }
     } else if (targetRole === 'AI') {
         next[heroType] = 'AI';
@@ -3099,6 +3370,7 @@ function renderStoryHeroSelectList() {
     if (!listEl) return;
 
     let is2P = (window.storyPlayerCount === 2);
+    let trialsCleared = (typeof storyTrials !== 'undefined' && storyTrials && storyTrials.trialsCleared);
     let heroesMeta = [
         { id: 'WATER', name: 'Вода 💧', unlocked: true, desc: 'Скрытая сила Демона [S] и Водяная Капля [X+F]', color: '#38bdf8' },
         { id: 'AIR',   name: 'Воздух 💨', unlocked: !!storyState.airMet, desc: 'Высокий прыжок и стремительное движение', color: '#e2e8f0' },
@@ -3122,7 +3394,8 @@ function renderStoryHeroSelectList() {
         let curRole = storyState.heroAssignments[h.id] || 'AI';
         let isP1 = (curRole === 'P1');
         let isP2 = (is2P && curRole === 'P2');
-        let isAI = (!isP1 && !isP2);
+        let isNone = (curRole === 'NONE');
+        let isAI = (!isP1 && !isP2 && !isNone);
 
         html += `
             <div style="background: rgba(15, 23, 42, 0.9); border: 1.5px solid ${h.color}; border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
@@ -3145,6 +3418,11 @@ function renderStoryHeroSelectList() {
                             ${isAI ? '✓' : ''}
                         </span>
                     </div>
+                    ${(trialsCleared && !isP1) ? `
+                    <button class="menu-btn" style="margin: 0; padding: 7px 11px; font-size: 11.5px; border-color: ${isNone ? '#ef4444' : '#475569'}; color: ${isNone ? '#fca5a5' : '#94a3b8'}; background: ${isNone ? 'rgba(239,68,68,0.22)' : 'rgba(255,255,255,0.04)'}; font-weight: 800;" onclick="assignStoryHeroRole('${h.id}', 'NONE')" title="Герой останется отдыхать и не пойдёт за вами">
+                        ${isNone ? '✓ ' : ''}💤 Никто
+                    </button>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -3220,7 +3498,6 @@ if (typeof window !== 'undefined' && !window._storyBenchKeysBound) {
             }
         }
 
-        if (storyState.step !== 'BENCH_REST') return;
         if (e.code === 'Tab') {
             e.preventDefault();
             if (storyState.backpackOpen) closeStoryBackpackModal();
@@ -3228,13 +3505,19 @@ if (typeof window !== 'undefined' && !window._storyBenchKeysBound) {
                 if (storyState.heroSelectOpen) closeStoryHeroSelectModal();
                 openStoryBackpackModal();
             }
-        } else if (e.code === 'Space') {
+            return;
+        }
+
+        if (e.code === 'Space') {
+            let canOpenSpace = (storyState.step === 'BENCH_REST') || (typeof storyTrials !== 'undefined' && storyTrials && storyTrials.trialsCleared);
+            if (!canOpenSpace) return;
             e.preventDefault();
             if (storyState.heroSelectOpen) closeStoryHeroSelectModal();
             else {
                 if (storyState.backpackOpen) closeStoryBackpackModal();
                 openStoryHeroSelectModal();
             }
+            return;
         }
     });
 }
@@ -3305,17 +3588,42 @@ function drawStoryMode() {
     // Translate 2D Camera
     ctx.translate(-camX, -camY);
 
-    // 1. Night Sky & Underground Cavern Background
-    let skyGrad = ctx.createLinearGradient(camX, camY, camX, camY + GAME_HEIGHT);
-    if (camY > 240) {
-        skyGrad.addColorStop(0, "#030712");
-        skyGrad.addColorStop(0.6, "#090d1a");
-        skyGrad.addColorStop(1, "#051218");
+    // 1. Silksong 2-Color Smooth Biome Gradient
+    let targetTop = [2, 9, 7];
+    let targetBot = [12, 43, 30];
+
+    if (camY >= 1200) {
+        // Deep Descent / Catacombs (Rooms 1 & 2): Cold Obsidian to Royal Indigo
+        targetTop = [3, 2, 7];
+        targetBot = [10, 17, 40];
+    } else if (camY >= 400) {
+        // Underground Cavern & Trials: Deep Shadow to Mystical Violet
+        targetTop = [5, 4, 11];
+        targetBot = [28, 14, 54];
+    } else if (camX >= 3600) {
+        // Water Pond & Sacred Shore: Deep Navy to Luminous Cyan
+        targetTop = [2, 14, 28];
+        targetBot = [8, 51, 68];
     } else {
-        skyGrad.addColorStop(0, "#020617");
-        skyGrad.addColorStop(0.65, "#0b152e");
-        skyGrad.addColorStop(1, "#071026");
+        // Surface Forest / Grove: Midnight Forest to Twilight Jade Moss
+        targetTop = [2, 9, 7];
+        targetBot = [12, 43, 30];
     }
+
+    if (!storyState.bgTop) storyState.bgTop = [...targetTop];
+    if (!storyState.bgBot) storyState.bgBot = [...targetBot];
+
+    for (let c = 0; c < 3; c++) {
+        storyState.bgTop[c] += (targetTop[c] - storyState.bgTop[c]) * 0.05;
+        storyState.bgBot[c] += (targetBot[c] - storyState.bgBot[c]) * 0.05;
+    }
+
+    let tCol = `rgb(${Math.round(storyState.bgTop[0])}, ${Math.round(storyState.bgTop[1])}, ${Math.round(storyState.bgTop[2])})`;
+    let bCol = `rgb(${Math.round(storyState.bgBot[0])}, ${Math.round(storyState.bgBot[1])}, ${Math.round(storyState.bgBot[2])})`;
+
+    let skyGrad = ctx.createLinearGradient(camX, camY, camX, camY + GAME_HEIGHT);
+    skyGrad.addColorStop(0, tCol);
+    skyGrad.addColorStop(1, bCol);
     ctx.fillStyle = skyGrad;
     ctx.fillRect(camX, camY, GAME_WIDTH, GAME_HEIGHT);
 
@@ -3383,20 +3691,11 @@ function drawStoryMode() {
     // 5d. Left Cliff Shaft & Lower Underground Tier (Floor 3: X = -480..3200, Y = 850)
     drawStoryUndergroundTier();
 
-    // 6. Swaying Grass Blades along Floor 1
-    ctx.save();
-    let t = Date.now() * 0.003;
-    for (let g of storyState.grassBlades) {
-        if (g.x < camX - 20 || g.x > camX + GAME_WIDTH + 20) continue;
-        let windLean = Math.sin(t + g.phase) * 5 + g.lean;
-        ctx.strokeStyle = g.color;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(g.x, STORY_CONFIG.FLOOR);
-        ctx.quadraticCurveTo(g.x + windLean * 0.5, STORY_CONFIG.FLOOR - g.h * 0.5, g.x + windLean, STORY_CONFIG.FLOOR - g.h);
-        ctx.stroke();
-    }
-    ctx.restore();
+    // 5e. Wet Floor Specular Sheen & Shallow Glistening Puddles (Silksong atmospheric damp floor)
+    drawStoryWetFloorAndPuddles();
+
+    // 6. Interactive Cuttable Grass Blades & Flying Cut Leaf Particles
+    drawStoryGrassBlades();
 
     // 6b. Rich Environment Assets (Animated Blue Flowers, Swaying Plants 1..3, Comp Plants, Boulders, Slimes)
     drawStoryEnvironmentAssets();
@@ -3482,6 +3781,9 @@ function drawStoryMode() {
         ctx.restore();
     }
     ctx.restore();
+
+    // 11b. Universal Water Drops & Surface Ripples (ambient drips, splashes, ripples)
+    drawStoryWaterDropsAndRipples();
 
     // 12. Lightning Strike VFX
     if (storyState.step === 'LIGHTNING' && storyState.lightningTimer > 0) {
@@ -3783,32 +4085,6 @@ function drawStoryOverlaysAndRitualUI() {
         ctx.restore();
     }
 
-    // 4b. Dash Locked / Instructions Notice Banner
-    if (storyState.dashPromptNotice && storyState.dashPromptNotice.timer > 0) {
-        storyState.dashPromptNotice.timer--;
-        ctx.save();
-        let bw = Math.min(680, canvas.width - 32);
-        let bh = 46;
-        let bx = canvas.width / 2 - bw / 2;
-        let by = 90;
-        let col = storyState.dashPromptNotice.color || "#00e5ff";
-        ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 2.2;
-        ctx.shadowColor = col;
-        ctx.shadowBlur = 16;
-        ctx.beginPath();
-        ctx.roundRect(bx, by, bw, bh, 12);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "900 14px 'Segoe UI', Arial, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(storyState.dashPromptNotice.text, canvas.width / 2, by + 28);
-        ctx.restore();
-    }
 
     // 5. Metroidvania Location Title Card when entering Room 2 (Scroll Cavern)
     if (storyState.room2BannerTimer > 0) {
@@ -3873,6 +4149,183 @@ function drawStoryOverlaysAndRitualUI() {
 }
 window.drawStoryOverlaysAndRitualUI = drawStoryOverlaysAndRitualUI;
 
+// --- RENDERING: INTERACTIVE CUTTABLE GRASS & PARTICLES ---
+function drawStoryGrassBlades() {
+    if (!ctx || !storyState.grassBlades) return;
+    ctx.save();
+    let t = Date.now() * 0.003;
+
+    // 1. Living & cut grass blades
+    for (let g of storyState.grassBlades) {
+        let gy = g.y !== undefined ? g.y : STORY_CONFIG.FLOOR;
+        if (g.x < camX - 40 || g.x > camX + GAME_WIDTH + 40 || gy < camY - 50 || gy > camY + GAME_HEIGHT + 50) continue;
+
+        if (g.cut) {
+            // Cut stub: short 4px stem with cut angle
+            ctx.strokeStyle = "#166534";
+            ctx.lineWidth = 2.0;
+            ctx.beginPath();
+            ctx.moveTo(g.x, gy);
+            ctx.lineTo(g.x + (g.lean * 0.2), gy - 4);
+            ctx.stroke();
+
+            // Light sap dot on cut tip
+            ctx.fillStyle = "#86efac";
+            ctx.fillRect(g.x + (g.lean * 0.2) - 0.75, gy - 5, 1.5, 1.5);
+        } else {
+            // Swaying living grass blade
+            let windLean = Math.sin(t + g.phase) * 4.5 + g.lean;
+            ctx.strokeStyle = g.color;
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.moveTo(g.x, gy);
+            ctx.quadraticCurveTo(g.x + windLean * 0.45, gy - g.h * 0.52, g.x + windLean, gy - g.h);
+            ctx.stroke();
+        }
+    }
+
+    // 2. Flying cut grass particles (падающие срезанные травинки)
+    if (storyState.cutGrassParticles && storyState.cutGrassParticles.length > 0) {
+        for (let p of storyState.cutGrassParticles) {
+            if (p.x < camX - 30 || p.x > camX + GAME_WIDTH + 30) continue;
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.strokeStyle = p.color || "#22c55e";
+            ctx.lineWidth = 1.6;
+            ctx.globalAlpha = Math.max(0, p.alpha);
+            ctx.beginPath();
+            ctx.moveTo(-p.len / 2, 0);
+            ctx.quadraticCurveTo(0, -2, p.len / 2, 0);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    ctx.restore();
+}
+window.drawStoryGrassBlades = drawStoryGrassBlades;
+
+// --- RENDERING: SILK FLIES & SPORE SPITTERS ---
+function drawStorySilkFlies() {
+    if (!ctx || !storyState.silkFlies) return;
+    let t = Date.now();
+    for (let sf of storyState.silkFlies) {
+        if (sf.x < camX - 60 || sf.x > camX + GAME_WIDTH + 60) continue;
+        ctx.save();
+        ctx.translate(sf.x + sf.w / 2, sf.y + sf.h / 2);
+        if (!sf.facingRight) ctx.scale(-1, 1);
+
+        let flash = (sf.hitTimer > 0);
+
+        // Soft silk luminescence aura
+        ctx.shadowColor = flash ? "#ffffff" : "#38bdf8";
+        ctx.shadowBlur = flash ? 16 : 10;
+
+        // Translucent buzzing wings
+        let wingFlap = Math.sin(t * 0.045) * 0.7;
+        ctx.fillStyle = flash ? "rgba(255,255,255,0.9)" : "rgba(186, 230, 253, 0.65)";
+        ctx.beginPath();
+        ctx.ellipse(-2, -9 + wingFlap * 2, 11, 4 + Math.abs(wingFlap) * 3, -0.4, 0, Math.PI * 2);
+        ctx.ellipse(3, -8 - wingFlap * 2, 10, 4 + Math.abs(wingFlap) * 3, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glowing Silk Abdomen
+        let bodyGrad = ctx.createRadialGradient(2, 2, 2, 0, 0, 10);
+        bodyGrad.addColorStop(0, flash ? "#ffffff" : "#7dd3fc");
+        bodyGrad.addColorStop(1, flash ? "#ffffff" : "#0284c7");
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 8, 10, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Dark chitin head & antennae
+        ctx.fillStyle = flash ? "#ffffff" : "#0f172a";
+        ctx.beginPath();
+        ctx.arc(6, -4, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Antennae
+        ctx.strokeStyle = flash ? "#ffffff" : "#38bdf8";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(8, -6); ctx.lineTo(13, -11);
+        ctx.moveTo(6, -7); ctx.lineTo(9, -13);
+        ctx.stroke();
+
+        // Shiny purple-red bead eye
+        ctx.fillStyle = flash ? "#ffffff" : "#f43f5e";
+        ctx.beginPath();
+        ctx.arc(8, -4, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+window.drawStorySilkFlies = drawStorySilkFlies;
+
+function drawStorySporeSpitters() {
+    if (!ctx || !storyState.sporeSpitters) return;
+    for (let sp of storyState.sporeSpitters) {
+        if (sp.x < camX - 60 || sp.x > camX + GAME_WIDTH + 60) continue;
+        ctx.save();
+        ctx.translate(sp.x + sp.w / 2, sp.y + sp.h / 2);
+        if (!sp.facingRight) ctx.scale(-1, 1);
+
+        let flash = (sp.hitTimer > 0);
+        let swell = (sp.shootTimer <= 30) ? Math.sin((30 - sp.shootTimer) * 0.3) * 3.5 : 0;
+
+        // Bulbous mossy body
+        ctx.fillStyle = flash ? "#ffffff" : "#166534";
+        ctx.strokeStyle = "#14532d";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 14 + swell * 0.5, 12 + swell, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Glowing spore throat opening
+        let throatGlow = (sp.shootTimer <= 30) ? "#f59e0b" : "#4ade80";
+        ctx.fillStyle = flash ? "#ffffff" : throatGlow;
+        ctx.shadowColor = throatGlow;
+        ctx.shadowBlur = (sp.shootTimer <= 30) ? 14 : 5;
+        ctx.beginPath();
+        ctx.ellipse(8 + swell, -1, 5 + swell * 0.6, 6 + swell * 0.6, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Grounding roots
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(-12, 10, 24, 4);
+
+        ctx.restore();
+    }
+
+    // Flying Spore Projectiles
+    if (storyState.sporeProjectiles && storyState.sporeProjectiles.length > 0) {
+        for (let spr of storyState.sporeProjectiles) {
+            if (spr.x < camX - 40 || spr.x > camX + GAME_WIDTH + 40) continue;
+            ctx.save();
+            ctx.translate(spr.x, spr.y);
+            let glow = spr.isReflected ? "#38bdf8" : "#fbbf24";
+            ctx.shadowColor = glow;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = spr.isReflected ? "#e0f2fe" : "#fef08a";
+            ctx.beginPath();
+            ctx.arc(0, 0, spr.r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner core
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(0, 0, spr.r * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+}
+window.drawStorySporeSpitters = drawStorySporeSpitters;
+
 // Draw Swimmable Water Pond right of Bench 1 (X: 3820..4500, Y: 355..445)
 function drawStoryWaterPond() {
     ctx.save();
@@ -3913,6 +4366,163 @@ function drawStoryWaterPond() {
     ctx.strokeRect(x2, -380, 60, 870);
     ctx.restore();
 }
+
+// Draw Damp Floor Sheen (Слегка влажный камень с мягким бликом, без луж)
+function drawStoryWetFloor() {
+    if (!ctx) return;
+    ctx.save();
+
+    // Specular Horizontal Sheen along main stone floors (damp glistening rock)
+    // Floor 1 sheen (X: 0..3820, Y = 350)
+    let f1Sheen = ctx.createLinearGradient(0, STORY_CONFIG.FLOOR - 2, 0, STORY_CONFIG.FLOOR + 5);
+    f1Sheen.addColorStop(0, "rgba(186, 230, 253, 0.13)");
+    f1Sheen.addColorStop(0.5, "rgba(56, 189, 248, 0.05)");
+    f1Sheen.addColorStop(1, "rgba(15, 23, 42, 0)");
+    ctx.fillStyle = f1Sheen;
+    ctx.fillRect(0, STORY_CONFIG.FLOOR - 1, 3820, 6);
+
+    // Floor 3 (Underground Lower Tier) sheen (X: -480..1960, Y = 850)
+    let f3Sheen = ctx.createLinearGradient(0, STORY_CONFIG.LOWER_FLOOR - 2, 0, STORY_CONFIG.LOWER_FLOOR + 5);
+    f3Sheen.addColorStop(0, "rgba(186, 230, 253, 0.15)");
+    f3Sheen.addColorStop(0.5, "rgba(56, 189, 248, 0.06)");
+    f3Sheen.addColorStop(1, "rgba(15, 23, 42, 0)");
+    ctx.fillStyle = f3Sheen;
+    ctx.fillRect(-480, STORY_CONFIG.LOWER_FLOOR - 1, 2440, 6);
+
+    // Room 1 Bottom Floor sheen
+    ctx.fillRect(1040, 1950 - 1, 1280, 5);
+
+    // Room 2 Floor sheen
+    ctx.fillRect(8170, 1800 - 1, 1310, 5);
+
+    ctx.restore();
+}
+window.drawStoryWetFloor = drawStoryWetFloor;
+window.drawStoryWetFloorAndPuddles = drawStoryWetFloor;
+
+// Draw Universal Water Droplets & Ripples (All world tiers, rooms, pond & splashes)
+function drawStoryWaterDropsAndRipples() {
+    if (!ctx) return;
+    ctx.save();
+
+    // 1. Water Ripples on pond and damp stone
+    if (storyState.waterRipples && storyState.waterRipples.length > 0) {
+        for (let r of storyState.waterRipples) {
+            if (r.x < camX - 60 || r.x > camX + GAME_WIDTH + 60) continue;
+            ctx.save();
+            ctx.strokeStyle = "rgba(186, 230, 253, " + Math.max(0, r.alpha) + ")";
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    // 2. Splash Droplets (брызги от бега, приземлений, плавания)
+    if (storyState.waterDrops && storyState.waterDrops.length > 0) {
+        for (let d of storyState.waterDrops) {
+            if (d.x < camX - 40 || d.x > camX + GAME_WIDTH + 40) continue;
+            ctx.save();
+            ctx.fillStyle = "rgba(224, 242, 254, " + Math.max(0, d.alpha) + ")";
+            ctx.shadowColor = "#38bdf8";
+            ctx.shadowBlur = 4;
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    ctx.restore();
+}
+window.drawStoryWaterDropsAndRipples = drawStoryWaterDropsAndRipples;
+
+// Update Water Simulation (physics, collisions with floors/platforms/pond, and movement splashes)
+function updateStoryWaterSystem() {
+    if (!storyState.waterRipples) storyState.waterRipples = [];
+    if (!storyState.waterDrops) storyState.waterDrops = [];
+
+    // 1. Ripples Physics & Decay
+    for (let i = storyState.waterRipples.length - 1; i >= 0; i--) {
+        let r = storyState.waterRipples[i];
+        r.rx += (r.rxSpd || 1.15);
+        r.ry += (r.rySpd || 0.40);
+        r.alpha -= (r.fadeSpd || 0.034);
+        if (r.alpha <= 0 || r.timer-- <= 0 || (r.maxRx && r.rx >= r.maxRx)) {
+            storyState.waterRipples.splice(i, 1);
+        }
+    }
+
+    // 2. Splash Droplets Physics, Collision & Splats
+    let pX1 = STORY_CONFIG.POND_X1 || 3820;
+    let pX2 = STORY_CONFIG.POND_X2 || 4500;
+    let plats = platforms || [];
+
+    for (let i = storyState.waterDrops.length - 1; i >= 0; i--) {
+        let d = storyState.waterDrops[i];
+        d.x += (d.vx || 0);
+        d.y += d.vy;
+        d.vy += 0.28; // Water gravity
+        d.alpha -= 0.024;
+
+        let hitSurface = false;
+        let hitY = 0;
+
+        // Check Water Pond surface
+        if (d.x >= pX1 && d.x <= pX2 && d.vy > 0 && d.y >= 356 && d.y <= 445) {
+            hitSurface = true;
+            hitY = 356;
+            storyState.waterRipples.push({
+                x: d.x,
+                y: 356,
+                rx: 3,
+                ry: 1.2,
+                maxRx: 16,
+                alpha: 0.75,
+                timer: 18
+            });
+        }
+
+        // Check platforms and floors collision
+        if (!hitSurface && d.vy > 0) {
+            for (let plat of plats) {
+                if (plat.solid && d.x >= plat.x && d.x <= plat.x + plat.w && d.y >= plat.y && d.y <= plat.y + 14) {
+                    hitSurface = true;
+                    hitY = plat.y;
+                    storyState.waterRipples.push({
+                        x: d.x,
+                        y: hitY,
+                        rx: 2.2,
+                        ry: 0.8,
+                        maxRx: 9 + Math.random() * 5,
+                        alpha: 0.60,
+                        timer: 14
+                    });
+                    if (d.vy > 2.8) {
+                        for (let s = 0; s < 2; s++) {
+                            storyState.waterDrops.push({
+                                x: d.x + (Math.random() - 0.5) * 4,
+                                y: hitY - 1,
+                                vx: (Math.random() - 0.5) * 1.6,
+                                vy: -0.7 - Math.random() * 1.1,
+                                r: 1.0 + Math.random() * 0.6,
+                                alpha: 0.65,
+                                life: 10 + Math.random() * 6
+                            });
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (hitSurface || d.alpha <= 0 || d.life-- <= 0 || d.y > 2200) {
+            storyState.waterDrops.splice(i, 1);
+        }
+    }
+}
+window.updateStoryWaterSystem = updateStoryWaterSystem;
 
 // Draw Organic Mossy Earth Ledges and Cavern Floors
 function drawStoryMossyPlatformsAndRoof() {
@@ -4035,25 +4645,7 @@ function drawStoryUndergroundTier() {
     ctx.lineTo(1960, 960);
     ctx.stroke();
 
-    // --- SKETCH 1 TOP-LEFT ANCIENT RUIN PYLON (Matching diagonal stripes in Sketch 1!) ---
-    ctx.fillStyle = "#0b121e";
-    ctx.fillRect(980, 535, 75, 315);
-    ctx.strokeStyle = "#1e293b";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(980, 535, 75, 315);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(980, 535, 75, 315);
-    ctx.clip();
-    ctx.strokeStyle = "rgba(226, 232, 240, 0.32)";
-    ctx.lineWidth = 3.5;
-    for (let dy = 500; dy < 920; dy += 28) {
-        ctx.beginPath();
-        ctx.moveTo(960, dy);
-        ctx.lineTo(1080, dy + 55);
-        ctx.stroke();
-    }
-    ctx.restore();
+
 
     // --- ROOM 1 BOUNDARY WALLS ---
     // Outer Left Boundary Wall of Middle & Bottom Tier (X = 1040, Y = 960..2020)
@@ -4195,27 +4787,20 @@ function drawStoryUndergroundTier() {
     ctx.fillRect(9460, 670, 120, 30);
     ctx.strokeRect(9460, 670, 120, 30);
 
-    // Vertical stone shaft walls extending upward (Left: Y = 480..700, Right: Y = 480..1360 down to chamber roof)
+    // Vertical stone shaft walls extending upward (X = 9300..9324 and X = 9456..9480, Y = 480..700)
     ctx.fillStyle = "#090f1d";
     ctx.fillRect(9300, 480, 24, 220);
-    ctx.fillRect(9456, 480, 24, 880); // Extends all the way down to roof Y = 1360!
+    ctx.fillRect(9456, 480, 24, 220);
     ctx.strokeStyle = "#1e293b";
     ctx.strokeRect(9300, 480, 24, 220);
-    ctx.strokeRect(9456, 480, 24, 880);
-
-    // Solid rock mass blocking the right side above scroll tunnel entrance (X: 9460..9580, Y: 700..1540)
-    ctx.fillStyle = "#060a14";
-    ctx.fillRect(9460, 700, 120, 840);
-    ctx.strokeStyle = "#1e293b";
-    ctx.lineWidth = 1.8;
-    ctx.strokeRect(9460, 700, 120, 840);
+    ctx.strokeRect(9456, 480, 24, 220);
 
     // Subtle ancient runic carvings on the shaft walls
     ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
     ctx.lineWidth = 1.5;
-    for (let sy = 510; sy < 1340; sy += 32) {
+    for (let sy = 510; sy < 690; sy += 32) {
         ctx.beginPath();
-        if (sy < 690) { ctx.moveTo(9304, sy); ctx.lineTo(9320, sy + 14); }
+        ctx.moveTo(9304, sy); ctx.lineTo(9320, sy + 14);
         ctx.moveTo(9460, sy); ctx.lineTo(9476, sy + 14);
         ctx.stroke();
     }
@@ -4233,7 +4818,7 @@ function drawStoryUndergroundTier() {
     }
 
     // Radiant celestial light beam pouring down from the ceiling shaft into the cavern
-    let shaftBeam = ctx.createLinearGradient(9390, 480, 9390, 1360);
+    let shaftBeam = ctx.createLinearGradient(9390, 480, 9390, 1120);
     shaftBeam.addColorStop(0, "rgba(56, 189, 248, 0.38)");
     shaftBeam.addColorStop(0.35, "rgba(56, 189, 248, 0.18)");
     shaftBeam.addColorStop(0.85, "rgba(56, 189, 248, 0.05)");
@@ -4242,8 +4827,8 @@ function drawStoryUndergroundTier() {
     ctx.beginPath();
     ctx.moveTo(9320, 480);
     ctx.lineTo(9460, 480);
-    ctx.lineTo(9460, 1360);
-    ctx.lineTo(9270, 1360);
+    ctx.lineTo(9510, 1120);
+    ctx.lineTo(9270, 1120);
     ctx.closePath();
     ctx.fill();
 
@@ -4251,7 +4836,7 @@ function drawStoryUndergroundTier() {
     ctx.fillStyle = "rgba(186, 230, 253, 0.8)";
     for (let i = 0; i < 7; i++) {
         let mx = 9330 + ((i * 31 + now / 24) % 120);
-        let my = 500 + ((i * 89 + now / 18) % 840);
+        let my = 500 + ((i * 89 + now / 18) % 600);
         let r = 1.2 + (i % 3) * 0.7;
         ctx.beginPath();
         ctx.arc(mx, my, r, 0, Math.PI * 2);
@@ -4268,22 +4853,28 @@ function drawStoryUndergroundTier() {
     ctx.lineTo(9480, 1800);
     ctx.stroke();
 
-    // Central Chamber in Room 2 (Floor Y = 1540: X = 8680..9340, Roof Y = 1360: X = 8680..9460)
+    // Central Chamber in Room 2 (Floor Y = 1540, Roof Y = 1360, X = 8680..9340)
     ctx.fillStyle = "#080f1a";
     ctx.fillRect(8680, 1540, 660, 30);
-    ctx.fillRect(8680, 1360, 780, 30); // Connects to right shaft wall at X = 9460!
+    ctx.fillRect(8680, 1360, 660, 30);
     ctx.strokeStyle = "#1e293b";
     ctx.lineWidth = 1.8;
     ctx.strokeRect(8680, 1540, 660, 30);
-    ctx.strokeRect(8680, 1360, 780, 30);
+    ctx.strokeRect(8680, 1360, 660, 30);
+    // Green grass walkway on top of chamber roof (Sketch 2 upper path: X = 8680..9340, Y = 1360)
     ctx.strokeStyle = "#22c55e";
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.moveTo(8680, 1540); ctx.lineTo(9340, 1540); // Floor opening at X = 9340
-    ctx.moveTo(8680, 1360); ctx.lineTo(9460, 1360); // Walkable mossy roof all the way to shaft!
+    ctx.moveTo(8680, 1360); ctx.lineTo(9340, 1360);
+    ctx.stroke();
+    // Interior chamber floor
+    ctx.strokeStyle = "#334155";
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.moveTo(8680, 1540); ctx.lineTo(9340, 1540);
     ctx.stroke();
 
-    // Exit Archway on Left Wall of Room 2 (X = 8170..8260, Y = 1360..1520) -> leads to Bench 2
+    // Exit Archway on Left Wall of Room 2 (X = 8170..8260, Y = 1360..1520) -> leads back to Room 1 & Bench
     let archGrad = ctx.createLinearGradient(8170, 1360, 8260, 1360);
     archGrad.addColorStop(0, "rgba(56, 189, 248, 0.65)");
     archGrad.addColorStop(0.65, "rgba(56, 189, 248, 0.25)");
@@ -4293,6 +4884,11 @@ function drawStoryUndergroundTier() {
     ctx.strokeStyle = "#38bdf8";
     ctx.lineWidth = 2.5;
     ctx.strokeRect(8170, 1360, 14, 160);
+
+    ctx.fillStyle = "#7dd3fc";
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("⬅ В пещеру к скамейке", 8275, 1345);
 
     ctx.restore();
 
@@ -4315,6 +4911,8 @@ const STORY_SPIKES = [
 function isPositionNearSpikes(x, y, w, h) {
     let pw = w || 30;
     let ph = h || 45;
+    // Safe floating rock ledge over center spike pit (X: 1710..1930, Y <= 1355)
+    if (x + pw > 1710 && x < 1930 && y + ph <= 1355) return false;
     // 1. Spikes danger zone buffer (at least 35px away horizontally from spike pit opening)
     for (let sp of STORY_SPIKES) {
         let bufX = 35;
@@ -4323,14 +4921,17 @@ function isPositionNearSpikes(x, y, w, h) {
             return true;
         }
     }
-    // 2. Drop shafts (Room 1 bottom exit pit)
+    // 2. Drop shafts (Room 1 bottom pit and Room 2 exit arch)
     if (x + pw > 2290 && x < 2480 && y + ph > 1920) return true;
+    if (x + pw > 8200 && x < 8340 && y + ph > 1750) return true;
     return false;
 }
 window.isPositionNearSpikes = isPositionNearSpikes;
 
 function handleStoryHazardDamage(pl) {
-    if (!pl || pl.isAi || pl.invuln > 0) return;
+    if (!pl || pl.isAi) return;
+    if (pl.hazardCooldown > 0) return;
+    pl.hazardCooldown = 30;
 
     // 1. Deal 1 hazard damage (classical metroidvania penalty)
     damagePlayer(1, pl, false, true);
@@ -4341,16 +4942,15 @@ function handleStoryHazardDamage(pl) {
     // 3. Classical Metroidvania Hazard Respawn: hero takes 1 damage and returns to last safe ground!
     let defX = STORY_CONFIG.BENCH_2_X;
     let defY = STORY_CONFIG.BENCH_2_Y - (pl.height || 45);
-    if (pl.x >= 8000) {
-        // Room 2 (Scroll Cavern): always respawn locally on safe cavern roof or floor, NEVER teleport to Room 1 bench!
-        defX = 8800;
-        defY = (pl.y < 1400 ? 1360 : 1800) - (pl.height || 45);
-    } else if (pl.y > 900 && pl.y < 1550) {
+    if (pl.y > 900 && pl.y < 1550) {
         defX = (pl.x > 1850 ? 2120 : 1550);
         defY = 1400 - (pl.height || 45);
-    } else if (pl.y >= 1550) {
+    } else if (pl.y >= 1550 && pl.x < 8000) {
         defX = 1400;
         defY = 1950 - (pl.height || 45);
+    } else if (pl.x >= 8200) {
+        defX = 8600;
+        defY = 1800 - (pl.height || 45);
     }
 
     let respawnX = (pl.lastSafeX !== undefined && pl.lastSafeX !== null) ? pl.lastSafeX : defX;
@@ -4458,7 +5058,7 @@ function updateStoryGameplayEntities() {
         w.x += w.dir * w.speed;
         w.timer--;
 
-        // Push / damage Moss Crawlers
+        // Push / damage Moss Crawlers & Silk Flies
         if (storyState.mossCrawlers) {
             for (let mc of storyState.mossCrawlers) {
                 if (rectIntersect(w, { x: mc.x, y: mc.y, width: mc.w, height: mc.h })) {
@@ -4468,6 +5068,19 @@ function updateStoryGameplayEntities() {
                     if (typeof playSound === 'function') playSound('bladeSpin');
                 }
             }
+        }
+        if (storyState.silkFlies) {
+            for (let sf of storyState.silkFlies) {
+                if (rectIntersect(w, { x: sf.x, y: sf.y, width: sf.w, height: sf.h })) {
+                    sf.hp -= 1.0;
+                    sf.hitTimer = 14;
+                    if (typeof playSound === 'function') playSound('bladeSpin');
+                }
+            }
+        }
+        // Wave cuts grass along its flight path!
+        if (typeof checkStoryGrassSlashHitbox === 'function') {
+            checkStoryGrassSlashHitbox({ x: w.x, y: w.y - 10, width: w.w || 30, height: (w.h || 30) + 20 }, { facingRight: w.dir > 0 });
         }
 
         if (w.timer <= 0) {
@@ -4479,6 +5092,8 @@ function updateStoryGameplayEntities() {
     for (let pl of players) {
         if (!pl || pl.isDowned) continue;
 
+        if (pl.hazardCooldown > 0) pl.hazardCooldown--;
+
         // Solid, non-hazardous ground updates the last safe position
         if (pl.onGround && !isPositionNearSpikes(pl.x, pl.y, pl.width, pl.height)) {
             pl.lastSafeX = pl.x;
@@ -4486,15 +5101,15 @@ function updateStoryGameplayEntities() {
         }
 
         // Only human player triggers hazard damage (AI companions follow safely)
-        if (!pl.isAi && pl.invuln <= 0) {
+        if (!pl.isAi && (!pl.lastSpikePogoTimer || pl.lastSpikePogoTimer <= 0) && (!pl.hazardCooldown || pl.hazardCooldown <= 0)) {
             let inSpike = false;
             for (let sp of STORY_SPIKES) {
-                // Inset hazard hitbox slightly so walking right on the solid edge doesn't trigger damage
+                // Inset hazard hitbox so standing right on solid floor edge never falsely triggers spike damage!
                 let spBox = {
-                    x: sp.x + 4,
-                    y: sp.y + 4,
-                    width: Math.max(10, sp.w - 8),
-                    height: Math.max(10, sp.h - 4)
+                    x: sp.x + 8,
+                    y: sp.y + 12,
+                    width: Math.max(10, sp.w - 16),
+                    height: Math.max(10, sp.h - 12)
                 };
                 if (rectIntersect(pl, spBox)) {
                     inSpike = true;
@@ -4507,16 +5122,53 @@ function updateStoryGameplayEntities() {
         }
     }
 
-    // 3. Moss Crawlers (Мховички) update - Patrols Platform 3 over center spike pit!
-    if (!storyState.mossCrawlerDefeated) {
-        if (!storyState.mossCrawlers || storyState.mossCrawlers.length === 0) {
-            storyState.mossCrawlers = [
-                { id: 'mc_1', x: 1820, y: 1350 - 24, w: 36, h: 24, startX: 1750, endX: 1880, vx: 0.5, hp: 2, maxHp: 2, facingRight: true, hitTimer: 0 }
-            ];
+    // 3. Interactive Grass Physics & Reaction to Players Walking
+    if (storyState.grassBlades && storyState.grassBlades.length > 0) {
+        for (let g of storyState.grassBlades) {
+            let gy = g.y !== undefined ? g.y : STORY_CONFIG.FLOOR;
+            // Spring oscillation returning to neutral
+            g.springVx += -g.lean * 0.14;
+            g.springVx *= 0.84;
+            g.lean += g.springVx;
+            g.lean = Math.max(-14, Math.min(14, g.lean));
+
+            // React to passing players
+            if (!g.cut) {
+                for (let pl of players) {
+                    if (!pl) continue;
+                    if (Math.abs(pl.x + pl.width / 2 - g.x) < 20 && Math.abs(pl.y + pl.height - gy) < 14) {
+                        let pushDir = Math.sign(pl.vx) || (pl.facingRight ? 1 : -1);
+                        g.springVx += pushDir * (Math.abs(pl.vx) * 0.35 + 1.2);
+                    }
+                }
+            }
         }
-    } else {
-        storyState.mossCrawlers = [];
     }
+
+    // 3b. Cut Grass Particles Update
+    if (storyState.cutGrassParticles && storyState.cutGrassParticles.length > 0) {
+        for (let idx = storyState.cutGrassParticles.length - 1; idx >= 0; idx--) {
+            let p = storyState.cutGrassParticles[idx];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.22; // gentle fluttering gravity
+            p.rot += p.rotSpeed;
+            p.alpha -= 0.025;
+            if (p.alpha <= 0 || p.life-- <= 0) {
+                storyState.cutGrassParticles.splice(idx, 1);
+            }
+        }
+    }
+
+    // 3c. Water System Update (Pond, ambient ceiling drips, shallow puddles & splash droplets)
+    updateStoryWaterSystem();
+
+    // 3d. Ensure all world enemies exist
+    if (!storyState.mossCrawlers) {
+        spawnStoryWorldEnemies();
+    }
+
+    // 3e. Moss Crawlers (Мховички) Update & Pogo Bounce
     for (let i = storyState.mossCrawlers.length - 1; i >= 0; i--) {
         let mc = storyState.mossCrawlers[i];
         if (!mc) continue;
@@ -4531,33 +5183,38 @@ function updateStoryGameplayEntities() {
         for (let pl of players) {
             if (pl && !pl.isDowned && pl.invuln <= 0 && rectIntersect(pl, mcBox)) {
                 damagePlayer(1, pl, false, false);
-                pl.vx = mc.facingRight ? 4 : -4;
+                pl.vx = mc.facingRight ? 4.5 : -4.5;
             }
         }
 
-        // Hit by player melee attacks (including horizontal slashes, jump strikes, and down-pogo!)
+        // Hit by player melee attacks
         for (let pl of players) {
             if (!pl || pl.attackTimer <= 0) continue;
             let atkRange = pl.atkRange || 80;
-            let isDownAtk = (pl.keys && (pl.keys.down || isKeyPressed(pl.keys.down))) || (pl.attackType === 'DOWN');
+            let isDownAtk = (pl.keys && (checkKeyInput(pl.keys, 'down') || pl.keys.down || isKeyPressed(pl.keys.down))) || (pl.attackType === 'DOWN');
+            let isUpAtk = (pl.keys && (checkKeyInput(pl.keys, 'up') || pl.keys.up || isKeyPressed(pl.keys.up))) || (pl.attackType === 'UP');
             let atkBox = {
-                x: pl.facingRight ? pl.x - 15 : pl.x - atkRange,
-                y: isDownAtk ? pl.y + 10 : pl.y - 15,
-                width: atkRange + 30,
-                height: pl.height + 35
+                x: isDownAtk || isUpAtk ? pl.x - 25 : (pl.facingRight ? pl.x - 10 : pl.x - atkRange),
+                y: isDownAtk ? pl.y + 12 : (isUpAtk ? pl.y - atkRange : pl.y - 15),
+                width: isDownAtk || isUpAtk ? pl.width + 50 : atkRange + 30,
+                height: isDownAtk || isUpAtk ? atkRange + 25 : pl.height + 35
             };
             if (rectIntersect(atkBox, mcBox) && mc.hitTimer <= 0) {
-                let dmg = 1.0;
-                mc.hp -= dmg;
+                mc.hp -= 1.0;
                 mc.hitTimer = 16;
-                // If striking from above (downward attack), bounce the player like in Hollow Knight / Silksong pogo!
+                // POGO BOUNCE if hitting from above!
                 if (isDownAtk || pl.y + pl.height <= mc.y + 18) {
-                    pl.vy = -10.5;
-                    pl.jumps = 1;
-                    if (typeof playSound === 'function') playSound('bladeSpin');
+                    if (typeof triggerPlayerPogoBounce === 'function') {
+                        triggerPlayerPogoBounce(pl, mc.y + 4);
+                    } else {
+                        pl.vy = -16.0;
+                        pl.jumps = 1;
+                        pl.airDashed = false;
+                    }
+                } else {
+                    if (typeof playSound === 'function') playSound('slash');
+                    if (typeof triggerShake === 'function') triggerShake(4, 7);
                 }
-                if (typeof playSound === 'function') playSound('slash');
-                if (typeof triggerShake === 'function') triggerShake(5, 8);
                 if (typeof voidExplosions !== 'undefined') {
                     voidExplosions.push({ x: mc.x + mc.w/2, y: mc.y + mc.h/2, timer: 16, isWhite: true, r: 30 });
                 }
@@ -4577,18 +5234,249 @@ function updateStoryGameplayEntities() {
             }
         }
 
-        // Death: Enemy permanently dies until resting at a bench!
+        // Death: Enemy dies until resting at a bench!
         if (mc.hp <= 0) {
-            storyState.mossCrawlerDefeated = true;
             if (typeof playSound === 'function') {
                 playSound('rockCrit');
                 playSound('parry');
             }
-            if (typeof triggerShake === 'function') triggerShake(8, 14);
+            if (typeof triggerShake === 'function') triggerShake(7, 12);
             if (typeof voidExplosions !== 'undefined') {
-                voidExplosions.push({ x: mc.x + mc.w/2, y: mc.y + mc.h/2, timer: 24, isWhite: false, isOrange: true, r: 45 });
+                voidExplosions.push({ x: mc.x + mc.w/2, y: mc.y + mc.h/2, timer: 24, isWhite: false, isOrange: true, r: 42 });
             }
             storyState.mossCrawlers.splice(i, 1);
+        }
+    }
+
+    // 3f. Silk Moths / Flies (Шёлковые мошки - парят в воздухе, служат для пого-прыжка!)
+    if (storyState.silkFlies && storyState.silkFlies.length > 0) {
+        let nowTime = Date.now();
+        for (let i = storyState.silkFlies.length - 1; i >= 0; i--) {
+            let sf = storyState.silkFlies[i];
+            if (!sf) continue;
+            if (sf.hitTimer > 0) sf.hitTimer--;
+            sf.y = sf.baseY + Math.sin(nowTime * (sf.bobSpeed || 0.05) + sf.phase) * (sf.bobAmp || 18);
+            sf.x += Math.sin(nowTime * 0.002 + sf.phase * 2) * 0.25;
+
+            let sfBox = { x: sf.x - 4, y: sf.y - 4, width: sf.w + 8, height: sf.h + 8 };
+
+            // Touch player: 1 damage
+            for (let pl of players) {
+                if (pl && !pl.isDowned && pl.invuln <= 0 && rectIntersect(pl, sfBox)) {
+                    damagePlayer(1, pl, false, false);
+                    pl.vx = (pl.x < sf.x) ? -4 : 4;
+                }
+            }
+
+            // Hit by player attacks: down-attack causes massive pogo boost!
+            for (let pl of players) {
+                if (!pl || pl.attackTimer <= 0) continue;
+                let atkRange = pl.atkRange || 80;
+                let isDownAtk = (pl.keys && (checkKeyInput(pl.keys, 'down') || pl.keys.down || isKeyPressed(pl.keys.down))) || (pl.attackType === 'DOWN');
+                let isUpAtk = (pl.keys && (checkKeyInput(pl.keys, 'up') || pl.keys.up || isKeyPressed(pl.keys.up))) || (pl.attackType === 'UP');
+                let atkBox = {
+                    x: isDownAtk || isUpAtk ? pl.x - 25 : (pl.facingRight ? pl.x - 10 : pl.x - atkRange),
+                    y: isDownAtk ? pl.y + 12 : (isUpAtk ? pl.y - atkRange : pl.y - 15),
+                    width: isDownAtk || isUpAtk ? pl.width + 50 : atkRange + 30,
+                    height: isDownAtk || isUpAtk ? atkRange + 25 : pl.height + 35
+                };
+                if (rectIntersect(atkBox, sfBox) && sf.hitTimer <= 0) {
+                    sf.hp -= 1.0;
+                    sf.hitTimer = 16;
+                    // SILKSONG POGO BOUNCE!
+                    if (isDownAtk || pl.y + pl.height <= sf.y + 18) {
+                        if (typeof triggerPlayerPogoBounce === 'function') {
+                            triggerPlayerPogoBounce(pl, sf.y + 4);
+                        } else {
+                            pl.vy = -16.0;
+                            pl.jumps = 1;
+                            pl.airDashed = false;
+                        }
+                    } else {
+                        if (typeof playSound === 'function') playSound('slash');
+                        if (typeof triggerShake === 'function') triggerShake(4, 7);
+                    }
+                    if (typeof voidExplosions !== 'undefined') {
+                        voidExplosions.push({ x: sf.x + sf.w/2, y: sf.y + sf.h/2, timer: 14, isWhite: true, r: 28 });
+                    }
+                    break;
+                }
+            }
+
+            // Death
+            if (sf.hp <= 0) {
+                if (typeof playSound === 'function') {
+                    playSound('lightChime');
+                    playSound('shuriken');
+                }
+                if (typeof voidExplosions !== 'undefined') {
+                    voidExplosions.push({ x: sf.x + sf.w/2, y: sf.y + sf.h/2, timer: 20, isWhite: true, isOrange: false, r: 35 });
+                }
+                storyState.silkFlies.splice(i, 1);
+            }
+        }
+    }
+
+    // 3g. Spore Spitters & Spore Projectiles (Споровые плевуны)
+    if (storyState.sporeSpitters && storyState.sporeSpitters.length > 0) {
+        let pLeader = players[0] || { x: 0, y: 0 };
+        for (let i = storyState.sporeSpitters.length - 1; i >= 0; i--) {
+            let sp = storyState.sporeSpitters[i];
+            if (!sp) continue;
+            if (sp.hitTimer > 0) sp.hitTimer--;
+
+            // Face closest player
+            sp.facingRight = (pLeader.x > sp.x);
+
+            // Shooting cycle
+            if (sp.shootTimer > 0) {
+                sp.shootTimer--;
+                if (sp.shootTimer === 0) {
+                    sp.shootTimer = 160 + Math.floor(Math.random() * 40);
+                    // Spawn spore projectile flying toward leader!
+                    let dir = sp.facingRight ? 1 : -1;
+                    if (!storyState.sporeProjectiles) storyState.sporeProjectiles = [];
+                    storyState.sporeProjectiles.push({
+                        x: sp.x + (sp.facingRight ? sp.w + 6 : -6),
+                        y: sp.y + 8,
+                        vx: dir * 3.8,
+                        vy: -0.6,
+                        r: 7,
+                        isReflected: false,
+                        timer: 160
+                    });
+                    if (typeof playSound === 'function') playSound('step');
+                }
+            }
+
+            let spBox = { x: sp.x, y: sp.y, width: sp.w, height: sp.h };
+
+            // Touch player: 1 damage
+            for (let pl of players) {
+                if (pl && !pl.isDowned && pl.invuln <= 0 && rectIntersect(pl, spBox)) {
+                    damagePlayer(1, pl, false, false);
+                    pl.vx = sp.facingRight ? 4 : -4;
+                }
+            }
+
+            // Hit by player melee attacks (supports pogo bounce!)
+            for (let pl of players) {
+                if (!pl || pl.attackTimer <= 0) continue;
+                let atkRange = pl.atkRange || 80;
+                let isDownAtk = (pl.keys && (checkKeyInput(pl.keys, 'down') || pl.keys.down || isKeyPressed(pl.keys.down))) || (pl.attackType === 'DOWN');
+                let isUpAtk = (pl.keys && (checkKeyInput(pl.keys, 'up') || pl.keys.up || isKeyPressed(pl.keys.up))) || (pl.attackType === 'UP');
+                let atkBox = {
+                    x: isDownAtk || isUpAtk ? pl.x - 25 : (pl.facingRight ? pl.x - 10 : pl.x - atkRange),
+                    y: isDownAtk ? pl.y + 12 : (isUpAtk ? pl.y - atkRange : pl.y - 15),
+                    width: isDownAtk || isUpAtk ? pl.width + 50 : atkRange + 30,
+                    height: isDownAtk || isUpAtk ? atkRange + 25 : pl.height + 35
+                };
+                if (rectIntersect(atkBox, spBox) && sp.hitTimer <= 0) {
+                    sp.hp -= 1.0;
+                    sp.hitTimer = 16;
+                    if (isDownAtk || pl.y + pl.height <= sp.y + 18) {
+                        if (typeof triggerPlayerPogoBounce === 'function') {
+                            triggerPlayerPogoBounce(pl, sp.y + 4);
+                        } else {
+                            pl.vy = -16.0;
+                            pl.jumps = 1;
+                            pl.airDashed = false;
+                        }
+                    } else {
+                        if (typeof playSound === 'function') playSound('slash');
+                        if (typeof triggerShake === 'function') triggerShake(4, 7);
+                    }
+                    if (typeof voidExplosions !== 'undefined') {
+                        voidExplosions.push({ x: sp.x + sp.w/2, y: sp.y + sp.h/2, timer: 16, isWhite: true, r: 32 });
+                    }
+                    break;
+                }
+            }
+
+            // Death
+            if (sp.hp <= 0) {
+                if (typeof playSound === 'function') {
+                    playSound('rockCrit');
+                    playSound('parry');
+                }
+                if (typeof triggerShake === 'function') triggerShake(7, 12);
+                if (typeof voidExplosions !== 'undefined') {
+                    voidExplosions.push({ x: sp.x + sp.w/2, y: sp.y + sp.h/2, timer: 24, isWhite: false, isOrange: true, r: 44 });
+                }
+                storyState.sporeSpitters.splice(i, 1);
+            }
+        }
+    }
+
+    // 3h. Spore Projectiles Update & Blade Deflection!
+    if (storyState.sporeProjectiles && storyState.sporeProjectiles.length > 0) {
+        for (let i = storyState.sporeProjectiles.length - 1; i >= 0; i--) {
+            let spr = storyState.sporeProjectiles[i];
+            spr.x += spr.vx;
+            spr.y += spr.vy;
+            let sprBox = { x: spr.x - spr.r, y: spr.y - spr.r, width: spr.r * 2, height: spr.r * 2 };
+
+            let destroyed = false;
+
+            // Check blade deflection by player melee attacks!
+            for (let pl of players) {
+                if (!pl || pl.attackTimer <= 0) continue;
+                let atkRange = pl.atkRange || 80;
+                let isDownAtk = (pl.keys && (checkKeyInput(pl.keys, 'down') || pl.keys.down || isKeyPressed(pl.keys.down))) || (pl.attackType === 'DOWN');
+                let isUpAtk = (pl.keys && (checkKeyInput(pl.keys, 'up') || pl.keys.up || isKeyPressed(pl.keys.up))) || (pl.attackType === 'UP');
+                let atkBox = {
+                    x: isDownAtk || isUpAtk ? pl.x - 25 : (pl.facingRight ? pl.x - 10 : pl.x - atkRange),
+                    y: isDownAtk ? pl.y + 12 : (isUpAtk ? pl.y - atkRange : pl.y - 15),
+                    width: isDownAtk || isUpAtk ? pl.width + 50 : atkRange + 30,
+                    height: isDownAtk || isUpAtk ? atkRange + 25 : pl.height + 35
+                };
+                if (rectIntersect(atkBox, sprBox) && !spr.isReflected) {
+                    // SILK DEFLECT!
+                    spr.isReflected = true;
+                    spr.vx = (pl.facingRight ? 1 : -1) * 7.5;
+                    spr.vy = -1.2;
+                    if (isDownAtk) {
+                        triggerPlayerPogoBounce(pl, spr.y);
+                    }
+                    if (typeof playSound === 'function') {
+                        playSound('parry');
+                        playSound('clash');
+                    }
+                    if (typeof triggerShake === 'function') triggerShake(3, 6);
+                    if (typeof voidExplosions !== 'undefined') {
+                        voidExplosions.push({ x: spr.x, y: spr.y, timer: 12, isWhite: true, r: 24 });
+                    }
+                    break;
+                }
+            }
+
+            // If reflected: can damage spitters and moss crawlers!
+            if (spr.isReflected) {
+                if (storyState.sporeSpitters) {
+                    for (let sp of storyState.sporeSpitters) {
+                        if (rectIntersect({ x: sp.x, y: sp.y, width: sp.w, height: sp.h }, sprBox)) {
+                            sp.hp -= 2.0;
+                            sp.hitTimer = 16;
+                            destroyed = true;
+                            if (typeof playSound === 'function') playSound('rockCrit');
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // If unreflected: hits player
+                for (let pl of players) {
+                    if (pl && !pl.isDowned && pl.invuln <= 0 && rectIntersect(pl, sprBox)) {
+                        damagePlayer(1, pl, false, false);
+                        destroyed = true;
+                        break;
+                    }
+                }
+            }
+
+            if (spr.timer-- <= 0 || destroyed) {
+                storyState.sporeProjectiles.splice(i, 1);
+            }
         }
     }
 
@@ -4659,9 +5547,9 @@ function updateStoryGameplayEntities() {
         }
     }
 
-    // 6. Room 2 One-Way Wall (Sketch 2 Red Arrow: X = 8680, Y = 1360..1540)
+    // 6. Room 2 Shortcut Wall (Sketch 2 Red Arrow: X = 8680, Y = 1360..1540)
     if (!storyState.room2OneWayBroken) {
-        let owBox = { x: 8660, y: 1360, width: 55, height: 180 };
+        let owBox = { x: 8650, y: 1360, width: 70, height: 180 };
         for (let pl of players) {
             if (pl && pl.attackTimer > 0) {
                 let atkRange = pl.atkRange || 75;
@@ -4671,26 +5559,16 @@ function updateStoryGameplayEntities() {
                     width: atkRange,
                     height: pl.height
                 };
-                if (rectIntersect(atkBox, owBox) && (!pl.prevOneWayHitTime || Date.now() - pl.prevOneWayHitTime > 300)) {
+                if (rectIntersect(atkBox, owBox) && (!pl.prevOneWayHitTime || Date.now() - pl.prevOneWayHitTime > 250)) {
                     pl.prevOneWayHitTime = Date.now();
-                    if (pl.x < 8680) {
-                        // Attacked from outside (left): impenetrable rock
-                        if (typeof playSound === 'function') playSound('parry');
-                        if (typeof triggerShake === 'function') triggerShake(3, 5);
-                    } else {
-                        // Attacked from inside tunnel (right): breaks!
-                        storyState.room2OneWayWallHp = (storyState.room2OneWayWallHp || 2) - 1;
-                        if (typeof playSound === 'function') playSound('parry');
-                        if (typeof triggerShake === 'function') triggerShake(5, 10);
-                        if (storyState.room2OneWayWallHp <= 0) {
-                            storyState.room2OneWayBroken = true;
-                            let owPlat = platforms.find(p => p.isOneWayWall);
-                            if (owPlat) owPlat.solid = false;
-                            autoSaveStoryProgress();
-                            if (typeof playSound === 'function') playSound('groundSlam');
-                            if (typeof triggerShake === 'function') triggerShake(8, 16);
-                        }
-                    }
+                    storyState.room2OneWayWallHp = 0;
+                    storyState.room2OneWayBroken = true;
+                    let owPlat = platforms.find(p => p.isOneWayWall);
+                    if (owPlat) owPlat.solid = false;
+                    autoSaveStoryProgress();
+                    if (typeof playSound === 'function') playSound('groundSlam');
+                    if (typeof triggerShake === 'function') triggerShake(8, 16);
+                    if (typeof showStoryBanner === 'function') showStoryBanner("💥 Проход открыт!");
                     break;
                 }
             }
@@ -4743,19 +5621,12 @@ function updateStoryGameplayEntities() {
         }
     }
 
-    // 9. Room Transitions (Sketch 1 exit pit -> Room 2 ceiling drop, Room 2 left arch -> Room 1 Archway)
+    // 9. Room Transitions (Room 1 exit pit -> Room 2 ceiling drop, Room 2 left arch -> Room 1 bottom corridor)
     let p1 = players[0];
-    if (p1 && storyState.currentRoom === 1 && p1.x >= 2280 && p1.x <= 2520 && p1.y >= 1925 && !storyState.roomTransitioning) {
+    if (p1 && storyState.currentRoom === 1 && p1.x >= 2325 && p1.x <= 2520 && p1.y >= 1930 && !storyState.roomTransitioning) {
         startStoryRoomTransition(2);
     }
-    // Room 1 Archway (Sketch 1 arch at X: 1620..1680, Y: 850) -> leads back to Room 2 if shortcut was broken!
-    if (p1 && storyState.currentRoom === 1 && storyState.room2OneWayBroken && p1.x >= 1620 && p1.x <= 1680 && p1.y >= 780 && p1.y <= 860 && !storyState.roomTransitioning) {
-        let wantShortcut = (p1.keys && (checkKeyInput(p1.keys, 'up') || isKeyPressed(p1.keys.up))) || keys['KeyW'] || keys['ArrowUp'] || keys['ц'] || keys['Ц'];
-        if (wantShortcut) {
-            startStoryRoomTransition(2);
-        }
-    }
-    if (p1 && storyState.currentRoom === 2 && p1.x <= 8260 && p1.y >= 1350 && p1.y <= 1550 && !storyState.roomTransitioning) {
+    if (p1 && storyState.currentRoom === 2 && p1.x <= 8270 && p1.y >= 1350 && p1.y <= 1550 && !storyState.roomTransitioning) {
         startStoryRoomTransition(1);
     }
     if (storyState.roomTransitioning) {
@@ -4892,56 +5763,43 @@ function updateStoryRoomTransitionStep() {
         storyState.roomFadeAlpha = Math.min(1.0, storyState.roomFadeTimer / 16);
     } else if (storyState.roomFadeTimer === 17) {
         if (storyState.targetRoom === 2) {
+            // Silksong-style transition: Drop down into Room 2 from the top ceiling shaft!
             storyState.currentRoom = 2;
-            let fromArch = (players[0] && players[0].y < 1200);
             for (let idx = 0; idx < players.length; idx++) {
                 let pl = players[idx];
                 if (!pl) continue;
-                if (fromArch) {
-                    // Entering Room 2 through unlocked Archway shortcut!
-                    pl.x = 8240 + idx * 24;
-                    pl.y = 1520 - pl.height;
-                    pl.facingRight = true;
-                    pl.vx = 0;
-                    pl.vy = 0;
-                } else {
-                    // Silksong-style transition: Drop down into Room 2 from the top ceiling shaft onto the roof!
-                    pl.x = 9400 - idx * 22;
-                    pl.y = 660; // Inside top vertical shaft!
-                    pl.vx = 0;
-                    pl.vy = 5;  // Falling downward with momentum
-                    pl.facingRight = false; // Look left towards parkour route
-                }
+                pl.x = 9400 - idx * 22;
+                pl.y = 660; // Inside top vertical shaft!
+                pl.vx = 0;
+                pl.vy = 5;  // Falling downward with momentum
                 pl.invuln = 90;
                 pl.isDowned = false;
                 pl.lastSafeX = pl.x;
-                pl.lastSafeY = (fromArch ? 1520 : 1360) - pl.height;
+                pl.lastSafeY = 1120 - pl.height;
             }
-            camX = (fromArch ? 8300 : 9390) - GAME_WIDTH / 2;
-            camY = fromArch ? 1200 : 560;
-            if (typeof playSound === 'function') playSound(fromArch ? 'lightChime' : 'fall');
+            camX = 9390 - GAME_WIDTH / 2;
+            camY = 560;
+            if (typeof playSound === 'function') playSound('fall');
         } else {
-            // Return to Room 1 Floor 3 Archway (near Bench 2)!
+            // Metroidvania seamless corridor return: enter Room 1 Bottom Tier from connecting shaft!
             storyState.currentRoom = 1;
-            storyState.step = 'EXPLORE';
-            storyState.stepTimer = 0;
             for (let idx = 0; idx < players.length; idx++) {
                 let pl = players[idx];
                 if (!pl) continue;
-                pl.x = 1650 + (idx === 0 ? 0 : (idx === 1 ? 32 : -32));
-                pl.y = STORY_CONFIG.LOWER_FLOOR - pl.height;
-                pl.facingRight = false; // Facing left towards the campfire bench!
+                pl.x = 2220 + (idx === 0 ? 0 : (idx === 1 ? -28 : 28));
+                pl.y = 1950 - (pl.height || 45);
                 pl.vx = 0;
                 pl.vy = 0;
-                pl.hp = pl.maxHp || 5;
+                pl.facingRight = false; // facing left into the room towards climbing shafts
+                pl.invuln = 60;
                 pl.isDowned = false;
                 pl.downedTimer = 0;
                 pl.lastSafeX = pl.x;
                 pl.lastSafeY = pl.y;
             }
-            camX = 1650 - GAME_WIDTH / 2;
-            camY = 500;
-            if (typeof playSound === 'function') playSound('lightChime');
+            camX = 2220 - GAME_WIDTH / 2;
+            camY = 1950 - GAME_HEIGHT / 2;
+            if (typeof playSound === 'function') playSound('step');
         }
     } else if (storyState.roomFadeTimer <= 34) {
         storyState.roomFadeAlpha = Math.max(0, 1.0 - (storyState.roomFadeTimer - 17) / 17);
@@ -4992,32 +5850,6 @@ function drawStoryRoom1AndRoom2World() {
             ctx.beginPath();
             ctx.arc(tx + toothW / 2, sp.y - tipH + 2, 1.2, 0, Math.PI * 2);
             ctx.fill();
-        }
-    }
-
-    // 1b. Room 1 Portal Archway on Floor 3 (Sketch 1 Archway ∩: X = 1620..1680, Y = 710..850)
-    if (1620 > camX - 120 && 1680 < camX + GAME_WIDTH + 120) {
-        let ax = 1620, ay = 710, aw = 60, ah = 140;
-        let r1ArchGrad = ctx.createLinearGradient(ax, ay, ax + aw, ay);
-        r1ArchGrad.addColorStop(0, "rgba(56, 189, 248, 0.45)");
-        r1ArchGrad.addColorStop(0.5, "rgba(56, 189, 248, 0.15)");
-        r1ArchGrad.addColorStop(1, "transparent");
-        ctx.fillStyle = r1ArchGrad;
-        ctx.fillRect(ax, ay, aw, ah);
-        ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 2.5;
-        ctx.strokeRect(ax, ay, aw, ah);
-        ctx.strokeStyle = "#1e293b";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(ax - 6, ay - 6, aw + 12, ah + 6);
-        ctx.fillStyle = "#38bdf8";
-        ctx.font = "bold 10px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("⛩️ ПОРТАЛ", ax + aw / 2, ay - 12);
-        if (storyState.room2OneWayBroken) {
-            ctx.fillStyle = "#86efac";
-            ctx.font = "9.5px sans-serif";
-            ctx.fillText("[W / Вверх] В пещеру", ax + aw / 2, ay + ah + 15);
         }
     }
 
@@ -5163,37 +5995,62 @@ function drawStoryRoom1AndRoom2World() {
     }
 
     // 5. Room 2 One-Way Shortcut Wall (Sketch 2 Red Arrow: X = 8680, Y = 1360..1540)
-    if (!storyState.room2OneWayBroken) {
-        let owx = 8680, owy = 1360, oww = 35, owh = 180;
-        ctx.save();
-        ctx.fillStyle = "#0f172a";
-        ctx.strokeStyle = "#334155";
-        ctx.lineWidth = 2.5;
-        ctx.fillRect(owx, owy, oww, owh);
-        ctx.strokeRect(owx, owy, oww, owh);
+    // 5. Room 2 Chamber Entrance Archway & Shortcut Passage (X = 8670, Y = 1360..1540)
+    let owx = 8670, owy = 1360, oww = 38, owh = 180;
+    ctx.save();
+    // Ancient stone portal frame pillars
+    ctx.fillStyle = "#1e293b";
+    ctx.strokeStyle = "#475569";
+    ctx.lineWidth = 2.0;
+    ctx.fillRect(owx - 4, owy, 10, owh);
+    ctx.fillRect(owx + oww - 6, owy, 10, owh);
+    ctx.strokeRect(owx - 4, owy, 10, owh);
+    ctx.strokeRect(owx + oww - 6, owy, 10, owh);
 
-        // Ancient locking runes on inside face (right side)
-        ctx.strokeStyle = "rgba(239, 68, 68, 0.85)";
+    if (!storyState.room2OneWayBroken) {
+        // Unbroken: Massive visible cracked ancient stone slab with glowing fissures
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(owx + 6, owy, oww - 12, owh);
+        ctx.strokeStyle = "rgba(245, 158, 11, 0.85)";
         ctx.lineWidth = 2;
-        ctx.shadowColor = "#ef4444";
+        ctx.shadowColor = "#f59e0b";
         ctx.shadowBlur = 8;
         ctx.beginPath();
-        ctx.moveTo(owx + oww - 4, owy + 40);
-        ctx.lineTo(owx + oww - 16, owy + 90);
-        ctx.lineTo(owx + oww - 4, owy + 140);
+        ctx.moveTo(owx + 12, owy + 20); ctx.lineTo(owx + 22, owy + 70);
+        ctx.lineTo(owx + 10, owy + 115); ctx.lineTo(owx + 24, owy + 160);
         ctx.stroke();
         ctx.shadowBlur = 0;
-        ctx.restore();
 
-        // 5b. Darkness Shroud inside Central Tunnel when viewed from outside
-        let p1Leader = players[0];
-        if (p1Leader && p1Leader.x < 8680) {
-            ctx.save();
-            ctx.fillStyle = "#020617";
-            ctx.fillRect(8715, 1365, 620, 170);
-            ctx.restore();
-        }
+        ctx.fillStyle = "#fbbf24";
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("💥 Разрушаемая стена", owx + oww / 2, owy + 90);
+    } else {
+        // Broken: Open portal with crumbling stone debris and rubble at the threshold
+        ctx.fillStyle = "#334155";
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 1.2;
+        // Rubble stone chunks on floor
+        ctx.beginPath();
+        ctx.roundRect(owx - 2, owy + owh - 10, 14, 10, 2);
+        ctx.roundRect(owx + 16, owy + owh - 7, 10, 7, 2);
+        ctx.roundRect(owx + oww - 4, owy + owh - 12, 12, 12, 3);
+        ctx.fill();
+        ctx.stroke();
+
+        // Soft emerald moss creeping onto rubble
+        ctx.fillStyle = "#22c55e";
+        ctx.fillRect(owx - 1, owy + owh - 11, 8, 2);
+        ctx.fillRect(owx + 18, owy + owh - 8, 6, 2);
     }
+
+    // Chamber ambient teal glow (revealing the interior, NO black shroud!)
+    let chamberGlow = ctx.createLinearGradient(owx, owy + 90, owx + 300, owy + 90);
+    chamberGlow.addColorStop(0, "rgba(56, 189, 248, 0.08)");
+    chamberGlow.addColorStop(1, "transparent");
+    ctx.fillStyle = chamberGlow;
+    ctx.fillRect(owx + 10, owy + 10, 600, 160);
+    ctx.restore();
 
     // 6. Room 2 Dash Scroll Pickup (Sketch 2 White Arrow: X = 8950, Y = 1480)
     if (!storyState.dashScrollCollected) {
@@ -5277,6 +6134,15 @@ function drawStoryRoom1AndRoom2World() {
             ctx.restore();
         }
     }
+
+    // 7b. Silk Flies (Шёлковые мошки - парят над пропастями для пого-прыжков)
+    drawStorySilkFlies();
+
+    // 7c. Spore Spitters & Spore Projectiles (Споровые плевуны)
+    drawStorySporeSpitters();
+
+    // 7d. Interactive Grass & Falling Leaves in Room 1 and Room 2
+    drawStoryGrassBlades();
 
     // 8. Air Dash Waves
     for (let w of airDashWaves) {
@@ -6612,6 +7478,9 @@ function enterStoryTrialsViaGate() {
     camY = 470;
 
     storyState.inTrials = true;
+    storyState.guardianDefeated = true;
+    storyState.comboUnlocked = true;
+    storyState.currentRoom = 0;
     storyTrials.active = true;
     storyTrials.state = 'WAITING_FOR_CENTER';
     storyTrials.stage = 0;
@@ -6621,6 +7490,9 @@ function enterStoryTrialsViaGate() {
     storyTrials.centerReadyTimer = 0;
     storyTrials.inCenterCount = 0;
     storyState.trialsWeaponGranted = true;
+    for (let pl of players) {
+        if (pl) { pl.waterDropActive = false; pl.waterDrop = null; }
+    }
     platforms.filter(p => p.isTrialsArenaWall).forEach(p => p.solid = true);
 
     // Ensure maze platforms are inactive initially
